@@ -1,0 +1,20 @@
+{
+  "name": "sam",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --env-file=.env dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "^0.52.10",
+    "@mariozechner/pi-ai": "^0.52.10",
+    "discord.js": "^14.18.0",
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
