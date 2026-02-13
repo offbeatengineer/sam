@@ -7,6 +7,11 @@ discord:
   #   - "1234567890123456789"
   #   - "9876543210987654321"
 
+agent:
+  # Path to a custom system prompt file (optional).
+  # If omitted, uses the built-in default prompt.
+  # systemPrompt: ./system-prompt.txt
+
 workspace:
   # Working directory the agent operates in (default: current directory).
   # dir: /home/user/projects/my-repo

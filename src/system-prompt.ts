@@ -1,11 +1,19 @@
-export function getSystemPrompt(cwd: string): string {
-  const datetime = new Date().toISOString();
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+export function getSystemPrompt(cwd: string, systemPromptPath?: string): string {
+  if (systemPromptPath) {
+    const resolved = resolve(systemPromptPath);
+    if (!existsSync(resolved)) {
+      throw new Error(`System prompt file not found: ${resolved}`);
+    }
+    return readFileSync(resolved, "utf-8");
+  }
 
   return `You are Sam, a helpful general-purpose AI assistant.
 
 ## Environment
 - Working directory: ${cwd}
-- Current date/time: ${datetime}
 
 ## Capabilities
 You have access to tools for interacting with the local filesystem and executing commands:
