@@ -59,8 +59,8 @@ export class Dispatcher {
     session.subscribe((event: any) => {
       if (event.type === "message_update") {
         const assistantEvent = event.assistantMessageEvent;
-        if (assistantEvent?.type === "text_delta" && assistantEvent.text) {
-          textBuffer += assistantEvent.text;
+        if (assistantEvent?.type === "text_delta" && assistantEvent.delta) {
+          textBuffer += assistantEvent.delta;
         }
       } else if (event.type === "message_end") {
         if (textBuffer.length > 0) {

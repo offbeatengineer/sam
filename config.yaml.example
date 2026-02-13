@@ -1,0 +1,15 @@
+# Sam configuration
+
+discord:
+  # Restrict the bot to specific channels (optional).
+  # If omitted, the bot responds in all channels where it is mentioned.
+  # allowedChannelIds:
+  #   - "1234567890123456789"
+  #   - "9876543210987654321"
+
+workspace:
+  # Working directory the agent operates in (default: current directory).
+  # dir: /home/user/projects/my-repo
+
+  # Where conversation sessions are persisted (default: <dir>/.sam/sessions).
+  # sessionDir: /home/user/.sam/sessions

@@ -5,16 +5,17 @@
   "scripts": {
     "build": "tsc",
     "start": "node --env-file=.env dist/index.js",
-    "dev": "tsc --watch"
+    "dev": "tsx --watch --env-file=.env src/index.ts"
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.52.10",
     "@mariozechner/pi-ai": "^0.52.10",
+    "@mariozechner/pi-coding-agent": "^0.52.10",
     "discord.js": "^14.18.0",
     "yaml": "^2.8.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.0"
   }
 }
