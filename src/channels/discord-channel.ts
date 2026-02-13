@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, type Message } from "discord.js";
+import { Client, Events, GatewayIntentBits, Partials, type Message } from "discord.js";
 import type { ChatChannel, MessageHandler } from "./chat-channel.js";
 import type { InboundMessage, OutboundMessage } from "../types.js";
 import { chunkText } from "../text-chunker.js";
@@ -29,6 +29,7 @@ export class DiscordChannel implements ChatChannel {
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
       ],
+      partials: [Partials.Channel],
     });
 
     this.client.on(Events.MessageCreate, (msg) => this.handleMessage(msg));

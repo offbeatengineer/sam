@@ -5,6 +5,11 @@ import { DiscordChannel } from "./channels/discord-channel.js";
 
 async function main() {
   const config = loadConfig();
+  console.log("Config:", JSON.stringify({
+    discord: { allowedChannelIds: config.discord.allowedChannelIds },
+    model: { ...config.model, apiKey: config.model.apiKey ? "***" : undefined },
+    workspace: config.workspace,
+  }, null, 2));
 
   const registry = new SessionRegistry(config);
   const dispatcher = new Dispatcher(registry);

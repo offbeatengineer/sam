@@ -20,8 +20,8 @@ import { mkdirSync } from "node:fs";
 
 export type { AgentSession } from "@mariozechner/pi-coding-agent";
 
-function createResourceLoader(cwd: string): ResourceLoader {
-  const systemPrompt = getSystemPrompt(cwd);
+function createResourceLoader(cwd: string, systemPromptPath?: string): ResourceLoader {
+  const systemPrompt = getSystemPrompt(cwd, systemPromptPath);
   const runtime = createExtensionRuntime();
 
   return {
@@ -58,13 +58,13 @@ export async function createSession(config: SamConfig, key: SessionKey) {
     createLsTool(cwd),
   ];
 
-  const sessionManager = SessionManager.create(cwd, sessionDir);
+  const sessionManager = SessionManager.continueRecent(cwd, sessionDir);
   const settingsManager = SettingsManager.inMemory({
     compaction: { enabled: true },
     retry: { enabled: true, maxRetries: 3 },
   });
 
-  const resourceLoader = createResourceLoader(cwd);
+  const resourceLoader = createResourceLoader(cwd, config.agent.systemPrompt);
 
   const { session } = await createAgentSession({
     cwd,

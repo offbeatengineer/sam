@@ -5,11 +5,13 @@ import { parse as parseYaml } from "yaml";
 export interface SamConfig {
   discord: { token: string; allowedChannelIds?: string[] };
   model: { provider: string; modelId: string; thinkingLevel: string; apiKey?: string };
+  agent: { systemPrompt?: string };
   workspace: { dir: string; sessionDir: string };
 }
 
 interface YamlConfig {
   discord?: { allowedChannelIds?: string[] };
+  agent?: { systemPrompt?: string };
   workspace?: { dir?: string; sessionDir?: string };
 }
 
@@ -37,6 +39,9 @@ export function loadConfig(): SamConfig {
       modelId: process.env.MODEL_ID ?? "claude-sonnet-4-20250514",
       thinkingLevel: process.env.THINKING_LEVEL ?? "off",
       apiKey: process.env.MODEL_API_KEY,
+    },
+    agent: {
+      systemPrompt: yaml.agent?.systemPrompt,
     },
     workspace: {
       dir: workspaceDir,
