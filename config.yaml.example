@@ -1,20 +1,35 @@
-# Sam configuration
+# Sam configuration — ~/.sam/config.yaml
+# This file is auto-created on first run at ~/.sam/config.yaml
 
 discord:
+  # Bot token (can also be set via DISCORD_TOKEN env var)
+  # token: "your-bot-token"
+
   # Restrict the bot to specific channels (optional).
   # If omitted, the bot responds in all channels where it is mentioned.
   # allowedChannelIds:
   #   - "1234567890123456789"
-  #   - "9876543210987654321"
 
-agent:
-  # Path to a custom system prompt file (optional).
-  # If omitted, uses the built-in default prompt.
-  # systemPrompt: ./system-prompt.txt
+model:
+  provider: anthropic
+  modelId: claude-sonnet-4-20250514
+  thinkingLevel: "off"
+  # apiKey: "sk-..."  # can also be set via MODEL_API_KEY env var
 
-workspace:
-  # Working directory the agent operates in (default: current directory).
-  # dir: /home/user/projects/my-repo
+# workspace: ~/.sam/workspace
+# sessions: ~/.sam/sessions
 
-  # Where conversation sessions are persisted (default: <dir>/.sam/sessions).
-  # sessionDir: /home/user/.sam/sessions
+# prompts:
+#   system: ~/.sam/prompts/system.md
+#   pulse: ~/.sam/prompts/pulse.md
+
+# pulse:
+#   enabled: true
+#   every: "30m"
+#   delivery:
+#     channel: discord
+#     targetChannelId: "1234567890123456789"
+#   activeHours:
+#     start: "08:00"
+#     end: "22:00"
+#     timezone: "America/Los_Angeles"
