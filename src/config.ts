@@ -1,7 +1,11 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { resolve, dirname } from "node:path";
 import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const BUNDLED_PROMPTS_DIR = resolve(__dirname, "..", "prompts");
 
 // ---------------------------------------------------------------------------
 // Sam home directory
@@ -99,38 +103,6 @@ model:
 #     apiKey: ""  # or set BRAVE_API_KEY env var
 `;
 
-// Exported so system-prompt.ts can use it as a template variable
-export const DEFAULT_SYSTEM_PROMPT = `You are Sam, a helpful general-purpose AI assistant.
-
-## Capabilities
-You have access to tools for interacting with the local filesystem and executing commands:
-- **File reading**: Read file contents
-- **File writing**: Create or overwrite files
-- **File editing**: Make targeted edits to existing files
-- **Shell execution**: Run shell commands and scripts
-- **Search**: Search file contents with grep patterns
-- **Find**: Find files by name patterns
-- **List**: List directory contents
-- **Web search**: Search the web for current information
-- **Web fetch**: Fetch and read web page content
-- **Browser**: Navigate and interact with web pages via playwright-cli (if installed)
-
-## Guidelines
-- Be concise and direct in your responses.
-- Use markdown formatting when it improves readability.
-- When using tools, briefly explain what you're doing and why.
-- If a task is ambiguous, ask for clarification before proceeding.
-
-## Shell command rules
-- You are running in a chat channel — **never** use interactive terminal programs (vim, less, top, etc.). Use non-interactive alternatives.
-- **Never** run long-running or blocking commands (servers, watchers, tails, etc.) directly. They will hang your session and you will stop responding.
-- Use \`tmux\` for anything long-running:
-  - Start: \`tmux new-session -d -s myserver 'python3 -m http.server 8989'\`
-  - Check output: \`tmux capture-pane -t myserver -p\`
-  - Stop: \`tmux kill-session -t myserver\`
-  - List sessions: \`tmux ls\`
-- Prefer commands that produce bounded output. Avoid commands that stream indefinitely.`;
-
 // ---------------------------------------------------------------------------
 // First-run setup — create ~/.sam/ with defaults
 // ---------------------------------------------------------------------------
@@ -146,14 +118,15 @@ export function ensureSamDir(): void {
     writeFileSync(configPath, DEFAULT_CONFIG_YAML);
   }
 
-  const systemPath = resolve(SAM_DIR, "prompts", "system.md");
-  if (!existsSync(systemPath)) {
-    writeFileSync(systemPath, DEFAULT_SYSTEM_PROMPT);
-  }
-
-  const pulsePath = resolve(SAM_DIR, "prompts", "pulse.md");
-  if (!existsSync(pulsePath)) {
-    writeFileSync(pulsePath, "");
+  // Copy bundled prompts to ~/.sam/prompts/ on first run
+  for (const name of ["system.md", "pulse.md"]) {
+    const dest = resolve(SAM_DIR, "prompts", name);
+    if (!existsSync(dest)) {
+      const src = resolve(BUNDLED_PROMPTS_DIR, name);
+      if (existsSync(src)) {
+        copyFileSync(src, dest);
+      }
+    }
   }
 }
 
