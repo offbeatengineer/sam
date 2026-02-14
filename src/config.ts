@@ -20,8 +20,8 @@ export interface SamConfig {
   };
   model: {
     provider: string;
-    modelId: string;
-    thinkingLevel: string;
+    id: string;
+    thinking: string;
     apiKey?: string;
   };
   workspace: string;
@@ -29,6 +29,9 @@ export interface SamConfig {
   prompts: {
     system: string;
     pulse: string;
+  };
+  tools?: {
+    webSearch?: { apiKey?: string };
   };
   pulse?: {
     enabled: boolean;
@@ -69,8 +72,8 @@ discord:
 
 model:
   provider: anthropic
-  modelId: claude-sonnet-4-20250514
-  thinkingLevel: "off"
+  id: claude-sonnet-4-20250514
+  thinking: "off"
 
 # workspace: ~/.sam/workspace
 # sessions: ~/.sam/sessions
@@ -89,6 +92,10 @@ model:
 #     start: "08:00"
 #     end: "22:00"
 #     timezone: "America/Los_Angeles"
+
+# tools:
+#   webSearch:
+#     apiKey: ""  # or set BRAVE_API_KEY env var
 `;
 
 // Exported so system-prompt.ts can use it as a template variable
@@ -103,6 +110,8 @@ You have access to tools for interacting with the local filesystem and executing
 - **Search**: Search file contents with grep patterns
 - **Find**: Find files by name patterns
 - **List**: List directory contents
+- **Web search**: Search the web for current information
+- **Web fetch**: Fetch and read web page content
 
 ## Guidelines
 - Be concise and direct in your responses.
@@ -141,6 +150,10 @@ export function ensureSamDir(): void {
 // Load config
 // ---------------------------------------------------------------------------
 
+function expandHome(p: string): string {
+  return p.startsWith("~/") ? resolve(homedir(), p.slice(2)) : p;
+}
+
 export function loadConfig(): SamConfig {
   ensureSamDir();
 
@@ -163,15 +176,20 @@ export function loadConfig(): SamConfig {
     },
     model: {
       provider: process.env.MODEL_PROVIDER ?? yaml.model?.provider ?? "anthropic",
-      modelId: process.env.MODEL_ID ?? yaml.model?.modelId ?? "claude-sonnet-4-20250514",
-      thinkingLevel: process.env.THINKING_LEVEL ?? yaml.model?.thinkingLevel ?? "off",
+      id: process.env.MODEL_ID ?? yaml.model?.id ?? "claude-sonnet-4-20250514",
+      thinking: process.env.MODEL_THINKING ?? yaml.model?.thinking ?? "off",
       apiKey: process.env.MODEL_API_KEY ?? yaml.model?.apiKey,
     },
-    workspace: yaml.workspace ?? resolve(SAM_DIR, "workspace"),
-    sessions: yaml.sessions ?? resolve(SAM_DIR, "sessions"),
+    workspace: expandHome(yaml.workspace ?? resolve(SAM_DIR, "workspace")),
+    sessions: expandHome(yaml.sessions ?? resolve(SAM_DIR, "sessions")),
     prompts: {
-      system: yaml.prompts?.system ?? resolve(SAM_DIR, "prompts", "system.md"),
-      pulse: yaml.prompts?.pulse ?? resolve(SAM_DIR, "prompts", "pulse.md"),
+      system: expandHome(yaml.prompts?.system ?? resolve(SAM_DIR, "prompts", "system.md")),
+      pulse: expandHome(yaml.prompts?.pulse ?? resolve(SAM_DIR, "prompts", "pulse.md")),
+    },
+    tools: {
+      webSearch: {
+        apiKey: process.env.BRAVE_API_KEY ?? yaml.tools?.webSearch?.apiKey,
+      },
     },
     pulse: yaml.pulse?.enabled ? yaml.pulse : undefined,
   };

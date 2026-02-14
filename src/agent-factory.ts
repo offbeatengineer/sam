@@ -13,7 +13,9 @@ import {
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { getSystemPrompt } from "./system-prompt.js";
-import type { SamConfig, } from "./config.js";
+import type { SamConfig } from "./config.js";
+import { createWebSearchTool } from "./tools/web-search.js";
+import { createWebFetchTool } from "./tools/web-fetch.js";
 import type { SessionKey } from "./types.js";
 import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -49,13 +51,18 @@ export async function createSession(config: SamConfig, key: SessionKey) {
   }
 
   const modelRegistry = new ModelRegistry(authStorage);
-  const model = getModel(config.model.provider as any, config.model.modelId as any);
+  const model = getModel(config.model.provider as any, config.model.id as any);
 
   const tools = [
     ...createCodingTools(cwd),
     createGrepTool(cwd),
     createFindTool(cwd),
     createLsTool(cwd),
+  ];
+
+  const customTools = [
+    createWebSearchTool(config.tools?.webSearch?.apiKey),
+    createWebFetchTool(),
   ];
 
   const sessionManager = SessionManager.continueRecent(cwd, sessionDir);
@@ -71,8 +78,9 @@ export async function createSession(config: SamConfig, key: SessionKey) {
     authStorage,
     modelRegistry,
     model,
-    thinkingLevel: config.model.thinkingLevel as any,
+    thinkingLevel: config.model.thinking as any,
     tools,
+    customTools,
     resourceLoader,
     sessionManager,
     settingsManager,

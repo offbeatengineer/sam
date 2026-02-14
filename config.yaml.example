@@ -12,8 +12,8 @@ discord:
 
 model:
   provider: anthropic
-  modelId: claude-sonnet-4-20250514
-  thinkingLevel: "off"
+  id: claude-sonnet-4-20250514
+  thinking: "off"
   # apiKey: "sk-..."  # can also be set via MODEL_API_KEY env var
 
 # workspace: ~/.sam/workspace
