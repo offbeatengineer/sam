@@ -7,6 +7,7 @@ import {
   createGrepTool,
   createFindTool,
   createLsTool,
+  loadSkillsFromDir,
   ModelRegistry,
   type ResourceLoader,
   SessionManager,
@@ -22,13 +23,13 @@ import { mkdirSync } from "node:fs";
 
 export type { AgentSession } from "@mariozechner/pi-coding-agent";
 
-function createResourceLoader(cwd: string, systemPromptPath: string): ResourceLoader {
+function createResourceLoader(cwd: string, systemPromptPath: string, skillsDir: string): ResourceLoader {
   const systemPrompt = getSystemPrompt(cwd, systemPromptPath);
   const runtime = createExtensionRuntime();
 
   return {
     getExtensions: () => ({ extensions: [], errors: [], diagnostics: [], runtime }),
-    getSkills: () => ({ skills: [], diagnostics: [] }),
+    getSkills: () => loadSkillsFromDir({ dir: skillsDir, source: "user" }),
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles: [] }),
@@ -71,7 +72,7 @@ export async function createSession(config: SamConfig, key: SessionKey) {
     retry: { enabled: true, maxRetries: 3 },
   });
 
-  const resourceLoader = createResourceLoader(cwd, config.prompts.system);
+  const resourceLoader = createResourceLoader(cwd, config.prompts.system, config.skills);
 
   const { session } = await createAgentSession({
     cwd,

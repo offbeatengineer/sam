@@ -26,6 +26,7 @@ export interface SamConfig {
   };
   workspace: string;
   sessions: string;
+  skills: string;
   prompts: {
     system: string;
     pulse: string;
@@ -112,6 +113,7 @@ You have access to tools for interacting with the local filesystem and executing
 - **List**: List directory contents
 - **Web search**: Search the web for current information
 - **Web fetch**: Fetch and read web page content
+- **Browser**: Navigate and interact with web pages via playwright-cli (if installed)
 
 ## Guidelines
 - Be concise and direct in your responses.
@@ -129,6 +131,7 @@ export function ensureSamDir(): void {
   mkdirSync(resolve(SAM_DIR, "sessions"), { recursive: true });
   mkdirSync(resolve(SAM_DIR, "prompts"), { recursive: true });
   mkdirSync(resolve(SAM_DIR, "workspace"), { recursive: true });
+  mkdirSync(resolve(SAM_DIR, "skills"), { recursive: true });
 
   const configPath = resolve(SAM_DIR, "config.yaml");
   if (!existsSync(configPath)) {
@@ -182,6 +185,7 @@ export function loadConfig(): SamConfig {
     },
     workspace: expandHome(yaml.workspace ?? resolve(SAM_DIR, "workspace")),
     sessions: expandHome(yaml.sessions ?? resolve(SAM_DIR, "sessions")),
+    skills: expandHome(yaml.skills ?? resolve(SAM_DIR, "skills")),
     prompts: {
       system: expandHome(yaml.prompts?.system ?? resolve(SAM_DIR, "prompts", "system.md")),
       pulse: expandHome(yaml.prompts?.pulse ?? resolve(SAM_DIR, "prompts", "pulse.md")),

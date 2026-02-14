@@ -33,3 +33,10 @@ model:
 #     start: "08:00"
 #     end: "22:00"
 #     timezone: "America/Los_Angeles"
+
+# skills: ~/.sam/skills
+
+# Browser automation (optional — requires playwright-cli):
+#   npm install -g @playwright/cli
+#   playwright-cli install
+#   cd ~/.sam/skills && playwright-cli install --skills
