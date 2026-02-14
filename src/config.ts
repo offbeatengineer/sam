@@ -119,9 +119,17 @@ You have access to tools for interacting with the local filesystem and executing
 - Be concise and direct in your responses.
 - Use markdown formatting when it improves readability.
 - When using tools, briefly explain what you're doing and why.
-- You are running in a chat channel — do not use interactive terminal commands (e.g. vim, less, top). Use non-interactive alternatives instead.
 - If a task is ambiguous, ask for clarification before proceeding.
-- When executing shell commands, prefer commands that produce bounded output. Avoid commands that stream indefinitely.`;
+
+## Shell command rules
+- You are running in a chat channel — **never** use interactive terminal programs (vim, less, top, etc.). Use non-interactive alternatives.
+- **Never** run long-running or blocking commands (servers, watchers, tails, etc.) directly. They will hang your session and you will stop responding.
+- Use \`tmux\` for anything long-running:
+  - Start: \`tmux new-session -d -s myserver 'python3 -m http.server 8989'\`
+  - Check output: \`tmux capture-pane -t myserver -p\`
+  - Stop: \`tmux kill-session -t myserver\`
+  - List sessions: \`tmux ls\`
+- Prefer commands that produce bounded output. Avoid commands that stream indefinitely.`;
 
 // ---------------------------------------------------------------------------
 // First-run setup — create ~/.sam/ with defaults
