@@ -32,6 +32,9 @@ export class Dispatcher {
       return;
     }
 
+    // Show typing indicator
+    await channel.startTyping(sessionKey.conversationId);
+
     try {
       const session = await this.registry.getOrCreate(sessionKey);
       this.ensureSubscription(sessionKey, session, channel);

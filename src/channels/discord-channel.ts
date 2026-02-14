@@ -62,6 +62,14 @@ export class DiscordChannel implements ChatChannel {
     this.handlers.push(handler);
   }
 
+  async startTyping(conversationId: string): Promise<void> {
+    const channel = await this.client.channels.fetch(conversationId);
+    if (!channel || !channel.isTextBased() || channel.isVoiceBased()) {
+      return;
+    }
+    await (channel as any).sendTyping();
+  }
+
   private handleMessage(msg: Message): void {
     // Ignore bots
     if (msg.author.bot) return;
