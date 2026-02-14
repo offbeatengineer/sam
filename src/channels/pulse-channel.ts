@@ -38,6 +38,10 @@ export class PulseChannel implements ChatChannel {
     this.handler = handler;
   }
 
+  async startTyping(_conversationId: string): Promise<void> {
+    // No-op: PulseChannel doesn't have real-time conversations
+  }
+
   async send(message: OutboundMessage): Promise<void> {
     const text = message.text.trim();
 

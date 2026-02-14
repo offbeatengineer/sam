@@ -8,4 +8,5 @@ export interface ChatChannel {
   stop(): Promise<void>;
   send(message: OutboundMessage): Promise<void>;
   onMessage(handler: MessageHandler): void;
+  startTyping(conversationId: string): Promise<void>;
 }
