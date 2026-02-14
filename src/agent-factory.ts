@@ -18,8 +18,12 @@ import type { SamConfig } from "./config.js";
 import { createWebSearchTool } from "./tools/web-search.js";
 import { createWebFetchTool } from "./tools/web-fetch.js";
 import type { SessionKey } from "./types.js";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const BUNDLED_SKILLS_DIR = resolve(__dirname, "..", "skills");
 
 export type { AgentSession } from "@mariozechner/pi-coding-agent";
 
@@ -29,7 +33,17 @@ function createResourceLoader(cwd: string, systemPromptPath: string, skillsDir: 
 
   return {
     getExtensions: () => ({ extensions: [], errors: [], diagnostics: [], runtime }),
-    getSkills: () => loadSkillsFromDir({ dir: skillsDir, source: "user" }),
+    getSkills: () => {
+      const bundled = loadSkillsFromDir({ dir: BUNDLED_SKILLS_DIR, source: "bundled" });
+      const user = loadSkillsFromDir({ dir: skillsDir, source: "user" });
+      // User skills override bundled skills with the same name
+      const merged = new Map(bundled.skills.map((s) => [s.name, s]));
+      for (const s of user.skills) merged.set(s.name, s);
+      return {
+        skills: [...merged.values()],
+        diagnostics: [...bundled.diagnostics, ...user.diagnostics],
+      };
+    },
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles: [] }),
