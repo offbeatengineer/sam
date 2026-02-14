@@ -2,3 +2,4 @@ node_modules/
 dist/
 .env
 .sam/
+.DS_Store

@@ -1,11 +1,22 @@
 {
-  "name": "sam",
+  "name": "sam-ai",
   "version": "0.1.0",
   "type": "module",
+  "bin": {
+    "sam": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "build": "tsc",
-    "start": "node --env-file=.env dist/index.js",
-    "dev": "tsx --watch --env-file=.env src/index.ts"
+    "start": "node dist/index.js",
+    "dev": "tsx --watch --env-file=.env src/index.ts",
+    "prepublishOnly": "tsc"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.52.12",

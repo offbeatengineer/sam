@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { loadConfig } from "./config.js";
 import { SessionRegistry } from "./session-registry.js";
 import { Dispatcher } from "./dispatcher.js";
