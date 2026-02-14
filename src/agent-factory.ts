@@ -20,7 +20,7 @@ import { mkdirSync } from "node:fs";
 
 export type { AgentSession } from "@mariozechner/pi-coding-agent";
 
-function createResourceLoader(cwd: string, systemPromptPath?: string): ResourceLoader {
+function createResourceLoader(cwd: string, systemPromptPath: string): ResourceLoader {
   const systemPrompt = getSystemPrompt(cwd, systemPromptPath);
   const runtime = createExtensionRuntime();
 
@@ -39,8 +39,8 @@ function createResourceLoader(cwd: string, systemPromptPath?: string): ResourceL
 }
 
 export async function createSession(config: SamConfig, key: SessionKey) {
-  const cwd = config.workspace.dir;
-  const sessionDir = resolve(config.workspace.sessionDir, key.channelId, key.conversationId);
+  const cwd = config.workspace;
+  const sessionDir = resolve(config.sessions, key.channelId, key.conversationId);
   mkdirSync(sessionDir, { recursive: true });
 
   const authStorage = new AuthStorage();
@@ -64,7 +64,7 @@ export async function createSession(config: SamConfig, key: SessionKey) {
     retry: { enabled: true, maxRetries: 3 },
   });
 
-  const resourceLoader = createResourceLoader(cwd, config.agent.systemPrompt);
+  const resourceLoader = createResourceLoader(cwd, config.prompts.system);
 
   const { session } = await createAgentSession({
     cwd,

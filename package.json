@@ -8,8 +8,8 @@
     "dev": "tsx --watch --env-file=.env src/index.ts"
   },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.52.10",
-    "@mariozechner/pi-coding-agent": "^0.52.10",
+    "@mariozechner/pi-ai": "^0.52.12",
+    "@mariozechner/pi-coding-agent": "^0.52.12",
     "discord.js": "^14.18.0",
     "yaml": "^2.8.0"
   },

@@ -2,13 +2,17 @@ import { loadConfig } from "./config.js";
 import { SessionRegistry } from "./session-registry.js";
 import { Dispatcher } from "./dispatcher.js";
 import { DiscordChannel } from "./channels/discord-channel.js";
+import { PulseChannel } from "./channels/pulse-channel.js";
 
 async function main() {
   const config = loadConfig();
   console.log("Config:", JSON.stringify({
-    discord: { allowedChannelIds: config.discord.allowedChannelIds },
     model: { ...config.model, apiKey: config.model.apiKey ? "***" : undefined },
     workspace: config.workspace,
+    sessions: config.sessions,
+    prompts: config.prompts,
+    discord: { allowedChannelIds: config.discord.allowedChannelIds },
+    pulse: config.pulse,
   }, null, 2));
 
   const registry = new SessionRegistry(config);
@@ -19,6 +23,12 @@ async function main() {
     allowedChannelIds: config.discord.allowedChannelIds,
   });
   dispatcher.addChannel(discord);
+
+  if (config.pulse) {
+    const pulseChannel = new PulseChannel(config, discord);
+    dispatcher.addChannel(pulseChannel);
+    await pulseChannel.start();
+  }
 
   await discord.start();
   console.log("Sam is running.");
