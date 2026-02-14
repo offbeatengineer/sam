@@ -3,11 +3,19 @@ export interface SessionKey {
   conversationId: string; // channel-specific (Discord channel ID, thread ID, etc.)
 }
 
+export interface MessageMetadata {
+  type: "user" | "pulse";
+  channel: string;
+  author: string;
+  timestamp: string;
+}
+
 export interface InboundMessage {
   sessionKey: SessionKey;
   text: string;
   authorId: string;
   authorName: string;
+  metadata: MessageMetadata;
 }
 
 export interface OutboundMessage {

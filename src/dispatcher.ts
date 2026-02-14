@@ -1,7 +1,18 @@
 import type { ChatChannel } from "./channels/chat-channel.js";
 import type { SessionRegistry } from "./session-registry.js";
-import type { InboundMessage, OutboundMessage } from "./types.js";
+import type { InboundMessage, OutboundMessage, MessageMetadata } from "./types.js";
 import { sessionKeyToString } from "./types.js";
+
+function formatMessage(text: string, metadata: MessageMetadata): string {
+  return `[Message]
+type: ${metadata.type}
+channel: ${metadata.channel}
+author: ${metadata.author}
+timestamp: ${metadata.timestamp}
+
+[Content]
+${text}`;
+}
 
 export class Dispatcher {
   private channels = new Map<string, ChatChannel>();
@@ -25,7 +36,7 @@ export class Dispatcher {
   }
 
   private async handleInbound(message: InboundMessage): Promise<void> {
-    const { sessionKey, text } = message;
+    const { sessionKey, text, metadata } = message;
     const channel = this.channels.get(sessionKey.channelId);
     if (!channel) {
       console.error(`No channel registered for ${sessionKey.channelId}`);
@@ -38,7 +49,8 @@ export class Dispatcher {
     try {
       const session = await this.registry.getOrCreate(sessionKey);
       this.ensureSubscription(sessionKey, session, channel);
-      await session.prompt(text, { streamingBehavior: "followUp" } as any);
+      const formattedMessage = formatMessage(text, metadata);
+      await session.prompt(formattedMessage, { streamingBehavior: "followUp" } as any);
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
       console.error(`Error handling message: ${errorText}`);
