@@ -1,11 +1,11 @@
 ---
 name: coding-agent
-description: Delegate coding tasks to Pi Coding Agent in non-interactive mode. Use when a task requires focused code generation, refactoring, or file modifications in a specific directory.
+description: Delegate coding tasks to Pi Coding Agent via tmux. Use when a task requires focused code generation, refactoring, or file modifications in a specific directory.
 ---
 
-# Coding Agent (Pi non-interactive mode)
+# Coding Agent (Pi via tmux)
 
-Delegate coding work to `pi` — a CLI coding agent with read, bash, edit, and write tools. Use its **non-interactive mode** (`-p`) so it runs the task and exits cleanly.
+Delegate coding work to `pi` — a CLI coding agent with read, bash, edit, and write tools. Run it inside `tmux` so it doesn't block your session.
 
 ## Prerequisites
 
@@ -13,50 +13,48 @@ Delegate coding work to `pi` — a CLI coding agent with read, bash, edit, and w
 npm install -g @mariozechner/pi-coding-agent
 ```
 
-## One-shot task
+## Starting a session
+
+Always run Pi inside tmux. Use a descriptive session name.
 
 ```bash
-pi -p "Your task description"
+# Start Pi in a project directory
+tmux new-session -d -s coding -c ~/Projects/myapp 'pi'
+
+# Send the first task
+tmux send-keys -t coding 'Add input validation to the signup form' Enter
 ```
 
-Pi runs in the current working directory, executes the task, prints output, and exits.
-
-## Working directory
-
-Use `cd` to scope Pi to a specific project:
+## Checking progress
 
 ```bash
-cd ~/Projects/myapp && pi -p "Add input validation to the signup form"
+# Read the current screen
+tmux capture-pane -t coding -p
+
+# Read with scrollback (last 500 lines)
+tmux capture-pane -t coding -p -S -500
 ```
 
-## Multi-turn sessions
+Poll periodically until Pi finishes (you'll see the `>` prompt again).
 
-Pi saves sessions automatically. Use `--continue` (`-c`) to pick up where you left off:
+## Multi-turn conversation
+
+Once Pi finishes a task, send follow-ups into the same session. Pi remembers all prior context.
 
 ```bash
-# First turn — start the task
-cd ~/Projects/myapp && pi -p "Refactor the auth module to use JWT"
+# Send a follow-up
+tmux send-keys -t coding 'Now add refresh token support' Enter
 
-# Second turn — continue the same session with follow-up
-cd ~/Projects/myapp && pi -c -p "Now add refresh token support"
-
-# Third turn — continue again
-cd ~/Projects/myapp && pi -c -p "Add tests for the refresh token flow"
+# And another
+tmux send-keys -t coding 'Add tests for the refresh token flow' Enter
 ```
-
-Each `-c` resumes the most recent session in that directory, so Pi remembers all prior context (files read, edits made, decisions taken).
 
 ## Choosing a model
 
+Pass model flags when starting Pi:
+
 ```bash
-# Use a specific provider and model
-pi --provider anthropic --model claude-sonnet-4-20250514 -p "Your task"
-
-# Shorthand: provider/model
-pi --model openai/gpt-4o -p "Your task"
-
-# With thinking level
-pi --model sonnet:high -p "Solve this complex problem"
+tmux new-session -d -s coding -c ~/Projects/myapp 'pi --model openai/gpt-4o'
 ```
 
 ## Read-only mode
@@ -64,27 +62,25 @@ pi --model sonnet:high -p "Solve this complex problem"
 For code review or analysis without modifications:
 
 ```bash
-pi --tools read,grep,find,ls -p "Review the error handling in src/api/"
+tmux new-session -d -s review -c ~/Projects/myapp 'pi --tools read,grep,find,ls'
+tmux send-keys -t review 'Review the error handling in src/api/' Enter
 ```
 
-## Session management
+## Ending a session
 
 ```bash
-# Continue most recent session
-pi -c -p "Follow-up prompt"
+# Gracefully exit Pi, then the tmux session closes automatically
+tmux send-keys -t coding '/exit' Enter
 
-# Use a specific session directory (useful for isolating projects)
-pi --session-dir /tmp/my-task -p "Start a task"
-pi --session-dir /tmp/my-task -c -p "Continue it"
-
-# Ephemeral — don't save session at all
-pi --no-session -p "Quick one-off question"
+# Or force-kill the session
+tmux kill-session -t coding
 ```
 
 ## Rules
 
-1. **Always use `-p`** — Sam cannot run interactive terminal programs.
-2. **Always `cd` to the target directory first** — Pi works on the files around it.
-3. **Use `-c` for follow-ups** — don't repeat context the agent already knows.
-4. **Don't do Pi's job** — if you delegate a coding task, let Pi handle it. Don't manually patch files that Pi should be editing.
-5. **Report back** — after Pi finishes, summarize what it did for the user.
+1. **Always use `tmux`** — never run Pi directly, it will block your session.
+2. **Always set `-c` (working directory)** when creating the tmux session — Pi works on the files around it.
+3. **Send follow-ups to the same session** — Pi remembers all prior context within a session.
+4. **Poll `capture-pane` to track progress** — check if Pi is still working or waiting for input.
+5. **Don't do Pi's job** — if you delegate a coding task, let Pi handle it. Don't manually patch files that Pi should be editing.
+6. **Report back** — after Pi finishes, summarize what it did for the user.
