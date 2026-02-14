@@ -108,6 +108,12 @@ export class PulseChannel implements ChatChannel {
       text: pulseContent,
       authorId: "pulse",
       authorName: "Pulse",
+      metadata: {
+        type: "pulse",
+        channel: this.id,
+        author: "Pulse",
+        timestamp: new Date().toISOString(),
+      },
     });
   }
 

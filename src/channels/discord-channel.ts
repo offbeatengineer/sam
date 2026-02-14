@@ -101,6 +101,12 @@ export class DiscordChannel implements ChatChannel {
       text,
       authorId: msg.author.id,
       authorName: msg.author.displayName ?? msg.author.username,
+      metadata: {
+        type: "user",
+        channel: this.id,
+        author: msg.author.displayName ?? msg.author.username,
+        timestamp: msg.createdAt.toISOString(),
+      },
     };
 
     for (const handler of this.handlers) {
