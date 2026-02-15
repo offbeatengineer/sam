@@ -1,6 +1,7 @@
 {
   "name": "sam-ai",
   "version": "0.1.0",
+  "description": "A lightweight AI assistant built on pi-coding-agent",
   "type": "module",
   "bin": {
     "sam": "dist/index.js"
@@ -8,7 +9,9 @@
   "files": [
     "dist",
     "prompts",
-    "skills"
+    "skills",
+    "config.yaml.example",
+    "README.md"
   ],
   "engines": {
     "node": ">=20.0.0"
@@ -31,5 +34,7 @@
     "@types/node": "^22.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0"
-  }
+  },
+  "keywords": ["ai", "assistant", "discord", "claude", "pi-coding-agent"],
+  "license": "MIT"
 }
