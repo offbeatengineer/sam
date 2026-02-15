@@ -7,6 +7,7 @@ import {
   createGrepTool,
   createFindTool,
   createLsTool,
+  createBashTool,
   loadSkillsFromDir,
   ModelRegistry,
   type ResourceLoader,
@@ -24,6 +25,54 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BUNDLED_SKILLS_DIR = resolve(__dirname, "..", "skills");
+
+// Commands that should be run in tmux to avoid blocking
+const LONG_RUNNING_PATTERNS = [
+  "npm run dev",
+  "npm run start",
+  "npm start",
+  "vite",
+  "webpack",
+  "nodemon",
+  "python -m http.server",
+  "python3 -m http.server",
+  "php -S",
+  "cargo watch",
+  "mix phx.server",
+  "rails server",
+  "bundle exec rails",
+  "go run",
+];
+
+function createTmuxSpawnHook(): (context: any) => any {
+  return (context) => {
+    const command = context.command;
+    
+    // Check if command matches any long-running pattern
+    const isLongRunning = LONG_RUNNING_PATTERNS.some((pattern) => 
+      command.includes(pattern)
+    );
+
+    // Check if already using tmux
+    const alreadyTmux = command.includes("tmux");
+
+    if (isLongRunning && !alreadyTmux) {
+      // Generate a unique tmux session name
+      const sessionName = `sam-${Date.now()}`;
+      const tmuxCommand = `tmux new-session -d -s ${sessionName} '${command}'`;
+      
+      console.log(`[tmux-hook] Wrapped long-running command: ${command}`);
+      console.log(`[tmux-hook] Running as: ${tmuxCommand}`);
+      
+      return {
+        ...context,
+        command: tmuxCommand,
+      };
+    }
+
+    return context;
+  };
+}
 
 export type { AgentSession } from "@mariozechner/pi-coding-agent";
 
@@ -69,7 +118,10 @@ export async function createSession(config: SamConfig, key: SessionKey) {
   const model = getModel(config.model.provider as any, config.model.id as any);
 
   const tools = [
-    ...createCodingTools(cwd),
+    createBashTool(cwd, { spawnHook: createTmuxSpawnHook() }),
+    createCodingTools(cwd).find((t) => t.name === "read")!,
+    createCodingTools(cwd).find((t) => t.name === "edit")!,
+    createCodingTools(cwd).find((t) => t.name === "write")!,
     createGrepTool(cwd),
     createFindTool(cwd),
     createLsTool(cwd),
