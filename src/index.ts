@@ -4,17 +4,18 @@ import { SessionRegistry } from "./session-registry.js";
 import { Dispatcher } from "./dispatcher.js";
 import { DiscordChannel } from "./channels/discord-channel.js";
 import { PulseChannel } from "./channels/pulse-channel.js";
+import { logger } from "./logger.js";
 
 async function main() {
   const config = loadConfig();
-  console.log("Config:", JSON.stringify({
+  logger.info("Config loaded", {
     model: { ...config.model, apiKey: config.model.apiKey ? "***" : undefined },
     workspace: config.workspace,
     sessions: config.sessions,
     prompts: config.prompts,
     discord: { allowedChannelIds: config.discord.allowedChannelIds },
     pulse: config.pulse,
-  }, null, 2));
+  });
 
   const registry = new SessionRegistry(config);
   const dispatcher = new Dispatcher(registry);
@@ -32,7 +33,7 @@ async function main() {
   }
 
   await discord.start();
-  console.log("Sam is running.");
+  logger.info("Sam is running.");
 
   const shutdown = () => dispatcher.shutdown();
   process.on("SIGINT", shutdown);
@@ -40,6 +41,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Fatal error:", err);
+  logger.errorWithStack(err, { reason: "Fatal error" });
   process.exit(1);
 });
