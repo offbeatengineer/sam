@@ -2,6 +2,7 @@ import type { ChatChannel } from "./channels/chat-channel.js";
 import type { SessionRegistry } from "./session-registry.js";
 import type { InboundMessage, OutboundMessage, MessageMetadata } from "./types.js";
 import { sessionKeyToString } from "./types.js";
+import { logger } from "./logger.js";
 
 function formatMessage(text: string, metadata: MessageMetadata): string {
   return `[Message]
@@ -26,12 +27,12 @@ export class Dispatcher {
   }
 
   async shutdown(): Promise<void> {
-    console.log("Shutting down...");
+    logger.info("Shutting down...");
     for (const [, channel] of this.channels) {
       await channel.stop();
     }
     await this.registry.disposeAll();
-    console.log("Shutdown complete");
+    logger.info("Shutdown complete");
     process.exit(0);
   }
 
@@ -39,7 +40,7 @@ export class Dispatcher {
     const { sessionKey, text, metadata } = message;
     const channel = this.channels.get(sessionKey.channelId);
     if (!channel) {
-      console.error(`No channel registered for ${sessionKey.channelId}`);
+      logger.error(`No channel registered for ${sessionKey.channelId}`);
       return;
     }
 
@@ -53,7 +54,7 @@ export class Dispatcher {
       await session.prompt(formattedMessage, { streamingBehavior: "followUp" } as any);
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
-      console.error(`Error handling message: ${errorText}`);
+      logger.error(`Error handling message: ${errorText}`);
       await channel.send({
         sessionKey,
         text: `Sorry, I encountered an error: ${errorText}`,
@@ -82,7 +83,7 @@ export class Dispatcher {
           const text = textBuffer;
           textBuffer = "";
           channel.send({ sessionKey, text }).catch((err) => {
-            console.error(`Failed to send response: ${err}`);
+            logger.error(`Failed to send response: ${err}`);
           });
         }
       }

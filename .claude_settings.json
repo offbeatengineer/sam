@@ -1,0 +1,39 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read(./**)",
+      "Write(./**)",
+      "Edit(./**)",
+      "Glob(./**)",
+      "Grep(./**)",
+      "Read(/Users/zhiyan/Code/sam/.auto-claude/worktrees/tasks/001-add-structured-logging-utility/**)",
+      "Write(/Users/zhiyan/Code/sam/.auto-claude/worktrees/tasks/001-add-structured-logging-utility/**)",
+      "Edit(/Users/zhiyan/Code/sam/.auto-claude/worktrees/tasks/001-add-structured-logging-utility/**)",
+      "Glob(/Users/zhiyan/Code/sam/.auto-claude/worktrees/tasks/001-add-structured-logging-utility/**)",
+      "Grep(/Users/zhiyan/Code/sam/.auto-claude/worktrees/tasks/001-add-structured-logging-utility/**)",
+      "Read(/Users/zhiyan/Code/sam/.auto-claude/worktrees/tasks/001-add-structured-logging-utility/.auto-claude/specs/001-add-structured-logging-utility/**)",
+      "Write(/Users/zhiyan/Code/sam/.auto-claude/worktrees/tasks/001-add-structured-logging-utility/.auto-claude/specs/001-add-structured-logging-utility/**)",
+      "Edit(/Users/zhiyan/Code/sam/.auto-claude/worktrees/tasks/001-add-structured-logging-utility/.auto-claude/specs/001-add-structured-logging-utility/**)",
+      "Read(/Users/zhiyan/Code/sam/.auto-claude/**)",
+      "Write(/Users/zhiyan/Code/sam/.auto-claude/**)",
+      "Edit(/Users/zhiyan/Code/sam/.auto-claude/**)",
+      "Glob(/Users/zhiyan/Code/sam/.auto-claude/**)",
+      "Grep(/Users/zhiyan/Code/sam/.auto-claude/**)",
+      "Bash(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "mcp__context7__resolve-library-id(*)",
+      "mcp__context7__get-library-docs(*)",
+      "mcp__graphiti-memory__search_nodes(*)",
+      "mcp__graphiti-memory__search_facts(*)",
+      "mcp__graphiti-memory__add_episode(*)",
+      "mcp__graphiti-memory__get_episodes(*)",
+      "mcp__graphiti-memory__get_entity_edge(*)"
+    ]
+  }
+}

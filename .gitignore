@@ -3,3 +3,6 @@ dist/
 .env
 .sam/
 .DS_Store
+
+# Auto Claude data directory
+.auto-claude/
