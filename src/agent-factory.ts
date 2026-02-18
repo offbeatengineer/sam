@@ -19,6 +19,7 @@ import type { SamConfig } from "./config.js";
 import { createWebSearchTool } from "./tools/web-search.js";
 import { createWebFetchTool } from "./tools/web-fetch.js";
 import type { SessionKey } from "./types.js";
+import { logger } from "./logger.js";
 import { resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -60,10 +61,10 @@ function createTmuxSpawnHook(): (context: any) => any {
       // Generate a unique tmux session name
       const sessionName = `sam-${Date.now()}`;
       const tmuxCommand = `tmux new-session -d -s ${sessionName} '${command}'`;
-      
-      console.log(`[tmux-hook] Wrapped long-running command: ${command}`);
-      console.log(`[tmux-hook] Running as: ${tmuxCommand}`);
-      
+
+      logger.info("Wrapped long-running command", { command });
+      logger.info("Running as tmux session", { tmuxCommand, sessionName });
+
       return {
         ...context,
         command: tmuxCommand,
