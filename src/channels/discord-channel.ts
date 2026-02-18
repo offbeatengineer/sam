@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, Partials, type Message } from "disco
 import type { ChatChannel, MessageHandler } from "./chat-channel.js";
 import type { InboundMessage, OutboundMessage } from "../types.js";
 import { chunkText } from "../text-chunker.js";
+import { logger } from "../logger.js";
 
 export interface DiscordChannelOptions {
   token: string;
@@ -37,18 +38,18 @@ export class DiscordChannel implements ChatChannel {
 
   async start(): Promise<void> {
     await this.client.login(this.token);
-    console.log(`Discord channel started as ${this.client.user?.tag}`);
+    logger.info(`Discord channel started as ${this.client.user?.tag}`);
   }
 
   async stop(): Promise<void> {
     this.client.destroy();
-    console.log("Discord channel stopped");
+    logger.info("Discord channel stopped");
   }
 
   async send(message: OutboundMessage): Promise<void> {
     const channel = await this.client.channels.fetch(message.sessionKey.conversationId);
     if (!channel || !channel.isTextBased() || channel.isVoiceBased()) {
-      console.error(`Cannot send to channel ${message.sessionKey.conversationId}`);
+      logger.error(`Cannot send to channel ${message.sessionKey.conversationId}`);
       return;
     }
 
