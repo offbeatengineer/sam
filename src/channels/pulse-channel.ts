@@ -3,6 +3,7 @@ import type { SamConfig } from "../config.js";
 import { parseDurationMs } from "../config.js";
 import type { ChatChannel, MessageHandler } from "./chat-channel.js";
 import type { OutboundMessage } from "../types.js";
+import { logger } from "../logger.js";
 
 const PULSE_OK = /PULSE_OK/i;
 const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -22,7 +23,7 @@ export class PulseChannel implements ChatChannel {
   async start(): Promise<void> {
     const pulse = this.config.pulse!;
     const intervalMs = parseDurationMs(pulse.every);
-    console.log(`Pulse: starting (every ${intervalMs}ms)`);
+    logger.info(`Pulse: starting`, { intervalMs });
     this.timer = setInterval(() => this.tick(), intervalMs);
   }
 
@@ -31,7 +32,7 @@ export class PulseChannel implements ChatChannel {
       clearInterval(this.timer);
       this.timer = null;
     }
-    console.log("Pulse: stopped");
+    logger.info("Pulse: stopped");
   }
 
   onMessage(handler: MessageHandler): void {
@@ -47,7 +48,7 @@ export class PulseChannel implements ChatChannel {
 
     // Suppress PULSE_OK responses
     if (PULSE_OK.test(text)) {
-      console.log("Pulse: PULSE_OK — all clear");
+      logger.info("Pulse: PULSE_OK — all clear");
       return;
     }
 
@@ -55,7 +56,7 @@ export class PulseChannel implements ChatChannel {
     const hash = simpleHash(text);
     const lastSent = this.recentAlerts.get(hash);
     if (lastSent && Date.now() - lastSent < DEDUP_WINDOW_MS) {
-      console.log("Pulse: suppressing duplicate alert");
+      logger.info("Pulse: suppressing duplicate alert");
       return;
     }
     this.recentAlerts.set(hash, Date.now());
@@ -63,7 +64,7 @@ export class PulseChannel implements ChatChannel {
 
     // Forward to delivery channel
     const { delivery } = this.config.pulse!;
-    console.log("Pulse: forwarding alert to", delivery.channel);
+    logger.info("Pulse: forwarding alert to", { channel: delivery.channel });
     await this.deliveryChannel.send({
       sessionKey: {
         channelId: delivery.channel,
@@ -80,24 +81,24 @@ export class PulseChannel implements ChatChannel {
 
     // Check active hours
     if (pulse.activeHours && !this.isWithinActiveHours(pulse.activeHours)) {
-      console.log("Pulse: outside active hours, skipping");
+      logger.debug("Pulse: outside active hours, skipping");
       return;
     }
 
     // Check prompt file
     const promptPath = this.config.prompts.pulse;
     if (!existsSync(promptPath)) {
-      console.log(`Pulse: ${promptPath} not found, skipping`);
+      logger.debug(`Pulse: ${promptPath} not found, skipping`);
       return;
     }
 
     const pulseContent = readFileSync(promptPath, "utf-8").trim();
     if (!pulseContent) {
-      console.log("Pulse: prompt file is empty, skipping");
+      logger.debug("Pulse: prompt file is empty, skipping");
       return;
     }
 
-    console.log("Pulse: checking...");
+    logger.debug("Pulse: checking...");
 
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     this.handler({
