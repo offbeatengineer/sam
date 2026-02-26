@@ -49,14 +49,6 @@ tmux send-keys -t coding 'Now add refresh token support' Enter
 tmux send-keys -t coding 'Add tests for the refresh token flow' Enter
 ```
 
-## Choosing a model
-
-Pass model flags when starting Pi:
-
-```bash
-tmux new-session -d -s coding -c ~/Projects/myapp 'pi --model openai/gpt-4o'
-```
-
 ## Read-only mode
 
 For code review or analysis without modifications:
