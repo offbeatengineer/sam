@@ -161,9 +161,9 @@ export function loadConfig(): SamConfig {
   const discordToken = process.env.DISCORD_TOKEN ?? yaml.discord?.token;
 
   // App channel config
-  const appEnabled = yaml.app?.enabled === true;
+  const appEnabled = yaml.app?.enabled !== false;
   const appConfig = appEnabled
-    ? { enabled: true as const, port: yaml.app.port ?? 9222, host: yaml.app.host }
+    ? { enabled: true as const, port: yaml.app?.port ?? 9222, host: yaml.app?.host }
     : undefined;
 
   // At least one channel must be configured

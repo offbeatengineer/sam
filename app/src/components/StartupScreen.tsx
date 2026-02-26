@@ -45,7 +45,10 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
           // Don't block startup — user can reconnect later
         }
 
-        // Step 5: Background tasks
+        // Step 5: Start connection status polling
+        useSettingsStore.getState().startConnectionPolling();
+
+        // Step 6: Background tasks
         requestNotificationPermission();
 
         // Done
