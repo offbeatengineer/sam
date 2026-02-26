@@ -18,9 +18,14 @@ export const SAM_DIR = resolve(homedir(), ".sam");
 // ---------------------------------------------------------------------------
 
 export interface SamConfig {
-  discord: {
+  discord?: {
     token: string;
     allowedChannelIds?: string[];
+  };
+  app?: {
+    enabled: boolean;
+    port: number;
+    host?: string;
   };
   model: {
     provider: string;
@@ -98,6 +103,11 @@ model:
 #     end: "22:00"
 #     timezone: "America/Los_Angeles"
 
+# app:
+#   enabled: true
+#   port: 9222
+#   host: 127.0.0.1
+
 # tools:
 #   webSearch:
 #     apiKey: ""  # or set BRAVE_API_KEY env var
@@ -149,15 +159,25 @@ export function loadConfig(): SamConfig {
 
   // Env-var overrides for secrets / model settings
   const discordToken = process.env.DISCORD_TOKEN ?? yaml.discord?.token;
-  if (!discordToken) {
-    throw new Error("DISCORD_TOKEN environment variable (or discord.token in config.yaml) is required");
+
+  // App channel config
+  const appEnabled = yaml.app?.enabled === true;
+  const appConfig = appEnabled
+    ? { enabled: true as const, port: yaml.app.port ?? 9222, host: yaml.app.host }
+    : undefined;
+
+  // At least one channel must be configured
+  if (!discordToken && !appEnabled) {
+    throw new Error(
+      "At least one channel must be configured: set DISCORD_TOKEN (or discord.token in config.yaml) and/or enable the app channel (app.enabled: true)",
+    );
   }
 
   return {
-    discord: {
-      token: discordToken,
-      allowedChannelIds: yaml.discord?.allowedChannelIds,
-    },
+    discord: discordToken
+      ? { token: discordToken, allowedChannelIds: yaml.discord?.allowedChannelIds }
+      : undefined,
+    app: appConfig,
     model: {
       provider: process.env.MODEL_PROVIDER ?? yaml.model?.provider ?? "anthropic",
       id: process.env.MODEL_ID ?? yaml.model?.id ?? "claude-sonnet-4-20250514",

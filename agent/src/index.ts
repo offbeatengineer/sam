@@ -4,6 +4,7 @@ import { SessionRegistry } from "./session-registry.js";
 import { Dispatcher } from "./dispatcher.js";
 import { DiscordChannel } from "./channels/discord-channel.js";
 import { PulseChannel } from "./channels/pulse-channel.js";
+import { AppChannel } from "./channels/app-channel.js";
 
 async function main() {
   const config = loadConfig();
@@ -12,29 +13,52 @@ async function main() {
     workspace: config.workspace,
     sessions: config.sessions,
     prompts: config.prompts,
-    discord: { allowedChannelIds: config.discord.allowedChannelIds },
+    discord: config.discord ? { allowedChannelIds: config.discord.allowedChannelIds } : undefined,
+    app: config.app,
     pulse: config.pulse,
   }, null, 2));
 
   const registry = new SessionRegistry(config);
   const dispatcher = new Dispatcher(registry);
 
-  const discord = new DiscordChannel({
-    token: config.discord.token,
-    allowedChannelIds: config.discord.allowedChannelIds,
-  });
-  dispatcher.addChannel(discord);
+  let discord: DiscordChannel | undefined;
+  let appChannel: AppChannel | undefined;
 
-  if (config.pulse) {
-    const pulseChannel = new PulseChannel(config, discord);
-    dispatcher.addChannel(pulseChannel);
-    await pulseChannel.start();
+  // Start Discord channel if configured
+  if (config.discord) {
+    discord = new DiscordChannel({
+      token: config.discord.token,
+      allowedChannelIds: config.discord.allowedChannelIds,
+    });
+    dispatcher.addChannel(discord);
+
+    if (config.pulse) {
+      const pulseChannel = new PulseChannel(config, discord);
+      dispatcher.addChannel(pulseChannel);
+      await pulseChannel.start();
+    }
+
+    await discord.start();
+    console.log("Discord channel started.");
   }
 
-  await discord.start();
+  // Start App channel if configured
+  if (config.app?.enabled) {
+    appChannel = new AppChannel({
+      port: config.app.port,
+      host: config.app.host,
+      registry,
+    });
+    await appChannel.start();
+  }
+
   console.log("Sam is running.");
 
-  const shutdown = () => dispatcher.shutdown();
+  const shutdown = async () => {
+    console.log("Shutting down...");
+    if (appChannel) await appChannel.stop();
+    await dispatcher.shutdown();
+  };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }
