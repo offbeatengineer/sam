@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@plugin "@tailwindcss/typography";
+
+@theme {
+  /* Custom colors matching the mockup */
+  --color-background: oklch(98.5% 0.005 240);
+  --color-foreground: oklch(15% 0 0);
+
+  --color-card: oklch(96% 0.01 240);
+  --color-card-foreground: oklch(15% 0 0);
+
+  --color-popover: oklch(100% 0 0);
+  --color-popover-foreground: oklch(15% 0 0);
+
+  --color-primary: oklch(62% 0.18 245);
+  --color-primary-foreground: oklch(100% 0 0);
+
+  --color-secondary: oklch(96% 0.01 240);
+  --color-secondary-foreground: oklch(20% 0 0);
+
+  --color-muted: oklch(96% 0.01 240);
+  --color-muted-foreground: oklch(45% 0.02 0);
+
+  --color-accent: oklch(94% 0.02 245);
+  --color-accent-foreground: oklch(20% 0 0);
+
+  --color-destructive: oklch(55% 0.2 25);
+  --color-destructive-foreground: oklch(100% 0 0);
+
+  --color-border: oklch(92% 0.01 240);
+  --color-input: oklch(92% 0.01 240);
+  --color-ring: oklch(62% 0.18 245);
+
+  --color-sidebar: oklch(100% 0 0);
+  --color-sidebar-foreground: oklch(15% 0 0);
+  --color-sidebar-border: oklch(92% 0.01 240);
+
+  /* Border radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+/* Base styles */
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Hide native scrollbar on textareas and custom class */
+textarea,
+.hide-native-scrollbar {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+textarea::-webkit-scrollbar,
+.hide-native-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Ensure Radix scrollbar is always visible - override Radix's auto-hide behavior */
+.scrollbar-always-visible {
+  opacity: 1 !important;
+}
+.scrollbar-always-visible[data-state="hidden"] {
+  opacity: 1 !important;
+}
+
+/* Fix Radix ScrollArea table layout expanding beyond viewport */
+.chat-scroll-area [data-radix-scroll-area-viewport] > div,
+.tool-usage-scroll-area [data-radix-scroll-area-viewport] > div {
+  display: block !important;
+}
+
+/* Window drag region for Tauri */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Allow interactive elements within drag region to remain clickable */
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] input,
+[data-tauri-drag-region] [role="button"] {
+  -webkit-app-region: no-drag;
+}
+
