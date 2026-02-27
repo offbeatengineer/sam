@@ -73,6 +73,9 @@ type WsSender = futures_util::stream::SplitSink<
 pub struct AppState {
     ws_sender: Mutex<Option<WsSender>>,
     connected: Mutex<bool>,
+    sam_url: Mutex<Option<String>>,
+    auto_reconnect: Mutex<bool>,
+    connect_lock: Mutex<()>,
 }
 
 impl Default for AppState {
@@ -80,31 +83,30 @@ impl Default for AppState {
         Self {
             ws_sender: Mutex::new(None),
             connected: Mutex::new(false),
+            sam_url: Mutex::new(None),
+            auto_reconnect: Mutex::new(false),
+            connect_lock: Mutex::new(()),
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// IPC commands
+// Connection helpers
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-async fn connect_to_sam(
-    url: String,
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
+async fn establish_connection(
+    url: &str,
+    app: &AppHandle,
+    state: &Arc<AppState>,
 ) -> Result<(), String> {
-    // Disconnect existing connection if any
-    {
-        let mut sender = state.ws_sender.lock().await;
-        if sender.is_some() {
-            *sender = None;
-        }
-        let mut connected = state.connected.lock().await;
-        *connected = false;
+    let _guard = state.connect_lock.lock().await;
+
+    // Already connected — nothing to do
+    if *state.connected.lock().await {
+        return Ok(());
     }
 
-    let (ws_stream, _) = connect_async(&url)
+    let (ws_stream, _) = connect_async(url)
         .await
         .map_err(|e| format!("Failed to connect to sam at {}: {}", url, e))?;
 
@@ -119,9 +121,8 @@ async fn connect_to_sam(
 
     println!("[tauri] Connected to sam at {}", url);
 
-    // Spawn reader task that forwards WS messages as Tauri events
     let app_handle = app.clone();
-    let state_clone = state.inner().clone();
+    let state_clone = state.clone();
     tokio::spawn(async move {
         let mut read = read;
         while let Some(msg) = read.next().await {
@@ -149,20 +150,88 @@ async fn connect_to_sam(
         }
 
         // Mark disconnected
-        let mut sender = state_clone.ws_sender.lock().await;
-        *sender = None;
-        let mut connected = state_clone.connected.lock().await;
-        *connected = false;
+        {
+            let mut sender = state_clone.ws_sender.lock().await;
+            *sender = None;
+            let mut connected = state_clone.connected.lock().await;
+            *connected = false;
+        }
         println!("[tauri] Disconnected from sam");
+
+        // Auto-reconnect if enabled
+        let should_reconnect = *state_clone.auto_reconnect.lock().await;
+        let url = state_clone.sam_url.lock().await.clone();
+        if should_reconnect {
+            if let Some(url) = url {
+                spawn_reconnect(url, app_handle, state_clone);
+            }
+        }
     });
 
     Ok(())
+}
+
+fn spawn_reconnect(url: String, app: AppHandle, state: Arc<AppState>) {
+    tokio::spawn(async move {
+        let mut delay = std::time::Duration::from_secs(2);
+        let max_delay = std::time::Duration::from_secs(30);
+
+        loop {
+            if !*state.auto_reconnect.lock().await {
+                break;
+            }
+
+            println!("[tauri] Reconnecting in {:?}...", delay);
+            tokio::time::sleep(delay).await;
+
+            if !*state.auto_reconnect.lock().await {
+                break;
+            }
+
+            match establish_connection(&url, &app, &state).await {
+                Ok(()) => {
+                    println!("[tauri] Reconnected to sam");
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("[tauri] Reconnect failed: {}", e);
+                    delay = (delay * 2).min(max_delay);
+                }
+            }
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// IPC commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn connect_to_sam(
+    url: String,
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    {
+        let mut sam_url = state.sam_url.lock().await;
+        *sam_url = Some(url.clone());
+        let mut auto_reconnect = state.auto_reconnect.lock().await;
+        *auto_reconnect = true;
+    }
+
+    establish_connection(&url, &app, state.inner()).await
 }
 
 #[tauri::command]
 async fn disconnect_from_sam(
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
+    // Disable auto-reconnect before closing
+    {
+        let mut auto_reconnect = state.auto_reconnect.lock().await;
+        *auto_reconnect = false;
+    }
+
     let mut sender = state.ws_sender.lock().await;
     if let Some(ref mut ws) = *sender {
         let _ = ws.close().await;
