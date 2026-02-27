@@ -18,6 +18,7 @@ import { getSystemPrompt } from "./system-prompt.js";
 import { SAM_DIR, type SamConfig } from "./config.js";
 import { createWebSearchTool } from "./tools/web-search.js";
 import { createWebFetchTool } from "./tools/web-fetch.js";
+import { createMemorySaveTool, createMemoryRecallTool, createMemoryForgetTool } from "./tools/memory.js";
 import type { SessionKey } from "./types.js";
 import { resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -131,6 +132,22 @@ export async function createSession(config: SamConfig, key: SessionKey) {
     createWebSearchTool(config.tools?.webSearch?.apiKey),
     createWebFetchTool(),
   ];
+
+  // Add memory tools if enabled (default: true)
+  if (config.memory?.enabled !== false) {
+    const memConfig = config.memory ?? {};
+    const resolvedMemConfig = {
+      storagePath: memConfig.storagePath!,
+      modelsPath: memConfig.modelsPath!,
+      embeddingModel: memConfig.embeddingModel,
+      embeddingDimensions: memConfig.embeddingDimensions,
+    };
+    customTools.push(
+      createMemorySaveTool(resolvedMemConfig),
+      createMemoryRecallTool(resolvedMemConfig),
+      createMemoryForgetTool(resolvedMemConfig),
+    );
+  }
 
   const sessionManager = SessionManager.continueRecent(cwd, sessionDir);
   const settingsManager = SettingsManager.inMemory({
