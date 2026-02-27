@@ -46,6 +46,13 @@ export interface SamConfig {
   tools?: {
     webSearch?: { apiKey?: string };
   };
+  memory?: {
+    enabled?: boolean;
+    storagePath?: string;
+    modelsPath?: string;
+    embeddingModel?: string;
+    embeddingDimensions?: number;
+  };
   pulse?: {
     enabled: boolean;
     every: string;
@@ -114,6 +121,13 @@ model:
 # tools:
 #   webSearch:
 #     apiKey: ""  # or set BRAVE_API_KEY env var
+
+# memory:
+#   enabled: true
+#   storagePath: ~/.sam/memory
+#   modelsPath: ~/.sam/models
+#   embeddingModel: mixedbread-ai/mxbai-embed-xsmall-v1
+#   embeddingDimensions: 384
 `;
 
 // ---------------------------------------------------------------------------
@@ -125,6 +139,8 @@ export function ensureSamDir(): void {
   mkdirSync(resolve(SAM_DIR, "prompts"), { recursive: true });
   mkdirSync(resolve(SAM_DIR, "workspace"), { recursive: true });
   mkdirSync(resolve(SAM_DIR, "skills"), { recursive: true });
+  mkdirSync(resolve(SAM_DIR, "memory"), { recursive: true });
+  mkdirSync(resolve(SAM_DIR, "models"), { recursive: true });
 
   const configPath = resolve(SAM_DIR, "config.yaml");
   if (!existsSync(configPath)) {
@@ -201,6 +217,13 @@ export function loadConfig(): SamConfig {
       webSearch: {
         apiKey: process.env.BRAVE_API_KEY ?? yaml.tools?.webSearch?.apiKey,
       },
+    },
+    memory: {
+      enabled: yaml.memory?.enabled !== false,
+      storagePath: expandHome(yaml.memory?.storagePath ?? resolve(SAM_DIR, "memory")),
+      modelsPath: expandHome(yaml.memory?.modelsPath ?? resolve(SAM_DIR, "models")),
+      embeddingModel: yaml.memory?.embeddingModel,
+      embeddingDimensions: yaml.memory?.embeddingDimensions,
     },
     pulse: yaml.pulse?.enabled ? yaml.pulse : undefined,
   };
