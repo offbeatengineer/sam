@@ -15,7 +15,7 @@ import {
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { getSystemPrompt } from "./system-prompt.js";
-import type { SamConfig } from "./config.js";
+import { SAM_DIR, type SamConfig } from "./config.js";
 import { createWebSearchTool } from "./tools/web-search.js";
 import { createWebFetchTool } from "./tools/web-fetch.js";
 import type { SessionKey } from "./types.js";
@@ -109,7 +109,7 @@ export async function createSession(config: SamConfig, key: SessionKey) {
   const sessionDir = resolve(config.sessions, key.channelId, key.conversationId);
   mkdirSync(sessionDir, { recursive: true });
 
-  const authStorage = new AuthStorage();
+  const authStorage = new AuthStorage(resolve(SAM_DIR, "auth.json"));
   if (config.model.apiKey) {
     authStorage.setRuntimeApiKey(config.model.provider, config.model.apiKey);
   }
