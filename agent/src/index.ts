@@ -5,6 +5,7 @@ import { Dispatcher } from "./dispatcher.js";
 import { DiscordChannel } from "./channels/discord-channel.js";
 import { PulseChannel } from "./channels/pulse-channel.js";
 import { AppChannel } from "./channels/app-channel.js";
+import { CliTranscriber } from "./transcriber.js";
 
 async function main() {
   const config = loadConfig();
@@ -15,6 +16,7 @@ async function main() {
     prompts: config.prompts,
     discord: config.discord ? { allowedChannelIds: config.discord.allowedChannelIds } : undefined,
     app: config.app,
+    transcription: config.transcription,
     pulse: config.pulse,
   }, null, 2));
 
@@ -26,9 +28,14 @@ async function main() {
 
   // Start Discord channel if configured
   if (config.discord) {
+    const transcriber = config.transcription?.modelPath
+      ? new CliTranscriber(config.transcription.modelPath)
+      : undefined;
+
     discord = new DiscordChannel({
       token: config.discord.token,
       allowedChannelIds: config.discord.allowedChannelIds,
+      transcriber,
     });
     dispatcher.addChannel(discord);
 

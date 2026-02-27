@@ -40,6 +40,9 @@ export interface SamConfig {
     system: string;
     pulse: string;
   };
+  transcription?: {
+    modelPath: string;
+  };
   tools?: {
     webSearch?: { apiKey?: string };
   };
@@ -191,6 +194,9 @@ export function loadConfig(): SamConfig {
       system: expandHome(yaml.prompts?.system ?? resolve(SAM_DIR, "prompts", "system.md")),
       pulse: expandHome(yaml.prompts?.pulse ?? resolve(SAM_DIR, "prompts", "pulse.md")),
     },
+    transcription: yaml.transcription?.modelPath
+      ? { modelPath: expandHome(yaml.transcription.modelPath) }
+      : undefined,
     tools: {
       webSearch: {
         apiKey: process.env.BRAVE_API_KEY ?? yaml.tools?.webSearch?.apiKey,

@@ -1,11 +1,13 @@
 import { Client, Events, GatewayIntentBits, Partials, type Message } from "discord.js";
 import type { ChatChannel, MessageHandler } from "./chat-channel.js";
 import type { InboundMessage, OutboundMessage } from "../types.js";
+import type { Transcriber } from "../transcriber.js";
 import { chunkText } from "../text-chunker.js";
 
 export interface DiscordChannelOptions {
   token: string;
   allowedChannelIds?: string[];
+  transcriber?: Transcriber;
 }
 
 export class DiscordChannel implements ChatChannel {
@@ -14,6 +16,7 @@ export class DiscordChannel implements ChatChannel {
   private client: Client;
   private token: string;
   private allowedChannelIds?: Set<string>;
+  private transcriber?: Transcriber;
   private handlers: MessageHandler[] = [];
 
   constructor(options: DiscordChannelOptions) {
@@ -21,6 +24,7 @@ export class DiscordChannel implements ChatChannel {
     this.allowedChannelIds = options.allowedChannelIds
       ? new Set(options.allowedChannelIds)
       : undefined;
+    this.transcriber = options.transcriber;
 
     this.client = new Client({
       intents: [
@@ -70,7 +74,7 @@ export class DiscordChannel implements ChatChannel {
     await (channel as any).sendTyping();
   }
 
-  private handleMessage(msg: Message): void {
+  private async handleMessage(msg: Message): Promise<void> {
     // Ignore bots
     if (msg.author.bot) return;
 
@@ -89,6 +93,20 @@ export class DiscordChannel implements ChatChannel {
     let text = msg.content;
     if (this.client.user) {
       text = text.replace(new RegExp(`<@!?${this.client.user.id}>`, "g"), "").trim();
+    }
+
+    // If no text, try transcribing an audio attachment
+    if (!text && this.transcriber) {
+      const audio = msg.attachments.find((a) => a.contentType?.startsWith("audio/"));
+      if (audio) {
+        try {
+          const res = await fetch(audio.url);
+          const buffer = Buffer.from(await res.arrayBuffer());
+          text = (await this.transcriber.transcribe(buffer, audio.contentType!)) ?? "";
+        } catch (err) {
+          console.error("Failed to download/transcribe audio:", err);
+        }
+      }
     }
 
     if (!text) return;
