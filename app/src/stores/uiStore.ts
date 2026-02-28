@@ -10,6 +10,7 @@ interface UIStore {
   selectedArtifact: { id: string; name: string; type: string; path?: string } | null;
   settingsPage: SettingsPage;
   editingSkillId: string | null;
+  expandedChannels: Record<string, boolean>;
   toggleLeftSidebar: () => void;
   toggleRightSidebar: () => void;
   setLeftSidebar: (open: boolean) => void;
@@ -18,6 +19,7 @@ interface UIStore {
   setSelectedArtifact: (artifact: { id: string; name: string; type: string; path?: string } | null) => void;
   setSettingsPage: (page: SettingsPage) => void;
   setEditingSkillId: (id: string | null) => void;
+  toggleChannel: (channelId: string) => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -29,6 +31,7 @@ export const useUIStore = create<UIStore>()(
       selectedArtifact: null,
       settingsPage: null,
       editingSkillId: null,
+      expandedChannels: { app: true },
       toggleLeftSidebar: () =>
         set((state) => ({ leftSidebarOpen: !state.leftSidebarOpen })),
       toggleRightSidebar: () =>
@@ -39,6 +42,13 @@ export const useUIStore = create<UIStore>()(
       setSelectedArtifact: (artifact) => set({ selectedArtifact: artifact }),
       setSettingsPage: (page) => set({ settingsPage: page, editingSkillId: null }),
       setEditingSkillId: (id) => set({ editingSkillId: id }),
+      toggleChannel: (channelId) =>
+        set((state) => ({
+          expandedChannels: {
+            ...state.expandedChannels,
+            [channelId]: !state.expandedChannels[channelId],
+          },
+        })),
     }),
     {
       name: "sam-ui",
@@ -46,6 +56,7 @@ export const useUIStore = create<UIStore>()(
         leftSidebarOpen: state.leftSidebarOpen,
         rightSidebarOpen: state.rightSidebarOpen,
         editingSkillId: state.editingSkillId,
+        expandedChannels: state.expandedChannels,
       }),
     }
   )
