@@ -43,11 +43,13 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
           console.warn("Failed to load sessions:", err);
         }
 
-        // Step 5: Auto-select most recently modified session
+        // Step 5: Auto-select most recently modified app session
         const { sessions, selectSession } = useSessionStore.getState();
-        if (sessions.length > 0) {
-          const mostRecent = sessions[0]; // already sorted by modified desc
-          selectSession(`${mostRecent.channelId}:${mostRecent.conversationId}`);
+        const latestApp = sessions.find((s) => s.channelId === "app");
+        if (latestApp) {
+          selectSession(`${latestApp.channelId}:${latestApp.conversationId}`);
+        } else if (sessions.length > 0) {
+          selectSession(`${sessions[0].channelId}:${sessions[0].conversationId}`);
         }
 
         // Step 6: Background tasks

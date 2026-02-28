@@ -17,18 +17,20 @@ import { ToolCard } from "./ToolCard";
 
 interface MessageEntryViewProps {
   entry: SessionMessageEntry;
+  toolResults?: Map<string, ToolResultMessage>;
 }
 
-export function MessageEntryView({ entry }: MessageEntryViewProps) {
+export function MessageEntryView({ entry, toolResults }: MessageEntryViewProps) {
   const { message } = entry;
 
   switch (message.role) {
     case "user":
       return <UserMessageView message={message} />;
     case "assistant":
-      return <AssistantMessageView message={message} />;
+      return <AssistantMessageView message={message} toolResults={toolResults} />;
     case "toolResult":
-      return <ToolResultView message={message} />;
+      // Rendered inline with the preceding assistant message's toolCall
+      return null;
     case "bashExecution":
       return <BashExecutionView message={message} />;
     case "custom":
@@ -69,7 +71,13 @@ function UserMessageView({ message }: { message: UserMessage }) {
   );
 }
 
-function AssistantMessageView({ message }: { message: AssistantMessage }) {
+function AssistantMessageView({
+  message,
+  toolResults,
+}: {
+  message: AssistantMessage;
+  toolResults?: Map<string, ToolResultMessage>;
+}) {
   return (
     <div className="w-full space-y-1">
       {message.content.map((block, i) => {
@@ -98,15 +106,27 @@ function AssistantMessageView({ message }: { message: AssistantMessage }) {
         }
         if (block.type === "toolCall") {
           const tc = block as ToolCall;
+          const result = toolResults?.get(tc.id);
+          const resultText = result
+            ? result.content
+                .filter((c): c is TextContent => c.type === "text")
+                .map((c) => c.text)
+                .join("\n")
+            : undefined;
+          const truncatedResult =
+            resultText && resultText.length > 1000
+              ? resultText.substring(0, 1000) + "..."
+              : resultText;
           return (
             <ToolCard
               key={`tool-${tc.id}`}
               tool={{
                 id: tc.id,
                 name: tc.name,
-                status: "success",
+                status: result?.isError ? "error" : "success",
                 expanded: false,
                 input: tc.arguments as Record<string, unknown>,
+                output: truncatedResult,
               }}
             />
           );
@@ -123,27 +143,6 @@ function AssistantMessageView({ message }: { message: AssistantMessage }) {
         </span>
       </div>
     </div>
-  );
-}
-
-function ToolResultView({ message }: { message: ToolResultMessage }) {
-  const text = message.content
-    .filter((c): c is TextContent => c.type === "text")
-    .map((c) => c.text)
-    .join("\n");
-
-  const truncatedText = text.length > 500 ? text.substring(0, 500) + "..." : text;
-
-  return (
-    <ToolCard
-      tool={{
-        id: message.toolCallId,
-        name: message.toolName,
-        status: message.isError ? "error" : "success",
-        expanded: false,
-        output: truncatedText,
-      }}
-    />
   );
 }
 

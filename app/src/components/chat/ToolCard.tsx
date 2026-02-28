@@ -1,116 +1,135 @@
+import { useState } from "react";
 import {
   FileText,
-  Globe,
   Terminal,
+  ChevronRight,
   AlertTriangle,
   Check,
   Loader2,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { ToolExecution } from "@/types/chat";
 
 interface ToolCardProps {
   tool: ToolExecution;
-  isOpen?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  onPrev?: () => void;
-  onNext?: () => void;
 }
 
 const toolIcons: Record<string, React.ElementType> = {
-  "Fetching URL": Globe,
-  "Reading file": FileText,
-  "Get page text": FileText,
-  "Tabs Context": Terminal,
+  read: FileText,
+  write: FileText,
+  edit: FileText,
+  bash: Terminal,
   default: Terminal,
 };
 
-export function ToolCard({ tool, isOpen, onOpenChange, onPrev, onNext }: ToolCardProps) {
-  const Icon = toolIcons[tool.name] || toolIcons.default;
+function getToolIcon(name: string) {
+  return toolIcons[name] ?? toolIcons.default;
+}
 
-  const statusIcon = {
-    pending: <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />,
-    running: <Loader2 className="h-4 w-4 animate-spin text-primary" />,
-    success: <Check className="h-4 w-4 text-green-600" />,
-    warning: <AlertTriangle className="h-4 w-4 text-amber-500" />,
-    error: <AlertTriangle className="h-4 w-4 text-destructive" />,
-  };
+const statusIcon = {
+  pending: <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />,
+  running: <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />,
+  success: <Check className="h-3.5 w-3.5 text-green-600" />,
+  warning: <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />,
+  error: <AlertTriangle className="h-3.5 w-3.5 text-destructive" />,
+};
 
-  const hasDetails = tool.details || tool.input || tool.output;
+function formatToolHeader(tool: ToolExecution): { label: string; detail?: string } {
+  const args = tool.input;
+  switch (tool.name) {
+    case "bash": {
+      const cmd = args?.command as string | undefined;
+      return { label: "$", detail: cmd ? (cmd.length > 120 ? cmd.substring(0, 117) + "..." : cmd) : "..." };
+    }
+    case "read": {
+      const path = (args?.file_path ?? args?.path) as string | undefined;
+      return { label: "read", detail: path ? shortenPath(path) : undefined };
+    }
+    case "write": {
+      const path = (args?.file_path ?? args?.path) as string | undefined;
+      return { label: "write", detail: path ? shortenPath(path) : undefined };
+    }
+    case "edit": {
+      const path = (args?.file_path ?? args?.path) as string | undefined;
+      return { label: "edit", detail: path ? shortenPath(path) : undefined };
+    }
+    default:
+      return { label: tool.name };
+  }
+}
+
+function shortenPath(p: string): string {
+  const homeDir = "/Users/";
+  const idx = p.indexOf(homeDir);
+  if (idx === 0) {
+    const rest = p.substring(homeDir.length);
+    const slashIdx = rest.indexOf("/");
+    if (slashIdx !== -1) return "~" + rest.substring(slashIdx);
+  }
+  return p;
+}
+
+export function ToolCard({ tool }: ToolCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const Icon = getToolIcon(tool.name);
+  const hasContent = !!(tool.input || tool.output);
+  const { label, detail } = formatToolHeader(tool);
+  const isError = tool.status === "error";
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <button className="w-full border border-border rounded-lg bg-card overflow-hidden flex items-center gap-3 px-4 py-2 hover:bg-accent/50 transition-colors text-left">
-          <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="flex-1 min-w-0 text-sm truncate">{tool.name}</span>
-          {statusIcon[tool.status]}
-        </button>
-      </DialogTrigger>
-      {hasDetails && (
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Icon className="h-5 w-5 text-muted-foreground" />
-              {tool.name}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 min-w-0 overflow-hidden">
-            {tool.details && (
-              <pre className="text-sm text-muted-foreground whitespace-pre-wrap font-mono">
-                {tool.details}
-              </pre>
-            )}
-            {tool.input && (
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-muted-foreground mb-2">Input</div>
-                <pre className="text-sm whitespace-pre font-mono bg-muted/50 p-3 rounded max-h-96 overflow-auto">
-                  {JSON.stringify(tool.input, null, 2)}
-                </pre>
-              </div>
-            )}
-            {tool.output && (
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-muted-foreground mb-2">Output</div>
-                <pre className="text-sm whitespace-pre font-mono bg-muted/50 p-3 rounded max-h-96 overflow-auto">
-                  {tool.output}
-                </pre>
-              </div>
-            )}
-          </div>
-          {(onPrev || onNext) && (
-            <div className="flex justify-between pt-4 border-t">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onPrev}
-                disabled={!onPrev}
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Prev
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onNext}
-                disabled={!onNext}
-              >
-                Next
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          )}
-        </DialogContent>
+    <div
+      className={cn(
+        "w-full rounded-md text-xs font-mono overflow-hidden",
+        isError ? "bg-destructive/5" : "bg-muted/30"
       )}
-    </Dialog>
+    >
+      {/* Header — always visible */}
+      <button
+        className={cn(
+          "flex items-center gap-1.5 w-full px-2.5 py-1.5 text-left",
+          hasContent && "cursor-pointer hover:bg-muted/50"
+        )}
+        onClick={() => hasContent && setExpanded(!expanded)}
+        disabled={!hasContent}
+      >
+        {hasContent && (
+          <ChevronRight
+            className={cn(
+              "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
+              expanded && "rotate-90"
+            )}
+          />
+        )}
+        {!hasContent && <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />}
+        <span className="font-semibold text-foreground">{label}</span>
+        {detail && (
+          <span className="text-muted-foreground truncate flex-1 min-w-0">
+            {detail}
+          </span>
+        )}
+        <span className="shrink-0 ml-auto">{statusIcon[tool.status]}</span>
+      </button>
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="px-2.5 pb-2 space-y-1.5">
+          {tool.input && tool.name !== "bash" && (
+            <pre className="text-muted-foreground whitespace-pre-wrap break-words max-h-48 overflow-y-auto leading-relaxed">
+              {JSON.stringify(tool.input, null, 2)}
+            </pre>
+          )}
+          {tool.output && (
+            <pre
+              className={cn(
+                "whitespace-pre-wrap break-words max-h-64 overflow-y-auto leading-relaxed",
+                isError ? "text-destructive" : "text-muted-foreground"
+              )}
+            >
+              {tool.output}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

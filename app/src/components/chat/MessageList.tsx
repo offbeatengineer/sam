@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SessionEntryRenderer } from "./SessionEntryRenderer";
 import { StreamingTurnView } from "./StreamingTurnView";
 import { useSessionStore, useActiveEntries, useActiveStreaming, useStreamingTurn } from "@/stores/sessionStore";
 import { useUIStore } from "@/stores/uiStore";
+import type { SessionMessageEntry, ToolResultMessage } from "@/types/session";
 
 export function MessageList() {
   const entries = useActiveEntries();
@@ -13,6 +14,20 @@ export function MessageList() {
   const inputHeight = useUIStore((state) => state.inputHeight);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Build a map from toolCallId → ToolResultMessage for inline rendering
+  const toolResultsMap = useMemo(() => {
+    const map = new Map<string, ToolResultMessage>();
+    for (const entry of entries) {
+      if (entry.type === "message") {
+        const msg = (entry as SessionMessageEntry).message;
+        if (msg.role === "toolResult") {
+          map.set(msg.toolCallId, msg as ToolResultMessage);
+        }
+      }
+    }
+    return map;
+  }, [entries]);
 
   // Auto-scroll to bottom when new entries arrive or session changes
   useEffect(() => {
@@ -38,7 +53,7 @@ export function MessageList() {
       <ScrollArea className="h-full chat-scroll-area" viewportRef={scrollRef}>
         <div className="p-6 space-y-4">
           {entries.map((entry) => (
-            <SessionEntryRenderer key={entry.id} entry={entry} />
+            <SessionEntryRenderer key={entry.id} entry={entry} toolResults={toolResultsMap} />
           ))}
 
           {isStreaming && streamingTurn && (

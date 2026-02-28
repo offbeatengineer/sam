@@ -1,14 +1,15 @@
-import type { SessionEntry } from "@/types/session";
+import type { SessionEntry, ToolResultMessage } from "@/types/session";
 import { MessageEntryView } from "./MessageEntryView";
 
 interface SessionEntryRendererProps {
   entry: SessionEntry;
+  toolResults?: Map<string, ToolResultMessage>;
 }
 
-export function SessionEntryRenderer({ entry }: SessionEntryRendererProps) {
+export function SessionEntryRenderer({ entry, toolResults }: SessionEntryRendererProps) {
   switch (entry.type) {
     case "message":
-      return <MessageEntryView entry={entry} />;
+      return <MessageEntryView entry={entry} toolResults={toolResults} />;
 
     case "model_change":
       return (
