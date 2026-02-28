@@ -1,166 +1,110 @@
-import { useCallback, useState } from "react";
-import { Plus } from "lucide-react";
+import { useCallback } from "react";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
-import { Button } from "@/components/ui/button";
-import { NewTaskDialog } from "@/components/sidebar/NewTaskDialog";
-import { useConversationStore } from "@/stores/conversationStore";
-import { useTaskStore } from "@/stores/taskStore";
+import { useSessionStore, sessionIdFor } from "@/stores/sessionStore";
 import { useTauriEvents } from "@/hooks/useTauriEvents";
 import { showTaskNotification } from "@/lib/notifications";
-import { extractArtifactsFromMessages } from "@/lib/storage";
-import type { AppResponse, ToolExecution } from "@/types/chat";
+import type { AppResponse } from "@/types/chat";
 
 export function ChatContainer() {
-  const activeTaskId = useConversationStore((state) => state.activeTaskId);
-  const { createNewTask } = useTaskStore();
-  const [isNewTaskDialogOpen, setIsNewTaskDialogOpen] = useState(false);
-
-  const handleNewTaskConfirm = (workingDirectory?: string) => {
-    createNewTask("New task", workingDirectory);
-    setIsNewTaskDialogOpen(false);
-  };
+  const activeSessionId = useSessionStore((state) => state.activeSessionId);
 
   const handleAppResponse = useCallback((response: AppResponse) => {
-    const taskId = response.conversationId;
+    const store = useSessionStore.getState();
 
-    if (!taskId) {
-      console.warn("[ChatContainer] Response has no conversationId, ignoring");
+    // Session browsing responses are handled by sessionStore's global listener
+    if (response.type === "sessions_list" || response.type === "session_entries") {
       return;
     }
 
-    const store = useConversationStore.getState();
-    const conv = store.conversations.get(taskId);
-    const currentActiveTaskId = store.activeTaskId;
+    // Streaming responses use conversationId
+    const conversationId = response.conversationId;
+    if (!conversationId) return;
+
+    const sessionId = sessionIdFor("app", conversationId);
 
     switch (response.type) {
       case "turn_start":
-        // A new turn started — create assistant message placeholder
-        // (streaming state should already be set by MessageInput)
+        store.beginStreaming(sessionId);
         break;
 
       case "text_delta":
-        if (response.delta && conv?.lastAssistantMessageId) {
-          store.appendToLastTextBlock(taskId, conv.lastAssistantMessageId, response.delta);
-          if (taskId !== currentActiveTaskId) {
-            store.markAsUnread(taskId);
-          }
+        if (response.delta) {
+          store.appendTextDelta(response.delta);
         }
         break;
 
       case "thinking_delta":
-        if (response.delta && conv?.lastAssistantMessageId) {
-          store.appendToLastThinkingBlock(taskId, conv.lastAssistantMessageId, response.delta);
+        if (response.delta) {
+          store.appendThinkingDelta(response.delta);
         }
         break;
 
       case "thinking_end":
-        if (conv?.lastAssistantMessageId) {
-          store.completeLastThinkingBlock(taskId, conv.lastAssistantMessageId);
-        }
+        store.completeThinking();
         break;
 
       case "tool_start":
-        if (response.toolName && conv?.lastAssistantMessageId) {
-          const toolExecution: ToolExecution = {
-            id: response.toolCallId || `tool-${Math.random().toString(36).substring(2, 11)}`,
-            name: response.toolName,
-            status: "running",
-            expanded: false,
-            input: response.args as Record<string, unknown>,
-          };
-          store.addToolExecution(taskId, conv.lastAssistantMessageId, toolExecution);
-        }
-        break;
-
-      case "tool_update":
-        if (response.toolCallId && conv?.lastAssistantMessageId) {
-          store.updateToolExecution(
-            taskId,
-            conv.lastAssistantMessageId,
+        if (response.toolCallId && response.toolName) {
+          store.addToolStart(
             response.toolCallId,
-            { details: response.partialResult }
+            response.toolName,
+            response.args ?? {},
           );
         }
         break;
 
+      case "tool_update":
+        if (response.toolCallId) {
+          store.updateTool(response.toolCallId, response.partialResult ?? "");
+        }
+        break;
+
       case "tool_end":
-        if (response.toolCallId && conv?.lastAssistantMessageId) {
-          store.updateToolExecution(
-            taskId,
-            conv.lastAssistantMessageId,
+        if (response.toolCallId) {
+          store.endTool(
             response.toolCallId,
-            {
-              status: response.isError ? "error" : "success",
-              output: response.result,
-            }
+            response.result ?? "",
+            response.isError ?? false,
           );
         }
         break;
 
       case "turn_end":
-        // Turn completed — finalize streaming
-        store.setStreaming(taskId, false);
-        store.setLastAssistantMessageId(taskId, null);
-
-        // Extract artifacts from messages
-        {
-          const updatedConv = store.conversations.get(taskId);
-          if (updatedConv) {
-            const extractedArtifacts = extractArtifactsFromMessages(updatedConv.messages);
-            store.addArtifacts(taskId, extractedArtifacts);
-          }
-        }
-
-        // Save conversation
-        store.saveTaskConversation(taskId);
-
-        // Show notification if not active task and window unfocused
-        if (taskId !== currentActiveTaskId && !document.hasFocus()) {
-          showTaskNotification(taskId);
+        store.endStreaming();
+        // Show notification if not active session
+        if (sessionId !== store.activeSessionId && !document.hasFocus()) {
+          showTaskNotification(conversationId);
         }
         break;
 
       case "error":
-        store.setStreaming(taskId, false);
-        if (response.error && conv?.lastAssistantMessageId) {
-          store.updateMessage(taskId, conv.lastAssistantMessageId, {
-            content: `Error: ${response.error}`,
-          });
-        }
+        store.endStreaming();
         break;
 
       case "aborted":
-        store.setStreaming(taskId, false);
-        store.setLastAssistantMessageId(taskId, null);
+        store.endStreaming();
         break;
 
       case "session_created":
       case "session_closed":
-        // Informational — no action needed
         break;
     }
   }, []);
 
-  // Listen for app response events from Tauri
   useTauriEvents(handleAppResponse);
 
-  // Show "New task" button when no task is active
-  if (!activeTaskId) {
+  // Determine if input should be disabled (non-app sessions are read-only)
+  const activeSession = useSessionStore((state) => state.getActiveSession());
+  const isReadOnly = activeSession ? activeSession.channelId !== "app" : false;
+
+  if (!activeSessionId) {
     return (
       <div className="relative flex flex-col h-full overflow-hidden">
         <ChatHeader />
         <div className="flex-1 flex items-center justify-center">
-          <Button onClick={() => setIsNewTaskDialogOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            New task
-          </Button>
-          <NewTaskDialog
-            isOpen={isNewTaskDialogOpen}
-            onClose={() => setIsNewTaskDialogOpen(false)}
-            onConfirm={handleNewTaskConfirm}
-          />
+          <p className="text-muted-foreground">Select or start a session</p>
         </div>
       </div>
     );
@@ -170,7 +114,16 @@ export function ChatContainer() {
     <div className="relative flex flex-col h-full overflow-hidden">
       <ChatHeader />
       <MessageList />
-      <MessageInput />
+      {!isReadOnly && <MessageInput />}
+      {isReadOnly && (
+        <div className="absolute bottom-4 left-0 right-0 z-10 px-6">
+          <div className="max-w-3xl mx-auto text-center">
+            <span className="text-xs text-muted-foreground bg-muted px-3 py-1.5 rounded-full">
+              Read-only session ({activeSession?.channelId})
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

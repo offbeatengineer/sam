@@ -64,6 +64,7 @@ async function main() {
       host: config.app.host,
       registry,
       memoryConfig: config.memory,
+      sessionsDir: config.sessions,
     });
     await appChannel.start();
   }

@@ -5,7 +5,7 @@ import { ToolUsageSection } from "@/components/context/ToolUsageSection";
 import { ArtifactsSection } from "@/components/context/ArtifactsSection";
 import { ContextSection } from "@/components/context/ContextSection";
 import { useUIStore } from "@/stores/uiStore";
-import { useTaskStore } from "@/stores/taskStore";
+import { useSessionStore } from "@/stores/sessionStore";
 import { cn } from "@/lib/utils";
 
 function getBasename(path: string): string {
@@ -15,16 +15,12 @@ function getBasename(path: string): string {
 
 export function RightSidebar() {
   const { rightSidebarOpen, toggleRightSidebar, selectedArtifact } = useUIStore();
-  const activeTask = useTaskStore((state) => {
-    const activeTaskId = state.activeTaskId;
-    if (!activeTaskId) return undefined;
-    return state.tasks.find((t) => t.id === activeTaskId);
-  });
+  const activeHeader = useSessionStore((state) => state.activeHeader);
+  const activeSession = useSessionStore((state) => state.getActiveSession());
 
-  const workingDirectory = activeTask?.workingDirectory;
+  const workingDirectory = activeHeader?.cwd ?? activeSession?.cwd;
   const artifactPanelOpen = selectedArtifact !== null;
 
-  // Sidebar collapses when artifact panel is open OR when manually closed
   const isCollapsed = artifactPanelOpen || !rightSidebarOpen;
 
   return (

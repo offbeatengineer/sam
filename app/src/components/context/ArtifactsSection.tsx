@@ -1,22 +1,35 @@
+import { useMemo } from "react";
 import { FileText, Image, FileCode } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
-import { useConversationStore } from "@/stores/conversationStore";
+import { useSessionStore } from "@/stores/sessionStore";
 import { useUIStore } from "@/stores/uiStore";
-import type { Artifact } from "@/types/task";
+import type { SessionEntry, SessionMessageEntry, ToolResultMessage } from "@/types/session";
 
-// Stable empty array to prevent infinite re-renders
-const EMPTY_ARTIFACTS: Artifact[] = [];
+interface Artifact {
+  id: string;
+  name: string;
+  type: "file" | "image" | "chart" | "other";
+  path?: string;
+}
+
+const FILE_CREATING_TOOLS = ["Write", "Edit", "NotebookEdit"];
+
+function getArtifactType(filePath: string): Artifact["type"] {
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"].includes(ext || "")) {
+    return "image";
+  }
+  return "file";
+}
 
 function getFileIcon(type: Artifact["type"], path: string) {
   if (type === "image") {
     return <Image className="h-4 w-4 text-muted-foreground" />;
   }
-
-  // Check if it's a code file
   const ext = path.split(".").pop()?.toLowerCase();
   const codeExtensions = [
     "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "c", "cpp", "h",
@@ -25,19 +38,61 @@ function getFileIcon(type: Artifact["type"], path: string) {
   if (codeExtensions.includes(ext || "")) {
     return <FileCode className="h-4 w-4 text-muted-foreground" />;
   }
-
   return <FileText className="h-4 w-4 text-muted-foreground" />;
 }
 
-export function ArtifactsSection() {
-  // Use unified artifacts from the store (already merged and deduplicated)
-  const artifacts = useConversationStore((state) => {
-    const taskId = state.activeTaskId;
-    if (!taskId) return EMPTY_ARTIFACTS;
-    return state.conversations.get(taskId)?.artifacts ?? EMPTY_ARTIFACTS;
-  });
+function extractArtifactsFromEntries(entries: SessionEntry[]): Artifact[] {
+  const artifacts: Artifact[] = [];
+  const seen = new Set<string>();
 
+  for (const entry of entries) {
+    if (entry.type !== "message") continue;
+    const msg = (entry as SessionMessageEntry).message;
+
+    // Check toolResult entries for file-creating tools
+    if (msg.role === "toolResult") {
+      const tr = msg as ToolResultMessage;
+      if (!tr.isError && FILE_CREATING_TOOLS.includes(tr.toolName)) {
+        const details = tr.details as Record<string, unknown> | undefined;
+        const filePath = (details?.file_path ?? details?.notebook_path) as string | undefined;
+        if (filePath && !seen.has(filePath)) {
+          seen.add(filePath);
+          artifacts.push({
+            id: tr.toolCallId,
+            name: filePath.split("/").pop() || filePath,
+            path: filePath,
+            type: getArtifactType(filePath),
+          });
+        }
+      }
+    }
+
+    // Check assistant messages for tool calls with file paths
+    if (msg.role === "assistant") {
+      for (const block of msg.content) {
+        if (block.type === "toolCall" && FILE_CREATING_TOOLS.includes(block.name)) {
+          const filePath = (block.arguments?.file_path ?? block.arguments?.notebook_path) as string | undefined;
+          if (filePath && !seen.has(filePath)) {
+            seen.add(filePath);
+            artifacts.push({
+              id: block.id,
+              name: filePath.split("/").pop() || filePath,
+              path: filePath,
+              type: getArtifactType(filePath),
+            });
+          }
+        }
+      }
+    }
+  }
+  return artifacts;
+}
+
+export function ArtifactsSection() {
+  const entries = useSessionStore((state) => state.activeEntries);
   const setSelectedArtifact = useUIStore((state) => state.setSelectedArtifact);
+
+  const artifacts = useMemo(() => extractArtifactsFromEntries(entries), [entries]);
 
   return (
     <Collapsible defaultOpen>
