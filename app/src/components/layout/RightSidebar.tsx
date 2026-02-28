@@ -1,7 +1,7 @@
 import { Folder } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SidebarToggle } from "@/components/ui/sidebar-toggle";
-import { ToolUsageSection } from "@/components/context/ToolUsageSection";
+import { SessionStatsSection } from "@/components/context/SessionStatsSection";
 import { ArtifactsSection } from "@/components/context/ArtifactsSection";
 import { ContextSection } from "@/components/context/ContextSection";
 import { useUIStore } from "@/stores/uiStore";
@@ -57,7 +57,7 @@ export function RightSidebar() {
         <div className="px-4 pb-4 space-y-4 w-72">
           <ArtifactsSection />
           <ContextSection />
-          <ToolUsageSection />
+          <SessionStatsSection />
         </div>
       </ScrollArea>
     </div>
