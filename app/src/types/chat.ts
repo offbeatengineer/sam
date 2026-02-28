@@ -61,4 +61,21 @@ export interface AppResponse {
   isError?: boolean;
   // error
   error?: string;
+  // memory fields
+  memories?: MemoryItem[];
+  total?: number;
+  count?: number;
+  success?: boolean;
+  id?: string;
+  text?: string;
+  tags?: string[];
+}
+
+export interface MemoryItem {
+  id: string;
+  text: string;
+  tags: string[];
+  source: string;
+  created_at: number;
+  score: number;
 }

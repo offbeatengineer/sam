@@ -18,7 +18,7 @@ import { getSystemPrompt } from "./system-prompt.js";
 import { SAM_DIR, type SamConfig } from "./config.js";
 import { createWebSearchTool } from "./tools/web-search.js";
 import { createWebFetchTool } from "./tools/web-fetch.js";
-import { createMemorySaveTool, createMemoryRecallTool, createMemoryForgetTool } from "./tools/memory.js";
+import { createMemorySaveTool, createMemoryRecallTool, createMemoryUpdateTool, createMemoryForgetTool } from "./tools/memory.js";
 import type { SessionKey } from "./types.js";
 import { resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -138,6 +138,7 @@ export async function createSession(config: SamConfig, key: SessionKey) {
     customTools.push(
       createMemorySaveTool(config.memory),
       createMemoryRecallTool(config.memory),
+      createMemoryUpdateTool(config.memory),
       createMemoryForgetTool(config.memory),
     );
   }

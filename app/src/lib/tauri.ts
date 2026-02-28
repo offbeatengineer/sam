@@ -62,6 +62,13 @@ export async function abortTurn(taskId: string): Promise<void> {
   return invoke("abort_turn", { taskId });
 }
 
+/**
+ * Send a raw JSON request to sam (for non-chat protocol messages like memory operations)
+ */
+export async function sendRaw(request: Record<string, unknown>): Promise<void> {
+  return invoke("send_raw", { request });
+}
+
 // Event listener types
 export type AppResponseHandler = (response: AppResponse) => void;
 

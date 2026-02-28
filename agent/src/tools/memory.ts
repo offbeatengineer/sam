@@ -97,6 +97,47 @@ export function createMemoryRecallTool(config?: MemoryConfig): AgentTool {
 }
 
 // ---------------------------------------------------------------------------
+// memory_update
+// ---------------------------------------------------------------------------
+
+const UpdateParams = Type.Object({
+  id: Type.String({ description: "The ID of the memory to update (from a previous recall result)" }),
+  text: Type.String({ description: "The new text content for this memory" }),
+  tags: Type.Optional(
+    Type.Array(Type.String(), { description: "New tags to replace existing ones" }),
+  ),
+});
+
+type UpdateParamsT = Static<typeof UpdateParams>;
+
+export function createMemoryUpdateTool(config?: MemoryConfig): AgentTool {
+  return {
+    name: "memory_update",
+    label: "Memory Update",
+    description:
+      "Update an existing memory's text and tags. Use this when information needs to be corrected " +
+      "or refined rather than deleted and recreated. Get the ID from a memory_recall result first.",
+    parameters: UpdateParams,
+    async execute(_toolCallId: string, raw: unknown) {
+      const params = raw as UpdateParamsT;
+      try {
+        const store = await MemoryStore.getInstance(config);
+        const updated = await store.update(params.id, params.text, params.tags);
+        if (updated) {
+          return jsonResult({ updated: true, id: params.id, text: params.text, tags: params.tags ?? [] });
+        } else {
+          return errorResult(`Memory with id '${params.id}' not found.`);
+        }
+      } catch (err) {
+        return errorResult(
+          `Failed to update memory: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // memory_forget
 // ---------------------------------------------------------------------------
 

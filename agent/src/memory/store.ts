@@ -162,6 +162,68 @@ export class MemoryStore {
     }
   }
 
+  async list(options?: {
+    limit?: number;
+    offset?: number;
+  }): Promise<{ memories: RecallResult[]; total: number }> {
+    const total = await this.table.countRows();
+    const limit = options?.limit ?? 50;
+    const offset = options?.offset ?? 0;
+
+    const allRows = await this.table.query().limit(limit + offset).toArray();
+    const rows = allRows.slice(offset);
+
+    const memories: RecallResult[] = rows.map((r: any) => ({
+      id: r.id,
+      text: r.text,
+      tags: r.tags
+        ? r.tags
+            .split(",")
+            .filter((t: string) => t.length > 0)
+        : [],
+      source: r.source,
+      created_at: r.created_at,
+      score: 0,
+    }));
+
+    return { memories, total };
+  }
+
+  async update(id: string, text: string, tags?: string[]): Promise<boolean> {
+    try {
+      // Read the existing record to preserve metadata
+      const existing = await this.table
+        .query()
+        .where(`id = '${id}'`)
+        .limit(1)
+        .toArray();
+      if (existing.length === 0) return false;
+
+      const old = existing[0];
+
+      // Delete old record
+      await this.table.delete(`id = '${id}'`);
+
+      // Re-insert with new text and embedding
+      const vector = await this.embedder.embed(text);
+      const tagStr = tags && tags.length > 0 ? `,${tags.join(",")},` : "";
+
+      const record: Memory = {
+        id,
+        text,
+        vector,
+        tags: tagStr,
+        source: old.source,
+        created_at: old.created_at,
+      };
+
+      await this.table.add([record]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async count(): Promise<number> {
     const result = await this.table.countRows();
     return result;

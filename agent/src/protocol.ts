@@ -6,7 +6,13 @@
 export type AppRequest =
   | { type: "chat"; requestId: string; conversationId: string; text: string }
   | { type: "abort"; conversationId: string }
-  | { type: "close_session"; conversationId: string };
+  | { type: "close_session"; conversationId: string }
+  // Memory management
+  | { type: "memory_list"; requestId: string; limit?: number; offset?: number }
+  | { type: "memory_search"; requestId: string; query: string; limit?: number; tags?: string[] }
+  | { type: "memory_save"; requestId: string; text: string; tags?: string[]; source?: string }
+  | { type: "memory_update"; requestId: string; id: string; text: string; tags?: string[] }
+  | { type: "memory_delete"; requestId: string; id: string };
 
 /** Responses sent from sam to the app */
 export type AppResponse =
@@ -26,4 +32,21 @@ export type AppResponse =
   | { type: "session_created"; conversationId: string }
   | { type: "session_closed"; conversationId: string }
   | { type: "aborted"; conversationId: string }
-  | { type: "error"; conversationId?: string; error: string };
+  | { type: "error"; conversationId?: string; error: string }
+  // Memory management responses
+  | { type: "memory_list_result"; requestId: string; memories: MemoryResult[]; total: number }
+  | { type: "memory_search_result"; requestId: string; memories: MemoryResult[]; count: number }
+  | { type: "memory_save_result"; requestId: string; id: string; text: string; tags: string[] }
+  | { type: "memory_update_result"; requestId: string; success: boolean }
+  | { type: "memory_delete_result"; requestId: string; success: boolean }
+  | { type: "memory_error"; requestId: string; error: string };
+
+/** Memory item returned in protocol responses */
+export interface MemoryResult {
+  id: string;
+  text: string;
+  tags: string[];
+  source: string;
+  created_at: number;
+  score: number;
+}
