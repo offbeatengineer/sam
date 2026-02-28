@@ -3,6 +3,7 @@ import { resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
+import type { MemoryConfig } from "./memory/types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BUNDLED_PROMPTS_DIR = resolve(__dirname, "..", "prompts");
@@ -46,13 +47,7 @@ export interface SamConfig {
   tools?: {
     webSearch?: { apiKey?: string };
   };
-  memory?: {
-    enabled?: boolean;
-    storagePath?: string;
-    modelsPath?: string;
-    embeddingModel?: string;
-    embeddingDimensions?: number;
-  };
+  memory?: MemoryConfig;
   pulse?: {
     enabled: boolean;
     every: string;

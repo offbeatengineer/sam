@@ -6,6 +6,7 @@ import { DiscordChannel } from "./channels/discord-channel.js";
 import { PulseChannel } from "./channels/pulse-channel.js";
 import { AppChannel } from "./channels/app-channel.js";
 import { CliTranscriber } from "./transcriber.js";
+import { MemoryStore } from "./memory/store.js";
 
 async function main() {
   const config = loadConfig();
@@ -19,6 +20,13 @@ async function main() {
     transcription: config.transcription,
     pulse: config.pulse,
   }, null, 2));
+
+  // Eagerly download memory dependencies so they're ready before first use
+  if (config.memory?.enabled) {
+    MemoryStore.getInstance(config.memory).catch((err) => {
+      console.error("[memory] Failed to pre-initialize memory store:", err);
+    });
+  }
 
   const registry = new SessionRegistry(config);
   const dispatcher = new Dispatcher(registry);

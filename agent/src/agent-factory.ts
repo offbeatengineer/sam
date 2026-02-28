@@ -134,18 +134,11 @@ export async function createSession(config: SamConfig, key: SessionKey) {
   ];
 
   // Add memory tools if enabled (default: true)
-  if (config.memory?.enabled !== false) {
-    const memConfig = config.memory ?? {};
-    const resolvedMemConfig = {
-      storagePath: memConfig.storagePath!,
-      modelsPath: memConfig.modelsPath!,
-      embeddingModel: memConfig.embeddingModel,
-      embeddingDimensions: memConfig.embeddingDimensions,
-    };
+  if (config.memory?.enabled !== false && config.memory) {
     customTools.push(
-      createMemorySaveTool(resolvedMemConfig),
-      createMemoryRecallTool(resolvedMemConfig),
-      createMemoryForgetTool(resolvedMemConfig),
+      createMemorySaveTool(config.memory),
+      createMemoryRecallTool(config.memory),
+      createMemoryForgetTool(config.memory),
     );
   }
 
