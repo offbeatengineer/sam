@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Artifact } from "@/types/task";
 
-export type LeftSidebarTab = "tasks" | "skills";
+export type LeftSidebarTab = "tasks" | "skills" | "memory";
 
 interface UIStore {
   leftSidebarOpen: boolean;

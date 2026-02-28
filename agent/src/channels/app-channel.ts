@@ -2,11 +2,14 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { SessionRegistry } from "../session-registry.js";
 import type { AppRequest, AppResponse } from "../protocol.js";
 import type { SessionKey } from "../types.js";
+import { MemoryStore } from "../memory/store.js";
+import type { MemoryConfig } from "../memory/types.js";
 
 interface AppChannelOptions {
   port: number;
   host?: string;
   registry: SessionRegistry;
+  memoryConfig?: MemoryConfig;
 }
 
 /**
@@ -94,6 +97,12 @@ export class AppChannel {
         return this.handleAbort(request.conversationId);
       case "close_session":
         return this.handleCloseSession(ws, request.conversationId);
+      case "memory_list":
+      case "memory_search":
+      case "memory_save":
+      case "memory_update":
+      case "memory_delete":
+        return this.handleMemoryRequest(ws, request);
       default:
         this.sendTo(ws, { type: "error", error: `Unknown request type: ${(request as any).type}` });
     }
@@ -157,6 +166,75 @@ export class AppChannel {
     this.subscriptions.delete(conversationId);
 
     this.sendTo(ws, { type: "session_closed", conversationId });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Memory request handling
+  // ---------------------------------------------------------------------------
+
+  private async handleMemoryRequest(
+    ws: WebSocket,
+    request: Extract<AppRequest, { type: `memory_${string}` }>,
+  ): Promise<void> {
+    const requestId = (request as any).requestId as string;
+    const memoryConfig = this.options.memoryConfig;
+
+    if (!memoryConfig?.enabled) {
+      this.sendTo(ws, { type: "memory_error", requestId, error: "Memory system is not enabled" });
+      return;
+    }
+
+    try {
+      const store = await MemoryStore.getInstance(memoryConfig);
+
+      switch (request.type) {
+        case "memory_list": {
+          const { memories, total } = await store.list({
+            limit: request.limit,
+            offset: request.offset,
+          });
+          this.sendTo(ws, { type: "memory_list_result", requestId, memories, total });
+          break;
+        }
+
+        case "memory_search": {
+          const results = await store.recall({
+            query: request.query,
+            limit: request.limit,
+            tags: request.tags,
+          });
+          this.sendTo(ws, { type: "memory_search_result", requestId, memories: results, count: results.length });
+          break;
+        }
+
+        case "memory_save": {
+          const id = await store.save(request.text, request.tags, request.source);
+          this.sendTo(ws, {
+            type: "memory_save_result",
+            requestId,
+            id,
+            text: request.text,
+            tags: request.tags ?? [],
+          });
+          break;
+        }
+
+        case "memory_update": {
+          const success = await store.update(request.id, request.text, request.tags);
+          this.sendTo(ws, { type: "memory_update_result", requestId, success });
+          break;
+        }
+
+        case "memory_delete": {
+          const success = await store.forget(request.id);
+          this.sendTo(ws, { type: "memory_delete_result", requestId, success });
+          break;
+        }
+      }
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "memory_error", requestId, error: errorText });
+    }
   }
 
   // ---------------------------------------------------------------------------

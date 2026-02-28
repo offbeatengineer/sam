@@ -32,33 +32,6 @@ pub enum AppRequest {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AppResponse {
-    #[serde(rename = "type")]
-    pub response_type: String,
-    #[serde(rename = "conversationId")]
-    pub conversation_id: Option<String>,
-    #[serde(rename = "requestId")]
-    pub request_id: Option<String>,
-    // text_delta / thinking_delta
-    pub delta: Option<String>,
-    #[serde(rename = "contentIndex")]
-    pub content_index: Option<u32>,
-    // tool fields
-    #[serde(rename = "toolCallId")]
-    pub tool_call_id: Option<String>,
-    #[serde(rename = "toolName")]
-    pub tool_name: Option<String>,
-    pub args: Option<serde_json::Value>,
-    #[serde(rename = "partialResult")]
-    pub partial_result: Option<String>,
-    pub result: Option<String>,
-    #[serde(rename = "isError")]
-    pub is_error: Option<bool>,
-    // error
-    pub error: Option<String>,
-}
-
 // ---------------------------------------------------------------------------
 // App state
 // ---------------------------------------------------------------------------
@@ -128,7 +101,7 @@ async fn establish_connection(
         while let Some(msg) = read.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
-                    match serde_json::from_str::<AppResponse>(&text) {
+                    match serde_json::from_str::<serde_json::Value>(&text) {
                         Ok(response) => {
                             let _ = app_handle.emit("app-response", &response);
                         }
@@ -287,6 +260,23 @@ async fn abort_turn(
     send_request(&state, &request).await
 }
 
+#[tauri::command]
+async fn send_raw(
+    request: serde_json::Value,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let json = serde_json::to_string(&request).map_err(|e| e.to_string())?;
+    let mut sender = state.ws_sender.lock().await;
+    if let Some(ref mut ws) = *sender {
+        ws.send(Message::Text(json))
+            .await
+            .map_err(|e| format!("Failed to send to sam: {}", e))?;
+        Ok(())
+    } else {
+        Err("Not connected to sam".into())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -333,6 +323,7 @@ pub fn run() {
             send_chat,
             close_session,
             abort_turn,
+            send_raw,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

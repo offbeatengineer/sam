@@ -63,6 +63,7 @@ async function main() {
       port: config.app.port,
       host: config.app.host,
       registry,
+      memoryConfig: config.memory,
     });
     await appChannel.start();
   }
