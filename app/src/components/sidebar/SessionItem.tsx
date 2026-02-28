@@ -29,12 +29,6 @@ function getRelativeTime(date: Date): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-const CHANNEL_COLORS: Record<string, string> = {
-  app: "bg-green-500",
-  discord: "bg-indigo-500",
-  pulse: "bg-amber-500",
-};
-
 function getSessionTitle(session: SessionInfo): string {
   if (session.name) return session.name;
   if (session.firstMessage) {
@@ -63,14 +57,6 @@ export function SessionItem({ session, isActive, onClick }: SessionItemProps) {
       onClick={onClick}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
-        {/* Channel indicator dot */}
-        <span
-          className={cn(
-            "shrink-0 h-1.5 w-1.5 rounded-full",
-            CHANNEL_COLORS[session.channelId] ?? "bg-gray-400"
-          )}
-          title={session.channelId}
-        />
         <span className="truncate flex-1 min-w-0">{title}</span>
 
         {/* Streaming indicator */}
