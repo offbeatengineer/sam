@@ -1,19 +1,31 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { useTaskStore } from "@/stores/taskStore";
+import { useSessionStore } from "@/stores/sessionStore";
 import { useUIStore } from "@/stores/uiStore";
 import { SidebarToggle } from "@/components/ui/sidebar-toggle";
 import { cn } from "@/lib/utils";
 
 const ANIMATION_DURATION = 300;
 
+function getSessionTitle(session: { name?: string; firstMessage: string } | undefined): string {
+  if (!session) return "Start a new session";
+  if (session.name) return session.name;
+  if (session.firstMessage) {
+    return session.firstMessage.length > 60
+      ? session.firstMessage.substring(0, 57) + "..."
+      : session.firstMessage;
+  }
+  return "New session";
+}
+
+const CHANNEL_BADGES: Record<string, { label: string; className: string }> = {
+  discord: { label: "Discord", className: "bg-indigo-500/15 text-indigo-400" },
+  pulse: { label: "Pulse", className: "bg-amber-500/15 text-amber-400" },
+};
+
 export function ChatHeader() {
-  // Use selector to get active task directly to avoid creating new objects on each render
-  const activeTask = useTaskStore((state) => {
-    const activeTaskId = state.activeTaskId;
-    if (!activeTaskId) return undefined;
-    return state.tasks.find((t) => t.id === activeTaskId);
-  });
+  const activeSession = useSessionStore((state) => state.getActiveSession());
+  const activeSessionId = useSessionStore((state) => state.activeSessionId);
   const {
     leftSidebarOpen,
     rightSidebarOpen,
@@ -22,8 +34,6 @@ export function ChatHeader() {
   } = useUIStore();
 
   const [isMacOS, setIsMacOS] = useState(false);
-
-  // Delayed state for showing toggles after animation completes
   const [showLeftToggle, setShowLeftToggle] = useState(!leftSidebarOpen);
   const [showRightToggle, setShowRightToggle] = useState(!rightSidebarOpen);
 
@@ -33,10 +43,8 @@ export function ChatHeader() {
 
   useEffect(() => {
     if (leftSidebarOpen) {
-      // Hide immediately when opening
       setShowLeftToggle(false);
     } else {
-      // Show after animation completes when closing
       const timer = setTimeout(() => setShowLeftToggle(true), ANIMATION_DURATION);
       return () => clearTimeout(timer);
     }
@@ -51,40 +59,10 @@ export function ChatHeader() {
     }
   }, [rightSidebarOpen]);
 
-  // Add left padding for macOS traffic lights when left sidebar is collapsed
   const needsTrafficLightSpace = isMacOS && !leftSidebarOpen;
-
-  if (!activeTask) {
-    return (
-      <div
-        data-tauri-drag-region
-        className={cn(
-          "flex items-center justify-between h-12 px-3 border-b border-border",
-          needsTrafficLightSpace && "pl-[72px]"
-        )}
-      >
-        <div className="flex items-center gap-2">
-          {showLeftToggle && (
-            <SidebarToggle
-              side="left"
-              isOpen={leftSidebarOpen}
-              onClick={toggleLeftSidebar}
-            />
-          )}
-          <h1 className="text-sm font-medium text-muted-foreground">
-            Start a new task
-          </h1>
-        </div>
-        {showRightToggle && (
-          <SidebarToggle
-            side="right"
-            isOpen={rightSidebarOpen}
-            onClick={toggleRightSidebar}
-          />
-        )}
-      </div>
-    );
-  }
+  const title = getSessionTitle(activeSession);
+  const channelBadge = activeSession && CHANNEL_BADGES[activeSession.channelId];
+  const isReadOnly = activeSession && activeSession.channelId !== "app";
 
   return (
     <div
@@ -102,10 +80,20 @@ export function ChatHeader() {
             onClick={toggleLeftSidebar}
           />
         )}
-        <h1 className="text-sm font-medium flex items-center gap-1 cursor-pointer hover:text-muted-foreground transition-colors">
-          {activeTask.title}
-          <ChevronDown className="h-4 w-4" />
+        <h1 className="text-sm font-medium flex items-center gap-1.5 cursor-pointer hover:text-muted-foreground transition-colors">
+          {title}
+          {activeSessionId && <ChevronDown className="h-4 w-4" />}
         </h1>
+        {channelBadge && (
+          <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", channelBadge.className)}>
+            {channelBadge.label}
+          </span>
+        )}
+        {isReadOnly && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-muted text-muted-foreground">
+            Read-only
+          </span>
+        )}
       </div>
       {showRightToggle && (
         <SidebarToggle

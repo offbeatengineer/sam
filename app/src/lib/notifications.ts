@@ -1,4 +1,4 @@
-import { useTaskStore } from "@/stores/taskStore";
+import { useSessionStore, sessionIdFor } from "@/stores/sessionStore";
 
 /**
  * Request browser notification permission
@@ -13,31 +13,33 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * Show a notification when a task completes in the background
+ * Show a notification when a session has new messages in the background
  */
-export function showTaskNotification(taskId: string): void {
-  // Only show if window is not focused
+export function showTaskNotification(conversationId: string): void {
   if (document.hasFocus()) return;
-
-  // Only show if we have permission
   if (Notification.permission !== "granted") return;
 
-  const task = useTaskStore.getState().tasks.find((t) => t.id === taskId);
-  if (!task) return;
+  const session = useSessionStore.getState().sessions.find(
+    (s) => s.conversationId === conversationId
+  );
+  const title = session?.name || session?.firstMessage || "Session";
+  const displayTitle = title.length > 50 ? title.substring(0, 47) + "..." : title;
 
   const notification = new Notification("AI Response Ready", {
-    body: `Task "${task.title}" has new messages`,
-    tag: `task-${taskId}`, // Prevents duplicate notifications for same task
+    body: `"${displayTitle}" has new messages`,
+    tag: `session-${conversationId}`,
     icon: "/favicon.ico",
   });
 
   notification.onclick = () => {
-    // Focus the window and switch to the task
     window.focus();
-    useTaskStore.getState().switchTask(taskId);
+    if (session) {
+      useSessionStore.getState().selectSession(
+        sessionIdFor(session.channelId, session.conversationId)
+      );
+    }
     notification.close();
   };
 
-  // Auto-close after 5 seconds
   setTimeout(() => notification.close(), 5000);
 }

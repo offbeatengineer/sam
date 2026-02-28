@@ -1,4 +1,3 @@
-export type MessageRole = "user" | "assistant" | "system";
 export type ToolStatus = "pending" | "running" | "success" | "warning" | "error";
 
 export interface ToolExecution {
@@ -7,38 +6,13 @@ export interface ToolExecution {
   status: ToolStatus;
   expanded: boolean;
   details?: string;
-  input?: Record<string, unknown>;  // Tool parameters
-  output?: string;                   // Tool result
+  input?: Record<string, unknown>;
+  output?: string;
 }
 
 export interface ThinkingData {
   content: string;
   isComplete: boolean;
-}
-
-// Content block types for interleaved thinking/text
-export interface TextBlock {
-  type: "text";
-  content: string;
-}
-
-export interface ThinkingBlock {
-  type: "thinking";
-  content: string;
-  isComplete: boolean;
-}
-
-export type ContentBlock = TextBlock | ThinkingBlock;
-
-export interface Message {
-  id: string;
-  role: MessageRole;
-  content: string;
-  timestamp: Date;
-  toolExecutions?: ToolExecution[];
-  thinking?: ThinkingData;
-  // Content blocks for interleaved thinking/text
-  contentBlocks?: ContentBlock[];
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +35,10 @@ export interface AppResponse {
   isError?: boolean;
   // error
   error?: string;
+  // session browsing fields
+  sessions?: import("./session").SessionInfoDTO[];
+  header?: object | null;
+  entries?: object[];
   // memory fields
   memories?: MemoryItem[];
   total?: number;

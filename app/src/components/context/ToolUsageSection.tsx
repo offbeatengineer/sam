@@ -6,28 +6,42 @@ import {
 } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ToolCard } from "@/components/chat/ToolCard";
-import { useActiveConversation } from "@/stores/conversationStore";
+import { useSessionStore } from "@/stores/sessionStore";
+import type { SessionMessageEntry, AssistantMessage, ToolCall } from "@/types/session";
 import type { ToolExecution } from "@/types/chat";
 
 export function ToolUsageSection() {
-  const conversation = useActiveConversation();
+  const entries = useSessionStore((state) => state.activeEntries);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Flatten all tool executions from all messages
+  // Extract tool calls from session entries
   const toolExecutions = useMemo(() => {
-    if (!conversation?.messages) return [];
-
     const executions: ToolExecution[] = [];
-    for (const message of conversation.messages) {
-      if (message.toolExecutions) {
-        executions.push(...message.toolExecutions);
+
+    for (const entry of entries) {
+      if (entry.type !== "message") continue;
+      const msg = (entry as SessionMessageEntry).message;
+
+      if (msg.role === "assistant") {
+        const assistant = msg as AssistantMessage;
+        for (const block of assistant.content) {
+          if (block.type === "toolCall") {
+            const tc = block as ToolCall;
+            executions.push({
+              id: tc.id,
+              name: tc.name,
+              status: "success",
+              expanded: false,
+              input: tc.arguments as Record<string, unknown>,
+            });
+          }
+        }
       }
     }
     return executions;
-  }, [conversation?.messages]);
+  }, [entries]);
 
-  // Auto-scroll to bottom when new tools are added
   useEffect(() => {
     if (scrollRef.current && toolExecutions.length > 0) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;

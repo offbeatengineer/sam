@@ -1,15 +1,19 @@
 import { WebSocketServer, type WebSocket } from "ws";
 import type { SessionRegistry } from "../session-registry.js";
-import type { AppRequest, AppResponse } from "../protocol.js";
+import type { AppRequest, AppResponse, SessionInfoDTO } from "../protocol.js";
 import type { SessionKey } from "../types.js";
 import { MemoryStore } from "../memory/store.js";
 import type { MemoryConfig } from "../memory/types.js";
+import { SessionManager } from "@mariozechner/pi-coding-agent";
+import { readdirSync, statSync } from "node:fs";
+import { resolve, basename, dirname } from "node:path";
 
 interface AppChannelOptions {
   port: number;
   host?: string;
   registry: SessionRegistry;
   memoryConfig?: MemoryConfig;
+  sessionsDir: string;
 }
 
 /**
@@ -97,6 +101,10 @@ export class AppChannel {
         return this.handleAbort(request.conversationId);
       case "close_session":
         return this.handleCloseSession(ws, request.conversationId);
+      case "list_sessions":
+        return this.handleListSessions(ws, request);
+      case "get_session_entries":
+        return this.handleGetSessionEntries(ws, request);
       case "memory_list":
       case "memory_search":
       case "memory_save":
@@ -166,6 +174,153 @@ export class AppChannel {
     this.subscriptions.delete(conversationId);
 
     this.sendTo(ws, { type: "session_closed", conversationId });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Session browsing
+  // ---------------------------------------------------------------------------
+
+  private async handleListSessions(
+    ws: WebSocket,
+    request: Extract<AppRequest, { type: "list_sessions" }>,
+  ): Promise<void> {
+    const { requestId } = request;
+    const sessionsDir = this.options.sessionsDir;
+
+    try {
+      const sessions: SessionInfoDTO[] = [];
+
+      // Walk {sessionsDir}/{channelId}/{conversationId}/ for .jsonl files
+      let channelDirs: string[];
+      try {
+        channelDirs = readdirSync(sessionsDir).filter((name) => {
+          try {
+            return statSync(resolve(sessionsDir, name)).isDirectory();
+          } catch {
+            return false;
+          }
+        });
+      } catch {
+        channelDirs = [];
+      }
+
+      for (const channelId of channelDirs) {
+        const channelPath = resolve(sessionsDir, channelId);
+        let convDirs: string[];
+        try {
+          convDirs = readdirSync(channelPath).filter((name) => {
+            try {
+              return statSync(resolve(channelPath, name)).isDirectory();
+            } catch {
+              return false;
+            }
+          });
+        } catch {
+          continue;
+        }
+
+        for (const conversationId of convDirs) {
+          const convPath = resolve(channelPath, conversationId);
+          let jsonlFiles: string[];
+          try {
+            jsonlFiles = readdirSync(convPath).filter((f) => f.endsWith(".jsonl"));
+          } catch {
+            continue;
+          }
+
+          if (jsonlFiles.length === 0) continue;
+
+          // Find most recently modified .jsonl file
+          let mostRecent = jsonlFiles[0];
+          let mostRecentMtime = 0;
+          for (const f of jsonlFiles) {
+            try {
+              const st = statSync(resolve(convPath, f));
+              if (st.mtimeMs > mostRecentMtime) {
+                mostRecentMtime = st.mtimeMs;
+                mostRecent = f;
+              }
+            } catch {
+              // skip
+            }
+          }
+
+          const sessionPath = resolve(convPath, mostRecent);
+          try {
+            const sm = SessionManager.open(sessionPath, convPath);
+            const header = sm.getHeader();
+            const entries = sm.getEntries();
+
+            // Count message entries and find first user message
+            let messageCount = 0;
+            let firstMessage = "";
+            for (const entry of entries) {
+              if (entry.type === "message") {
+                messageCount++;
+                if (!firstMessage && (entry as any).message?.role === "user") {
+                  const msg = (entry as any).message;
+                  if (typeof msg.content === "string") {
+                    firstMessage = msg.content.substring(0, 200);
+                  } else if (Array.isArray(msg.content)) {
+                    const textPart = msg.content.find((c: any) => c.type === "text");
+                    if (textPart) firstMessage = textPart.text.substring(0, 200);
+                  }
+                }
+              }
+            }
+
+            const fileStat = statSync(sessionPath);
+
+            sessions.push({
+              path: sessionPath,
+              id: header?.id ?? basename(mostRecent, ".jsonl"),
+              channelId,
+              conversationId,
+              cwd: header?.cwd ?? "",
+              name: sm.getSessionName(),
+              created: header?.timestamp ?? fileStat.birthtime.toISOString(),
+              modified: fileStat.mtime.toISOString(),
+              messageCount,
+              firstMessage,
+            });
+          } catch (err) {
+            console.warn(`Failed to read session ${sessionPath}:`, err);
+          }
+        }
+      }
+
+      // Sort by modified time descending
+      sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
+
+      this.sendTo(ws, { type: "sessions_list", requestId, sessions });
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "error", error: `Failed to list sessions: ${errorText}` });
+    }
+  }
+
+  private async handleGetSessionEntries(
+    ws: WebSocket,
+    request: Extract<AppRequest, { type: "get_session_entries" }>,
+  ): Promise<void> {
+    const { requestId, sessionPath } = request;
+
+    try {
+      const sessionDir = dirname(sessionPath);
+      const sm = SessionManager.open(sessionPath, sessionDir);
+      const header = sm.getHeader();
+      const entries = sm.getEntries();
+
+      this.sendTo(ws, {
+        type: "session_entries",
+        requestId,
+        header: header as object | null,
+        entries: entries as object[],
+      });
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "error", error: `Failed to read session entries: ${errorText}` });
+    }
   }
 
   // ---------------------------------------------------------------------------

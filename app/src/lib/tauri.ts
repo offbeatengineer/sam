@@ -36,30 +36,30 @@ export async function isConnected(): Promise<boolean> {
 }
 
 /**
- * Send a chat message to sam for a specific task.
+ * Send a chat message to sam for a specific conversation.
  * Returns the requestId for correlating responses.
  */
 export async function sendChat(
-  taskId: string,
+  conversationId: string,
   message: string,
 ): Promise<string> {
   const requestId = generateRequestId();
-  await invoke("send_chat", { taskId, message, requestId });
+  await invoke("send_chat", { conversationId, message, requestId });
   return requestId;
 }
 
 /**
- * Close the session for a specific task
+ * Close the session for a specific conversation
  */
-export async function closeSession(taskId: string): Promise<void> {
-  return invoke("close_session", { taskId });
+export async function closeSession(conversationId: string): Promise<void> {
+  return invoke("close_session", { conversationId });
 }
 
 /**
- * Abort the current turn for a specific task
+ * Abort the current turn for a specific conversation
  */
-export async function abortTurn(taskId: string): Promise<void> {
-  return invoke("abort_turn", { taskId });
+export async function abortTurn(conversationId: string): Promise<void> {
+  return invoke("abort_turn", { conversationId });
 }
 
 /**

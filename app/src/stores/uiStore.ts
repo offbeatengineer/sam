@@ -1,23 +1,22 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Artifact } from "@/types/task";
 
-export type LeftSidebarTab = "tasks" | "skills" | "memory";
+export type SettingsPage = "skills" | "memory" | null;
 
 interface UIStore {
   leftSidebarOpen: boolean;
   rightSidebarOpen: boolean;
   inputHeight: number;
-  selectedArtifact: Artifact | null;
-  leftSidebarTab: LeftSidebarTab;
+  selectedArtifact: { id: string; name: string; type: string; path?: string } | null;
+  settingsPage: SettingsPage;
   editingSkillId: string | null;
   toggleLeftSidebar: () => void;
   toggleRightSidebar: () => void;
   setLeftSidebar: (open: boolean) => void;
   setRightSidebar: (open: boolean) => void;
   setInputHeight: (height: number) => void;
-  setSelectedArtifact: (artifact: Artifact | null) => void;
-  setLeftSidebarTab: (tab: LeftSidebarTab) => void;
+  setSelectedArtifact: (artifact: { id: string; name: string; type: string; path?: string } | null) => void;
+  setSettingsPage: (page: SettingsPage) => void;
   setEditingSkillId: (id: string | null) => void;
 }
 
@@ -28,7 +27,7 @@ export const useUIStore = create<UIStore>()(
       rightSidebarOpen: true,
       inputHeight: 120,
       selectedArtifact: null,
-      leftSidebarTab: "tasks" as LeftSidebarTab,
+      settingsPage: null,
       editingSkillId: null,
       toggleLeftSidebar: () =>
         set((state) => ({ leftSidebarOpen: !state.leftSidebarOpen })),
@@ -38,7 +37,7 @@ export const useUIStore = create<UIStore>()(
       setRightSidebar: (open) => set({ rightSidebarOpen: open }),
       setInputHeight: (height) => set({ inputHeight: height }),
       setSelectedArtifact: (artifact) => set({ selectedArtifact: artifact }),
-      setLeftSidebarTab: (tab) => set({ leftSidebarTab: tab }),
+      setSettingsPage: (page) => set({ settingsPage: page, editingSkillId: null }),
       setEditingSkillId: (id) => set({ editingSkillId: id }),
     }),
     {
@@ -46,7 +45,6 @@ export const useUIStore = create<UIStore>()(
       partialize: (state) => ({
         leftSidebarOpen: state.leftSidebarOpen,
         rightSidebarOpen: state.rightSidebarOpen,
-        leftSidebarTab: state.leftSidebarTab,
         editingSkillId: state.editingSkillId,
       }),
     }

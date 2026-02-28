@@ -225,14 +225,14 @@ async fn is_connected(
 
 #[tauri::command]
 async fn send_chat(
-    task_id: String,
+    conversation_id: String,
     message: String,
     request_id: String,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let request = AppRequest::Chat {
         request_id,
-        conversation_id: task_id,
+        conversation_id,
         text: message,
     };
     send_request(&state, &request).await
@@ -240,22 +240,22 @@ async fn send_chat(
 
 #[tauri::command]
 async fn close_session(
-    task_id: String,
+    conversation_id: String,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let request = AppRequest::CloseSession {
-        conversation_id: task_id,
+        conversation_id,
     };
     send_request(&state, &request).await
 }
 
 #[tauri::command]
 async fn abort_turn(
-    task_id: String,
+    conversation_id: String,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let request = AppRequest::Abort {
-        conversation_id: task_id,
+        conversation_id,
     };
     send_request(&state, &request).await
 }

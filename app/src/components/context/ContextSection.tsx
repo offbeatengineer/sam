@@ -3,17 +3,15 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
-import { useTaskStore } from "@/stores/taskStore";
+import { useSessionStore } from "@/stores/sessionStore";
 import { DirectoryTree } from "./DirectoryTree";
 import { FileDropzone } from "./FileDropzone";
 
 export function ContextSection() {
-  const activeTask = useTaskStore((state) => {
-    const task = state.tasks.find((t) => t.id === state.activeTaskId);
-    return task;
-  });
+  const activeHeader = useSessionStore((state) => state.activeHeader);
+  const activeSession = useSessionStore((state) => state.getActiveSession());
 
-  const workingDirectory = activeTask?.workingDirectory;
+  const workingDirectory = activeHeader?.cwd ?? activeSession?.cwd;
 
   return (
     <Collapsible defaultOpen>

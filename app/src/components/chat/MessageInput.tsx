@@ -2,21 +2,14 @@ import { useRef, useEffect, useLayoutEffect, useCallback, useState } from "react
 import { ArrowUp, Brain, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useConversationStore, useActiveStreaming } from "@/stores/conversationStore";
-import { useTaskStore } from "@/stores/taskStore";
+import { useSessionStore, useActiveStreaming } from "@/stores/sessionStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useInputStore } from "@/stores/inputStore";
 import { sendChat, abortTurn } from "@/lib/tauri";
-import type { Message } from "@/types/chat";
-
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 11);
-}
 
 export function MessageInput() {
   const { input, setInput, setTextareaRef } = useInputStore();
-  // Max height for 15 lines of text (text-sm ~21px line-height + 8px padding)
-  const maxHeight = 15 * 21 + 8; // ~323px
+  const maxHeight = 15 * 21 + 8;
   const [scrollState, setScrollState] = useState({ thumbHeight: 0, thumbTop: 0, showScrollbar: false });
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -24,35 +17,30 @@ export function MessageInput() {
 
   const isStreaming = useActiveStreaming();
 
-  // Register textarea ref for external focus
   useEffect(() => {
     setTextareaRef(textareaRef);
   }, [setTextareaRef]);
-  const { activeTaskId, createNewTask, updateTask } = useTaskStore();
+
+  const activeSessionId = useSessionStore((state) => state.activeSessionId);
   const setInputHeight = useUIStore((state) => state.setInputHeight);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Update custom scrollbar position
   const updateScrollbar = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
-
     const { scrollHeight, clientHeight, scrollTop } = container;
     const hasOverflow = scrollHeight > clientHeight;
-
     if (hasOverflow) {
       const thumbHeight = Math.max(30, (clientHeight / scrollHeight) * clientHeight);
       const scrollableHeight = scrollHeight - clientHeight;
       const thumbRange = clientHeight - thumbHeight;
       const thumbTop = scrollableHeight > 0 ? (scrollTop / scrollableHeight) * thumbRange : 0;
-
       setScrollState({ thumbHeight, thumbTop, showScrollbar: true });
     } else {
       setScrollState({ thumbHeight: 0, thumbTop: 0, showScrollbar: false });
     }
   }, []);
 
-  // Auto-resize textarea (synchronous to avoid flicker)
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
@@ -61,29 +49,23 @@ export function MessageInput() {
     }
   }, [input]);
 
-  // Update scrollbar after layout (runs after DOM mutation)
   useLayoutEffect(() => {
     updateScrollbar();
   }, [input, updateScrollbar]);
 
-  // Listen to scroll events on container
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
-
     container.addEventListener("scroll", updateScrollbar);
     return () => container.removeEventListener("scroll", updateScrollbar);
   }, [updateScrollbar]);
 
-  // Track container height for dynamic message list padding
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     const observer = new ResizeObserver(() => {
-      // Use offsetHeight for full box height including padding
       const height = container.offsetHeight;
-      setInputHeight(height + 16); // +16 for bottom-4 offset
+      setInputHeight(height + 16);
     });
     observer.observe(container);
     return () => observer.disconnect();
@@ -95,61 +77,23 @@ export function MessageInput() {
     const messageContent = input.trim();
     setInput("");
 
-    const convStore = useConversationStore.getState();
+    const store = useSessionStore.getState();
 
-    // Create task if none exists
-    let taskId = activeTaskId;
-    if (!taskId) {
-      const title =
-        messageContent.length > 50
-          ? messageContent.substring(0, 50) + "..."
-          : messageContent;
-      const task = createNewTask(title);
-      taskId = task.id;
+    // Get or create a conversationId
+    let conversationId: string;
+    if (activeSessionId) {
+      // Extract conversationId from "channelId:conversationId"
+      const parts = activeSessionId.split(":");
+      conversationId = parts.slice(1).join(":");
     } else {
-      // Update task title on first message
-      const conv = convStore.conversations.get(taskId);
-      if (!conv || conv.messages.length === 0) {
-        updateTask(taskId, {
-          title:
-            messageContent.length > 50
-              ? messageContent.substring(0, 50) + "..."
-              : messageContent,
-        });
-      }
+      conversationId = store.createNewSession();
     }
-
-    // Add user message
-    const userMessage: Message = {
-      id: generateId(),
-      role: "user",
-      content: messageContent,
-      timestamp: new Date(),
-    };
-    convStore.addMessage(taskId, userMessage);
-
-    // Add placeholder assistant message
-    const assistantMessage: Message = {
-      id: generateId(),
-      role: "assistant",
-      content: "",
-      timestamp: new Date(),
-    };
-    convStore.addMessage(taskId, assistantMessage);
-
-    // Track the assistant message ID for streaming
-    convStore.setLastAssistantMessageId(taskId, assistantMessage.id);
-    convStore.setStreaming(taskId, true);
 
     // Send to sam via Tauri IPC
     try {
-      await sendChat(taskId, messageContent);
+      await sendChat(conversationId, messageContent);
     } catch (error) {
       console.error("Failed to send chat:", error);
-      convStore.updateMessage(taskId, assistantMessage.id, {
-        content: `Error: Failed to send message. ${error instanceof Error ? error.message : String(error)}`,
-      });
-      convStore.setStreaming(taskId, false);
     }
   };
 
@@ -161,10 +105,11 @@ export function MessageInput() {
   };
 
   const handleStop = async () => {
-    if (!activeTaskId) return;
-
+    if (!activeSessionId) return;
+    const parts = activeSessionId.split(":");
+    const conversationId = parts.slice(1).join(":");
     try {
-      await abortTurn(activeTaskId);
+      await abortTurn(conversationId);
     } catch (error) {
       console.error("Failed to abort turn:", error);
     }
@@ -173,7 +118,6 @@ export function MessageInput() {
   return (
     <div ref={containerRef} className="absolute bottom-4 left-0 right-0 z-10 px-6">
       <div className="max-w-3xl mx-auto rounded-md p-3 shadow-[0_0_10px_rgba(0,0,0,0.15)]">
-        {/* Textarea row with custom scrollbar */}
         <div className="relative w-full">
           <div
             ref={scrollContainerRef}
@@ -191,7 +135,6 @@ export function MessageInput() {
               disabled={isStreaming}
             />
           </div>
-          {/* Custom scrollbar */}
           {scrollState.showScrollbar && (
             <div className="absolute right-0 top-0 w-2 h-full p-[1px] pointer-events-none">
               <div
@@ -205,7 +148,6 @@ export function MessageInput() {
           )}
         </div>
 
-        {/* Controls row */}
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-1">
             <Button
