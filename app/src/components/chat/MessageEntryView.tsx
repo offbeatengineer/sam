@@ -133,15 +133,6 @@ function AssistantMessageView({
         }
         return null;
       })}
-
-      {/* Model & usage info */}
-      <div className="flex items-center gap-2 mt-1">
-        <span className="text-[10px] text-muted-foreground/60">
-          {message.model}
-          {message.usage && ` · ${message.usage.totalTokens.toLocaleString()} tokens`}
-          {message.usage?.cost?.total != null && ` · $${message.usage.cost.total.toFixed(4)}`}
-        </span>
-      </div>
     </div>
   );
 }
