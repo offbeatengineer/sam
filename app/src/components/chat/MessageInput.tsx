@@ -78,6 +78,7 @@ export function MessageInput() {
     setInput("");
 
     const store = useSessionStore.getState();
+    store.setPendingUserMessage(messageContent);
 
     // Get or create a conversationId
     let conversationId: string;
