@@ -90,6 +90,7 @@ interface SessionState {
   // Streaming state (live app sessions only)
   streamingSessionId: string | null;
   streamingTurn: StreamingTurn | null;
+  pendingUserMessage: string | null;
 
   // Actions
   loadSessions: () => Promise<void>;
@@ -101,6 +102,7 @@ interface SessionState {
   refreshActiveSession: () => Promise<void>;
 
   // Streaming
+  setPendingUserMessage: (text: string) => void;
   beginStreaming: (sessionId: string) => void;
   appendTextDelta: (delta: string) => void;
   appendThinkingDelta: (delta: string) => void;
@@ -132,6 +134,7 @@ export const useSessionStore = create<SessionState>()(
     activeHeader: null,
     streamingSessionId: null,
     streamingTurn: null,
+    pendingUserMessage: null,
 
     loadSessions: async () => {
       const response = await requestResponse({ type: "list_sessions" });
@@ -203,6 +206,10 @@ export const useSessionStore = create<SessionState>()(
     },
 
     // Streaming
+    setPendingUserMessage: (text: string) => {
+      set({ pendingUserMessage: text });
+    },
+
     beginStreaming: (sessionId: string) => {
       set({
         streamingSessionId: sessionId,
@@ -322,6 +329,7 @@ export const useSessionStore = create<SessionState>()(
       set({
         streamingSessionId: null,
         streamingTurn: null,
+        pendingUserMessage: null,
       });
       // Refresh entries from JSONL
       get().refreshActiveSession();
@@ -344,11 +352,21 @@ export function useActiveEntries() {
 }
 
 export function useActiveStreaming() {
-  return useSessionStore((state) => state.streamingSessionId !== null);
+  return useSessionStore(
+    (state) => state.streamingSessionId !== null && state.streamingSessionId === state.activeSessionId,
+  );
 }
 
 export function useStreamingTurn() {
-  return useSessionStore((state) => state.streamingTurn);
+  return useSessionStore((state) =>
+    state.streamingSessionId === state.activeSessionId ? state.streamingTurn : null,
+  );
+}
+
+export function usePendingUserMessage() {
+  return useSessionStore((state) =>
+    state.streamingSessionId === state.activeSessionId ? state.pendingUserMessage : null,
+  );
 }
 
 export function sessionIdFor(channelId: string, conversationId: string): string {

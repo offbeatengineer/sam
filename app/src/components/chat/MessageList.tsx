@@ -2,7 +2,7 @@ import { useEffect, useRef, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SessionEntryRenderer } from "./SessionEntryRenderer";
 import { StreamingTurnView } from "./StreamingTurnView";
-import { useSessionStore, useActiveEntries, useActiveStreaming, useStreamingTurn } from "@/stores/sessionStore";
+import { useSessionStore, useActiveEntries, useActiveStreaming, useStreamingTurn, usePendingUserMessage } from "@/stores/sessionStore";
 import { useUIStore } from "@/stores/uiStore";
 import type { SessionMessageEntry, ToolResultMessage } from "@/types/session";
 
@@ -10,6 +10,7 @@ export function MessageList() {
   const entries = useActiveEntries();
   const isStreaming = useActiveStreaming();
   const streamingTurn = useStreamingTurn();
+  const pendingUserMessage = usePendingUserMessage();
   const activeSessionId = useSessionStore((state) => state.activeSessionId);
   const inputHeight = useUIStore((state) => state.inputHeight);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -34,7 +35,7 @@ export function MessageList() {
     requestAnimationFrame(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
-  }, [entries, isStreaming, streamingTurn, activeSessionId]);
+  }, [entries, isStreaming, streamingTurn, pendingUserMessage, activeSessionId]);
 
   if (entries.length === 0 && !isStreaming) {
     return (
@@ -55,6 +56,14 @@ export function MessageList() {
           {entries.map((entry) => (
             <SessionEntryRenderer key={entry.id} entry={entry} toolResults={toolResultsMap} />
           ))}
+
+          {pendingUserMessage && (
+            <div className="flex justify-end">
+              <div className="max-w-[80%] rounded-2xl px-4 py-2 bg-primary text-primary-foreground">
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">{pendingUserMessage}</p>
+              </div>
+            </div>
+          )}
 
           {isStreaming && streamingTurn && (
             <StreamingTurnView turn={streamingTurn} />
