@@ -1,16 +1,14 @@
-import { Plus, BookOpen, Brain } from "lucide-react";
+import { Plus } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SidebarToggle } from "@/components/ui/sidebar-toggle";
 import { SessionList } from "@/components/sidebar/SessionList";
-import { UserProfile } from "@/components/sidebar/UserProfile";
-import { SettingsDialog } from "@/components/sidebar/SettingsDialog";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useUIStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
 
 export function LeftSidebar() {
   const createNewSession = useSessionStore((state) => state.createNewSession);
-  const { leftSidebarOpen, toggleLeftSidebar, selectedArtifact, setSettingsPage } = useUIStore();
+  const { leftSidebarOpen, toggleLeftSidebar, selectedArtifact } = useUIStore();
   const artifactPanelOpen = selectedArtifact !== null;
 
   const handleNewSession = () => {
@@ -49,35 +47,10 @@ export function LeftSidebar() {
         </button>
       </div>
 
-      {/* Settings Dialog */}
-      <SettingsDialog />
-
       {/* Session list */}
       <ScrollArea className="flex-1 w-64">
         <SessionList />
       </ScrollArea>
-
-      {/* Footer: settings + user profile */}
-      <div className="w-64">
-        {/* Settings links */}
-        <div className="px-2 py-1 border-t border-sidebar-border flex items-center gap-1">
-          <button
-            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            onClick={() => setSettingsPage("skills")}
-          >
-            <BookOpen className="h-3 w-3" />
-            Skills
-          </button>
-          <button
-            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            onClick={() => setSettingsPage("memory")}
-          >
-            <Brain className="h-3 w-3" />
-            Memory
-          </button>
-        </div>
-        <UserProfile />
-      </div>
     </div>
   );
 }

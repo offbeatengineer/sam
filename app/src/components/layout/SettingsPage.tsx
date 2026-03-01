@@ -1,26 +1,22 @@
-import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { connectToSam, disconnectFromSam, isConnected } from "@/lib/tauri";
 
-export function SettingsDialog() {
-  const {
-    settingsDialogOpen,
-    closeSettingsDialog,
-    samUrl,
-    setSamUrl,
-  } = useSettingsStore();
-
+export function SettingsPage() {
+  const { samUrl, setSamUrl } = useSettingsStore();
   const [urlInput, setUrlInput] = useState(samUrl);
-  const [connectionStatus, setConnectionStatus] = useState<"unknown" | "connected" | "disconnected" | "connecting">("unknown");
+  const [connectionStatus, setConnectionStatus] = useState<
+    "unknown" | "connected" | "disconnected" | "connecting"
+  >("unknown");
+
+  useEffect(() => {
+    isConnected()
+      .then((connected) =>
+        setConnectionStatus(connected ? "connected" : "disconnected")
+      )
+      .catch(() => setConnectionStatus("disconnected"));
+  }, []);
 
   const handleConnect = async () => {
     setConnectionStatus("connecting");
@@ -43,30 +39,16 @@ export function SettingsDialog() {
     }
   };
 
-  const handleCheckStatus = async () => {
-    try {
-      const connected = await isConnected();
-      setConnectionStatus(connected ? "connected" : "disconnected");
-    } catch {
-      setConnectionStatus("disconnected");
-    }
-  };
-
   return (
-    <Dialog open={settingsDialogOpen} onOpenChange={(open) => {
-      if (!open) closeSettingsDialog();
-      else handleCheckStatus();
-    }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>
+    <div className="flex-1 flex flex-col min-w-0 bg-background">
+      <div data-tauri-drag-region className="flex items-center h-12 px-4 border-b border-border shrink-0">
+        <h2 className="text-sm font-medium">Settings</h2>
+      </div>
+      <div className="flex-1 flex items-start justify-center p-8 overflow-auto">
+        <div className="w-full max-w-md space-y-6">
+          <p className="text-sm text-muted-foreground">
             Configure your connection to sam.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          {/* Sam Connection */}
+          </p>
           <div className="space-y-2">
             <label className="text-sm font-medium">Sam URL</label>
             <p className="text-xs text-muted-foreground">
@@ -104,13 +86,7 @@ export function SettingsDialog() {
             </div>
           </div>
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={closeSettingsDialog}>
-            Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }

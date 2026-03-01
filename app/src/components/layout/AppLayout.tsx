@@ -1,9 +1,11 @@
 import { useEffect, useCallback, useState } from "react";
-import { Plus, Search, ArrowLeft } from "lucide-react";
+import { Plus, Search } from "lucide-react";
+import { IconRail } from "./IconRail";
 import { LeftSidebar } from "./LeftSidebar";
 import { MainPanel } from "./MainPanel";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { RightSidebar } from "./RightSidebar";
+import { SettingsPage } from "./SettingsPage";
 import { SkillEditor } from "@/components/skill/SkillEditor";
 import { SkillList } from "@/components/sidebar/SkillList";
 import { MemoryDetail } from "@/components/memory/MemoryDetail";
@@ -19,7 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 function SettingsSkillsPage() {
   const { skills, isLoaded, loadSkills, createSkill } = useSkillStore();
-  const { editingSkillId, setEditingSkillId, setSettingsPage } = useUIStore();
+  const { editingSkillId, setEditingSkillId } = useUIStore();
   const [isNewSkillDialogOpen, setIsNewSkillDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -45,14 +47,7 @@ function SettingsSkillsPage() {
     <div className="flex flex-1 min-w-0">
       {/* Skills sidebar */}
       <div className="w-64 border-r border-border flex flex-col bg-sidebar">
-        <div className="flex items-center justify-between h-12 px-3 border-b border-border">
-          <button
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setSettingsPage(null)}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </button>
+        <div data-tauri-drag-region className="flex items-center justify-center h-12 px-3 border-b border-border">
           <h2 className="text-sm font-medium">Skills</h2>
         </div>
         <div className="w-64">
@@ -87,7 +82,6 @@ function SettingsSkillsPage() {
 
 function SettingsMemoryPage() {
   const { searchQuery, setSearchQuery, setIsLoading } = useMemoryStore();
-  const { setSettingsPage } = useUIStore();
   const [isNewMemoryDialogOpen, setIsNewMemoryDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -112,14 +106,7 @@ function SettingsMemoryPage() {
     <div className="flex flex-1 min-w-0">
       {/* Memory sidebar */}
       <div className="w-64 border-r border-border flex flex-col bg-sidebar">
-        <div className="flex items-center justify-between h-12 px-3 border-b border-border">
-          <button
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setSettingsPage(null)}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </button>
+        <div data-tauri-drag-region className="flex items-center justify-center h-12 px-3 border-b border-border">
           <h2 className="text-sm font-medium">Memory</h2>
         </div>
         <div className="px-2 space-y-1 w-64">
@@ -163,13 +150,16 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen bg-sidebar overflow-hidden">
-      <LeftSidebar />
+      <IconRail />
       {settingsPage === "skills" ? (
         <SettingsSkillsPage />
       ) : settingsPage === "memory" ? (
         <SettingsMemoryPage />
+      ) : settingsPage === "settings" ? (
+        <SettingsPage />
       ) : (
         <>
+          <LeftSidebar />
           <MainPanel />
           <ArtifactPanel />
           <RightSidebar />

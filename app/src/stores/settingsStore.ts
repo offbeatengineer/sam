@@ -15,15 +15,12 @@ function deriveArtifactsUrl(samUrl: string): string {
 
 interface SettingsStore {
   isLoaded: boolean;
-  settingsDialogOpen: boolean;
   samUrl: string;
   artifactsUrl: string;
   artifactsDir: string;
   connectionStatus: ConnectionStatus;
 
   loadSettings: () => Promise<void>;
-  openSettingsDialog: () => void;
-  closeSettingsDialog: () => void;
   setSamUrl: (url: string) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
   startConnectionPolling: () => void;
@@ -38,7 +35,6 @@ let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
 export const useSettingsStore = create<SettingsStore>()((set) => ({
   isLoaded: false,
-  settingsDialogOpen: false,
   samUrl: DEFAULT_SAM_URL,
   artifactsUrl: deriveArtifactsUrl(DEFAULT_SAM_URL),
   artifactsDir: DEFAULT_ARTIFACTS_DIR,
@@ -52,9 +48,6 @@ export const useSettingsStore = create<SettingsStore>()((set) => ({
       artifactsUrl: deriveArtifactsUrl((settings as any).samUrl ?? DEFAULT_SAM_URL),
     });
   },
-
-  openSettingsDialog: () => set({ settingsDialogOpen: true }),
-  closeSettingsDialog: () => set({ settingsDialogOpen: false }),
 
   setSamUrl: (url: string) => {
     set({ samUrl: url, artifactsUrl: deriveArtifactsUrl(url) });
