@@ -6,7 +6,7 @@ import { useSessionStore, useActiveEntries, useActiveStreaming, useStreamingTurn
 import { useUIStore } from "@/stores/uiStore";
 import type { SessionMessageEntry, ToolResultMessage } from "@/types/session";
 
-export function MessageList() {
+export function MessageList({ isReadOnly }: { isReadOnly?: boolean }) {
   const entries = useActiveEntries();
   const isStreaming = useActiveStreaming();
   const streamingTurn = useStreamingTurn();
@@ -50,7 +50,7 @@ export function MessageList() {
   }
 
   return (
-    <div className="flex-1 overflow-hidden" style={{ paddingBottom: `${inputHeight}px` }}>
+    <div className="flex-1 overflow-hidden" style={{ paddingBottom: isReadOnly ? undefined : `${inputHeight}px` }}>
       <ScrollArea className="h-full chat-scroll-area" viewportRef={scrollRef}>
         <div className="p-6 space-y-4">
           {entries.map((entry) => (
