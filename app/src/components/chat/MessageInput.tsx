@@ -188,10 +188,6 @@ export function MessageInput() {
           </div>
         </div>
       </div>
-
-      <p className="max-w-3xl mx-auto text-xs text-center text-muted-foreground mt-2">
-        AI can make mistakes. Please verify important information.
-      </p>
     </div>
   );
 }
