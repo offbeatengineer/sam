@@ -4,10 +4,21 @@ import { isConnected } from "@/lib/tauri";
 
 type ConnectionStatus = "unknown" | "connected" | "disconnected";
 
+function deriveArtifactsUrl(samUrl: string): string {
+  try {
+    const url = new URL(samUrl);
+    return `http://${url.hostname}:${DEFAULT_ARTIFACTS_PORT}`;
+  } catch {
+    return `http://127.0.0.1:${DEFAULT_ARTIFACTS_PORT}`;
+  }
+}
+
 interface SettingsStore {
   isLoaded: boolean;
   settingsDialogOpen: boolean;
   samUrl: string;
+  artifactsUrl: string;
+  artifactsDir: string;
   connectionStatus: ConnectionStatus;
 
   loadSettings: () => Promise<void>;
@@ -20,6 +31,8 @@ interface SettingsStore {
 }
 
 const DEFAULT_SAM_URL = "ws://127.0.0.1:9222";
+const DEFAULT_ARTIFACTS_PORT = 9223;
+const DEFAULT_ARTIFACTS_DIR = "~/.sam/artifacts/";
 
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -27,6 +40,8 @@ export const useSettingsStore = create<SettingsStore>()((set) => ({
   isLoaded: false,
   settingsDialogOpen: false,
   samUrl: DEFAULT_SAM_URL,
+  artifactsUrl: deriveArtifactsUrl(DEFAULT_SAM_URL),
+  artifactsDir: DEFAULT_ARTIFACTS_DIR,
   connectionStatus: "unknown",
 
   loadSettings: async () => {
@@ -34,6 +49,7 @@ export const useSettingsStore = create<SettingsStore>()((set) => ({
     set({
       isLoaded: true,
       samUrl: (settings as any).samUrl ?? DEFAULT_SAM_URL,
+      artifactsUrl: deriveArtifactsUrl((settings as any).samUrl ?? DEFAULT_SAM_URL),
     });
   },
 
@@ -41,7 +57,7 @@ export const useSettingsStore = create<SettingsStore>()((set) => ({
   closeSettingsDialog: () => set({ settingsDialogOpen: false }),
 
   setSamUrl: (url: string) => {
-    set({ samUrl: url });
+    set({ samUrl: url, artifactsUrl: deriveArtifactsUrl(url) });
     // Persist
     saveSettings({ samUrl: url } as any).catch(console.error);
   },

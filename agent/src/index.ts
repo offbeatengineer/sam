@@ -7,6 +7,9 @@ import { PulseChannel } from "./channels/pulse-channel.js";
 import { AppChannel } from "./channels/app-channel.js";
 import { CliTranscriber } from "./transcriber.js";
 import { MemoryStore } from "./memory/store.js";
+import { ArtifactsServer } from "./artifacts-server.js";
+import { SAM_DIR } from "./config.js";
+import { resolve } from "node:path";
 
 async function main() {
   const config = loadConfig();
@@ -33,6 +36,7 @@ async function main() {
 
   let discord: DiscordChannel | undefined;
   let appChannel: AppChannel | undefined;
+  let artifactsServer: ArtifactsServer | undefined;
 
   // Start Discord channel if configured
   if (config.discord) {
@@ -69,10 +73,21 @@ async function main() {
     await appChannel.start();
   }
 
+  // Start artifacts server if configured
+  if (config.artifacts?.enabled) {
+    artifactsServer = new ArtifactsServer({
+      port: config.artifacts.port,
+      host: config.artifacts.host ?? "127.0.0.1",
+      rootDir: resolve(SAM_DIR, "artifacts"),
+    });
+    await artifactsServer.start();
+  }
+
   console.log("Sam is running.");
 
   const shutdown = async () => {
     console.log("Shutting down...");
+    if (artifactsServer) await artifactsServer.stop();
     if (appChannel) await appChannel.stop();
     await dispatcher.shutdown();
   };
