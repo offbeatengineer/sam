@@ -1,120 +1,83 @@
-import { useMemo } from "react";
-import { FileText, Image, FileCode } from "lucide-react";
+import { useEffect } from "react";
+import { FileText, Image, FileCode, Globe, Database, File } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
-import { useSessionStore } from "@/stores/sessionStore";
+import { useArtifactsStore, type ArtifactFileEntry } from "@/stores/artifactsStore";
 import { useUIStore } from "@/stores/uiStore";
-import type { SessionEntry, SessionMessageEntry, ToolResultMessage } from "@/types/session";
 
-interface Artifact {
-  id: string;
-  name: string;
-  type: "file" | "image" | "chart" | "other";
-  path?: string;
-}
+function getFileIcon(entry: ArtifactFileEntry) {
+  const ext = entry.name.split(".").pop()?.toLowerCase() || "";
 
-const FILE_CREATING_TOOLS = ["Write", "Edit", "NotebookEdit"];
-
-function getArtifactType(filePath: string): Artifact["type"] {
-  const ext = filePath.split(".").pop()?.toLowerCase();
-  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"].includes(ext || "")) {
-    return "image";
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"].includes(ext)) {
+    return <Image className="h-4 w-4 text-green-500" />;
   }
-  return "file";
-}
-
-function getFileIcon(type: Artifact["type"], path: string) {
-  if (type === "image") {
-    return <Image className="h-4 w-4 text-muted-foreground" />;
+  if (["html", "htm"].includes(ext)) {
+    return <Globe className="h-4 w-4 text-blue-500" />;
   }
-  const ext = path.split(".").pop()?.toLowerCase();
-  const codeExtensions = [
-    "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "c", "cpp", "h",
-    "css", "scss", "html", "json", "yaml", "yml", "toml", "xml"
-  ];
-  if (codeExtensions.includes(ext || "")) {
-    return <FileCode className="h-4 w-4 text-muted-foreground" />;
+  if (["json", "csv", "yaml", "yml", "toml", "xml"].includes(ext)) {
+    return <Database className="h-4 w-4 text-yellow-500" />;
   }
-  return <FileText className="h-4 w-4 text-muted-foreground" />;
-}
-
-function extractArtifactsFromEntries(entries: SessionEntry[]): Artifact[] {
-  const artifacts: Artifact[] = [];
-  const seen = new Set<string>();
-
-  for (const entry of entries) {
-    if (entry.type !== "message") continue;
-    const msg = (entry as SessionMessageEntry).message;
-
-    // Check toolResult entries for file-creating tools
-    if (msg.role === "toolResult") {
-      const tr = msg as ToolResultMessage;
-      if (!tr.isError && FILE_CREATING_TOOLS.includes(tr.toolName)) {
-        const details = tr.details as Record<string, unknown> | undefined;
-        const filePath = (details?.file_path ?? details?.notebook_path) as string | undefined;
-        if (filePath && !seen.has(filePath)) {
-          seen.add(filePath);
-          artifacts.push({
-            id: tr.toolCallId,
-            name: filePath.split("/").pop() || filePath,
-            path: filePath,
-            type: getArtifactType(filePath),
-          });
-        }
-      }
-    }
-
-    // Check assistant messages for tool calls with file paths
-    if (msg.role === "assistant") {
-      for (const block of msg.content) {
-        if (block.type === "toolCall" && FILE_CREATING_TOOLS.includes(block.name)) {
-          const filePath = (block.arguments?.file_path ?? block.arguments?.notebook_path) as string | undefined;
-          if (filePath && !seen.has(filePath)) {
-            seen.add(filePath);
-            artifacts.push({
-              id: block.id,
-              name: filePath.split("/").pop() || filePath,
-              path: filePath,
-              type: getArtifactType(filePath),
-            });
-          }
-        }
-      }
-    }
+  if (["ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "c", "cpp", "h", "css", "scss"].includes(ext)) {
+    return <FileCode className="h-4 w-4 text-purple-500" />;
   }
-  return artifacts;
+  if (["md", "markdown", "mdx"].includes(ext)) {
+    return <FileText className="h-4 w-4 text-orange-500" />;
+  }
+
+  return <File className="h-4 w-4 text-muted-foreground" />;
 }
 
 export function ArtifactsSection() {
-  const entries = useSessionStore((state) => state.activeEntries);
-  const setSelectedArtifact = useUIStore((state) => state.setSelectedArtifact);
+  const files = useArtifactsStore((s) => s.files);
+  const fetchFiles = useArtifactsStore((s) => s.fetchFiles);
+  const initHomeDir = useArtifactsStore((s) => s.initHomeDir);
+  const homeDir = useArtifactsStore((s) => s.homeDir);
+  const setSelectedArtifact = useUIStore((s) => s.setSelectedArtifact);
 
-  const artifacts = useMemo(() => extractArtifactsFromEntries(entries), [entries]);
+  useEffect(() => {
+    initHomeDir();
+    fetchFiles();
+  }, [initHomeDir, fetchFiles]);
+
+  const displayFiles = files.filter((f) => !f.isDirectory);
+
+  const handleClick = (entry: ArtifactFileEntry) => {
+    const fullPath = homeDir
+      ? `${homeDir}/.sam/artifacts/${entry.path}`
+      : `~/.sam/artifacts/${entry.path}`;
+
+    setSelectedArtifact({
+      id: entry.path,
+      name: entry.name,
+      type: "file",
+      path: fullPath,
+    });
+  };
 
   return (
     <Collapsible defaultOpen>
       <CollapsibleTrigger className="text-sm font-medium">
-        Artifacts {artifacts.length > 0 && `(${artifacts.length})`}
+        Artifacts {displayFiles.length > 0 && `(${displayFiles.length})`}
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="mt-3">
-          {artifacts.length === 0 ? (
+          {displayFiles.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              Files created during the conversation will appear here.
+              Files in ~/.sam/artifacts/ will appear here.
             </p>
           ) : (
             <div className="space-y-1">
-              {artifacts.map((artifact) => (
+              {displayFiles.map((entry) => (
                 <button
-                  key={artifact.id}
-                  onClick={() => setSelectedArtifact(artifact)}
+                  key={entry.path}
+                  onClick={() => handleClick(entry)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-sm hover:bg-accent transition-colors"
                 >
-                  {getFileIcon(artifact.type, artifact.path || "")}
-                  <span className="truncate flex-1">{artifact.name}</span>
+                  {getFileIcon(entry)}
+                  <span className="truncate flex-1">{entry.name}</span>
                 </button>
               ))}
             </div>

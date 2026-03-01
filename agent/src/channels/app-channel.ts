@@ -472,17 +472,38 @@ export class AppChannel {
       }
 
       if (event.type === "tool_execution_end") {
+        const resultObj = event.result;
+        const details = resultObj && typeof resultObj === "object" && "details" in resultObj
+          ? (resultObj as any).details
+          : undefined;
+        const resultText = typeof resultObj === "string"
+          ? resultObj
+          : resultObj && typeof resultObj === "object" && "content" in resultObj
+            ? JSON.stringify(resultObj)
+            : JSON.stringify(resultObj ?? "");
         this.sendTo(ws, {
           type: "tool_end",
           conversationId,
           toolCallId: event.toolCallId ?? "",
           toolName: event.toolName ?? "",
-          result: typeof event.result === "string" ? event.result : JSON.stringify(event.result ?? ""),
+          result: resultText,
           isError: event.isError ?? false,
+          ...(details !== undefined ? { details } : {}),
         });
         return;
       }
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Broadcast to all connected clients
+  // ---------------------------------------------------------------------------
+
+  broadcastArtifactsChanged(event: string, path: string): void {
+    const msg: AppResponse = { type: "artifacts_changed", event, path };
+    for (const ws of this.clients) {
+      this.sendTo(ws, msg);
+    }
   }
 
   // ---------------------------------------------------------------------------

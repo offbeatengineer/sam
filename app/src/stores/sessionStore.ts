@@ -24,6 +24,7 @@ export interface StreamingTurn {
     args?: unknown;
     result?: string;
     isError?: boolean;
+    details?: unknown;
   }>;
 }
 
@@ -109,7 +110,7 @@ interface SessionState {
   completeThinking: () => void;
   addToolStart: (toolCallId: string, toolName: string, args: unknown) => void;
   updateTool: (toolCallId: string, partialResult: string) => void;
-  endTool: (toolCallId: string, result: string, isError: boolean) => void;
+  endTool: (toolCallId: string, result: string, isError: boolean, details?: unknown) => void;
   endStreaming: () => void;
 
   // Internal
@@ -309,7 +310,7 @@ export const useSessionStore = create<SessionState>()(
       });
     },
 
-    endTool: (toolCallId: string, result: string, isError: boolean) => {
+    endTool: (toolCallId: string, result: string, isError: boolean, details?: unknown) => {
       set((state) => {
         if (!state.streamingTurn) return state;
         return {
@@ -317,7 +318,7 @@ export const useSessionStore = create<SessionState>()(
             ...state.streamingTurn,
             toolExecutions: state.streamingTurn.toolExecutions.map((t) =>
               t.id === toolCallId
-                ? { ...t, status: isError ? "error" as const : "success" as const, result, isError }
+                ? { ...t, status: isError ? "error" as const : "success" as const, result, isError, ...(details !== undefined ? { details } : {}) }
                 : t
             ),
           },

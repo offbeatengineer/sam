@@ -19,6 +19,7 @@ import { SAM_DIR, type SamConfig } from "./config.js";
 import { createWebSearchTool } from "./tools/web-search.js";
 import { createWebFetchTool } from "./tools/web-fetch.js";
 import { createMemorySaveTool, createMemoryRecallTool, createMemoryUpdateTool, createMemoryForgetTool } from "./tools/memory.js";
+import { createReportArtifactTool } from "./tools/report-artifact.js";
 import type { SessionKey } from "./types.js";
 import { resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -131,6 +132,7 @@ export async function createSession(config: SamConfig, key: SessionKey) {
   const customTools = [
     createWebSearchTool(config.tools?.webSearch?.apiKey),
     createWebFetchTool(),
+    createReportArtifactTool(),
   ];
 
   // Add memory tools if enabled (default: true)

@@ -14,6 +14,7 @@ import type {
 } from "@/types/session";
 import { ThinkingDisplay } from "./ThinkingDisplay";
 import { ToolCard } from "./ToolCard";
+import { ArtifactCard } from "./ArtifactCard";
 
 interface MessageEntryViewProps {
   entry: SessionMessageEntry;
@@ -107,6 +108,15 @@ function AssistantMessageView({
         if (block.type === "toolCall") {
           const tc = block as ToolCall;
           const result = toolResults?.get(tc.id);
+
+          // Render ArtifactCard for report_artifact tool calls
+          if (tc.name === "report_artifact" && result && !result.isError) {
+            const details = result.details as { path: string; title: string; description?: string; type: string } | undefined;
+            if (details) {
+              return <ArtifactCard key={`artifact-${tc.id}`} details={details} />;
+            }
+          }
+
           const resultText = result
             ? result.content
                 .filter((c): c is TextContent => c.type === "text")
