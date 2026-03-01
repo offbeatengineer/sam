@@ -168,7 +168,7 @@ export function SkillFilesPanel({ skillPath, skillName, onFileClick, activeFileP
   return (
     <div className="h-full flex flex-col bg-sidebar border-l border-border">
       {/* Header */}
-      <div className="h-12 px-4 flex items-center border-b border-border">
+      <div data-tauri-drag-region className="h-12 px-4 flex items-center border-b border-border">
         <h3 className="text-sm font-medium truncate">{skillName}</h3>
       </div>
 

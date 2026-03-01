@@ -146,7 +146,7 @@ export function SkillEditor({ skillId }: SkillEditorProps) {
       {/* Main editor area */}
       <div className="flex-1 flex flex-col min-w-0 bg-sidebar">
         {/* Header */}
-        <div className="h-12 px-4 flex items-center border-b border-border">
+        <div data-tauri-drag-region className="h-12 px-4 flex items-center border-b border-border">
           <div className="flex items-center gap-3 min-w-0">
             <h2 className="text-sm font-medium truncate">{isSkillMd ? (name || skill.name) : activeFileName}</h2>
             {skill.isSystem && (

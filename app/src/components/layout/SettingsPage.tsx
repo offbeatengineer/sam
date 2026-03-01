@@ -41,7 +41,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-background">
-      <div data-tauri-drag-region className="flex items-center h-12 px-4 border-b border-border shrink-0">
+      <div data-tauri-drag-region className="flex items-center justify-center h-12 px-4 border-b border-border shrink-0">
         <h2 className="text-sm font-medium">Settings</h2>
       </div>
       <div className="flex-1 flex items-start justify-center p-8 overflow-auto">

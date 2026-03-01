@@ -67,7 +67,7 @@ export function MemoryDetail() {
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-sidebar">
       {/* Header */}
-      <div className="h-12 px-4 flex items-center justify-between border-b border-border">
+      <div data-tauri-drag-region className="h-12 px-4 flex items-center justify-between border-b border-border">
         <h2 className="text-sm font-medium truncate">Memory Detail</h2>
         {!isEditing && (
           <div className="flex items-center gap-1">
