@@ -47,6 +47,11 @@ export interface SamConfig {
   tools?: {
     webSearch?: { apiKey?: string };
   };
+  artifacts?: {
+    enabled: boolean;
+    port: number;
+    host?: string;
+  };
   memory?: MemoryConfig;
   pulse?: {
     enabled: boolean;
@@ -113,6 +118,11 @@ model:
 #   port: 9222
 #   host: 127.0.0.1
 
+# artifacts:
+#   enabled: true
+#   port: 9223
+#   host: 127.0.0.1
+
 # tools:
 #   webSearch:
 #     apiKey: ""  # or set BRAVE_API_KEY env var
@@ -136,6 +146,7 @@ export function ensureSamDir(): void {
   mkdirSync(resolve(SAM_DIR, "skills"), { recursive: true });
   mkdirSync(resolve(SAM_DIR, "memory"), { recursive: true });
   mkdirSync(resolve(SAM_DIR, "models"), { recursive: true });
+  mkdirSync(resolve(SAM_DIR, "artifacts"), { recursive: true });
 
   const configPath = resolve(SAM_DIR, "config.yaml");
   if (!existsSync(configPath)) {
@@ -180,6 +191,16 @@ export function loadConfig(): SamConfig {
     ? { enabled: true as const, port: yaml.app?.port ?? 9222, host: yaml.app?.host }
     : undefined;
 
+  // Artifacts server config — defaults to enabled when app channel is enabled
+  const artifactsEnabled = yaml.artifacts?.enabled ?? appEnabled;
+  const artifactsConfig = artifactsEnabled
+    ? {
+        enabled: true as const,
+        port: yaml.artifacts?.port ?? (appConfig?.port ? appConfig.port + 1 : 9223),
+        host: yaml.artifacts?.host ?? appConfig?.host,
+      }
+    : undefined;
+
   // At least one channel must be configured
   if (!discordToken && !appEnabled) {
     throw new Error(
@@ -192,6 +213,7 @@ export function loadConfig(): SamConfig {
       ? { token: discordToken, allowedChannelIds: yaml.discord?.allowedChannelIds }
       : undefined,
     app: appConfig,
+    artifacts: artifactsConfig,
     model: {
       provider: process.env.MODEL_PROVIDER ?? yaml.model?.provider ?? "anthropic",
       id: process.env.MODEL_ID ?? yaml.model?.id ?? "claude-sonnet-4-20250514",

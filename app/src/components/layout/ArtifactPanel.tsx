@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, ExternalLink, AlertCircle, Loader2, FileText, Image, FileCode, RotateCw } from "lucide-react";
+import { X, ExternalLink, AlertCircle, Loader2, FileText, Image, FileCode, RotateCw, Eye, Code } from "lucide-react";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -9,6 +9,7 @@ import rehypeRaw from "rehype-raw";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUIStore } from "@/stores/uiStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { cn } from "@/lib/utils";
 
 type LoadingState = "loading" | "success" | "error";
@@ -25,6 +26,21 @@ function isMarkdownFile(path: string): boolean {
 function isImageFile(path: string): boolean {
   const ext = getFileExtension(path);
   return ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"].includes(ext);
+}
+
+function isHtmlFile(path: string): boolean {
+  return getFileExtension(path) === "html";
+}
+
+/**
+ * Check if a file path is under the artifacts directory (~/.sam/artifacts/).
+ * Handles both expanded home paths and the tilde shorthand.
+ */
+function isArtifactPath(path: string, artifactsDir: string): boolean {
+  // Normalize: the artifactsDir from settings is "~/.sam/artifacts/"
+  // The actual file path will have the home dir expanded
+  const normalizedDir = artifactsDir.replace(/^~/, "");
+  return path.includes(normalizedDir) || path.includes("/.sam/artifacts/");
 }
 
 // Whitelist of safe HTML elements to allow in markdown
@@ -89,11 +105,15 @@ function getFileIcon(path: string) {
   return <FileText className="h-4 w-4 text-muted-foreground" />;
 }
 
+type ViewMode = "preview" | "code";
+
 export function ArtifactPanel() {
   const { selectedArtifact, setSelectedArtifact } = useUIStore();
+  const { artifactsUrl, artifactsDir } = useSettingsStore();
   const [content, setContent] = useState<string>("");
   const [loadingState, setLoadingState] = useState<LoadingState>("loading");
   const [error, setError] = useState<string>("");
+  const [viewMode, setViewMode] = useState<ViewMode>("preview");
 
   // Load file content
   useEffect(() => {
@@ -162,6 +182,21 @@ export function ArtifactPanel() {
   const ext = getFileExtension(selectedArtifact?.path || "");
   const isMarkdown = isMarkdownFile(selectedArtifact?.path || "");
   const isImage = isImageFile(selectedArtifact?.path || "");
+  const isHtml = isHtmlFile(selectedArtifact?.path || "");
+  const isArtifact = isArtifactPath(selectedArtifact?.path || "", artifactsDir);
+  const canPreview = isHtml && isArtifact;
+
+  // Compute iframe URL for HTML artifacts
+  const iframeUrl = canPreview && selectedArtifact?.path
+    ? (() => {
+        // Extract the relative path after .sam/artifacts/
+        const marker = "/.sam/artifacts/";
+        const idx = selectedArtifact.path.indexOf(marker);
+        if (idx === -1) return null;
+        const relativePath = selectedArtifact.path.slice(idx + marker.length);
+        return `${artifactsUrl}/${relativePath}`;
+      })()
+    : null;
 
   return (
     <div
@@ -187,6 +222,17 @@ export function ArtifactPanel() {
               </span>
             </div>
             <div className="flex items-center gap-1">
+              {canPreview && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setViewMode(viewMode === "preview" ? "code" : "preview")}
+                  className="h-8 w-8"
+                  title={viewMode === "preview" ? "View source" : "View preview"}
+                >
+                  {viewMode === "preview" ? <Code className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -225,6 +271,16 @@ export function ArtifactPanel() {
           </div>
 
           {/* Content */}
+          {canPreview && viewMode === "preview" && iframeUrl ? (
+            <div className="flex-1 min-h-0">
+              <iframe
+                src={iframeUrl}
+                sandbox="allow-scripts allow-modals"
+                className="w-full h-full border-0"
+                title={selectedArtifact.name}
+              />
+            </div>
+          ) : (
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-4">
               {loadingState === "loading" && (
@@ -291,6 +347,7 @@ export function ArtifactPanel() {
               )}
             </div>
           </ScrollArea>
+          )}
         </>
       )}
     </div>

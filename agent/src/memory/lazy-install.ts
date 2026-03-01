@@ -65,8 +65,12 @@ async function doImport<T>(packageName: string): Promise<T> {
   console.log(`[memory] Installing ${packageName}... this may take a moment.`);
   ensureDepsDir();
 
+  // Some packages (e.g. @lancedb/lancedb → apache-arrow) need tslib at runtime
+  // but npm doesn't always hoist it. Install it alongside to be safe.
+  const extras = packageName === "@lancedb/lancedb" ? " tslib" : "";
+
   try {
-    execSync(`npm install ${packageName}`, {
+    execSync(`npm install ${packageName}${extras}`, {
       cwd: DEPS_DIR,
       stdio: "pipe",
       timeout: 120_000,
