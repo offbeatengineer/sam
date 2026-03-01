@@ -30,7 +30,7 @@ export type AppResponse =
   // Tool execution
   | { type: "tool_start"; conversationId: string; toolCallId: string; toolName: string; args: any }
   | { type: "tool_update"; conversationId: string; toolCallId: string; toolName: string; partialResult: string }
-  | { type: "tool_end"; conversationId: string; toolCallId: string; toolName: string; result: string; isError: boolean }
+  | { type: "tool_end"; conversationId: string; toolCallId: string; toolName: string; result: string; isError: boolean; details?: unknown }
   // Session lifecycle
   | { type: "session_created"; conversationId: string }
   | { type: "session_closed"; conversationId: string }
@@ -45,7 +45,9 @@ export type AppResponse =
   | { type: "memory_save_result"; requestId: string; id: string; text: string; tags: string[] }
   | { type: "memory_update_result"; requestId: string; success: boolean }
   | { type: "memory_delete_result"; requestId: string; success: boolean }
-  | { type: "memory_error"; requestId: string; error: string };
+  | { type: "memory_error"; requestId: string; error: string }
+  // Artifacts
+  | { type: "artifacts_changed"; event: string; path: string };
 
 /** Session metadata returned by list_sessions */
 export interface SessionInfoDTO {

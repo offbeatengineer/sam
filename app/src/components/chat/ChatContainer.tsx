@@ -3,6 +3,7 @@ import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import { useSessionStore, sessionIdFor } from "@/stores/sessionStore";
+import { useArtifactsStore } from "@/stores/artifactsStore";
 import { useTauriEvents } from "@/hooks/useTauriEvents";
 import { showTaskNotification } from "@/lib/notifications";
 import type { AppResponse } from "@/types/chat";
@@ -15,6 +16,12 @@ export function ChatContainer() {
 
     // Session browsing responses are handled by sessionStore's global listener
     if (response.type === "sessions_list" || response.type === "session_entries") {
+      return;
+    }
+
+    // Artifacts change events — no conversationId needed
+    if (response.type === "artifacts_changed") {
+      useArtifactsStore.getState().scheduleRefresh();
       return;
     }
 
@@ -67,6 +74,7 @@ export function ChatContainer() {
             response.toolCallId,
             response.result ?? "",
             response.isError ?? false,
+            response.details,
           );
         }
         break;

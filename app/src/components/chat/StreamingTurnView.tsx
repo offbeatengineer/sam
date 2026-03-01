@@ -2,6 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ThinkingDisplay } from "./ThinkingDisplay";
 import { ToolCard } from "./ToolCard";
+import { ArtifactCard } from "./ArtifactCard";
 import type { StreamingTurn } from "@/stores/sessionStore";
 
 interface StreamingTurnViewProps {
@@ -37,19 +38,31 @@ export function StreamingTurnView({ turn }: StreamingTurnViewProps) {
       })}
 
       {/* Tool executions — inline with expand/collapse */}
-      {turn.toolExecutions.map((tool) => (
-        <ToolCard
-          key={tool.id}
-          tool={{
-            id: tool.id,
-            name: tool.name,
-            status: tool.status === "running" ? "running" : tool.status === "error" ? "error" : "success",
-            expanded: false,
-            input: tool.args as Record<string, unknown> | undefined,
-            output: tool.result,
-          }}
-        />
-      ))}
+      {turn.toolExecutions.map((tool) => {
+        // Render ArtifactCard for completed report_artifact tool calls
+        if (
+          tool.name === "report_artifact" &&
+          tool.status !== "running" &&
+          tool.details
+        ) {
+          const details = tool.details as { path: string; title: string; description?: string; type: string };
+          return <ArtifactCard key={tool.id} details={details} />;
+        }
+
+        return (
+          <ToolCard
+            key={tool.id}
+            tool={{
+              id: tool.id,
+              name: tool.name,
+              status: tool.status === "running" ? "running" : tool.status === "error" ? "error" : "success",
+              expanded: false,
+              input: tool.args as Record<string, unknown> | undefined,
+              output: tool.result,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }

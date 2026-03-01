@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFile, stat } from "node:fs/promises";
-import { resolve, extname, relative, normalize } from "node:path";
+import { readFile, stat, readdir } from "node:fs/promises";
+import { resolve, extname, relative, normalize, join } from "node:path";
 import { watch } from "chokidar";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -42,10 +42,19 @@ function liveReloadScript(wsPort: number, wsHost: string): string {
 // ArtifactsServer
 // ---------------------------------------------------------------------------
 
+export interface ArtifactFileEntry {
+  path: string;
+  name: string;
+  size: number;
+  mtime: string;
+  isDirectory: boolean;
+}
+
 export interface ArtifactsServerConfig {
   port: number;
   host: string;
   rootDir: string;
+  onChange?: (event: string, path: string) => void;
 }
 
 export class ArtifactsServer {
@@ -74,12 +83,13 @@ export class ArtifactsServer {
       ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
     });
-    this.watcher.on("all", (_event, changedPath) => {
+    this.watcher.on("all", (event, changedPath) => {
       const rel = relative(rootDir, changedPath as string);
       const msg = JSON.stringify({ type: "reload", path: rel });
       for (const ws of this.wsClients) {
         if (ws.readyState === ws.OPEN) ws.send(msg);
       }
+      this.config.onChange?.(event, rel);
     });
 
     return new Promise((resolve, reject) => {
@@ -119,6 +129,28 @@ export class ArtifactsServer {
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
     let pathname = decodeURIComponent(url.pathname);
+
+    // /__files directory listing endpoint
+    if (pathname === "/__files") {
+      try {
+        const entries = await this.walkDir(this.config.rootDir, "");
+        entries.sort((a, b) => new Date(b.mtime).getTime() - new Date(a.mtime).getTime());
+        const body = JSON.stringify(entries);
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "no-store, no-cache",
+        });
+        res.end(body);
+      } catch {
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end("[]");
+      }
+      return;
+    }
 
     // Resolve to filesystem path and guard against path traversal
     const filePath = resolve(this.config.rootDir, "." + normalize("/" + pathname));
@@ -164,5 +196,45 @@ export class ArtifactsServer {
       res.writeHead(404, { "Content-Type": "text/plain" });
       res.end("Not Found");
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Recursive directory walker for /__files
+  // ---------------------------------------------------------------------------
+
+  private async walkDir(rootDir: string, prefix: string): Promise<ArtifactFileEntry[]> {
+    const entries: ArtifactFileEntry[] = [];
+    const dirPath = prefix ? join(rootDir, prefix) : rootDir;
+
+    let items: string[];
+    try {
+      items = await readdir(dirPath);
+    } catch {
+      return entries;
+    }
+
+    for (const name of items) {
+      if (name.startsWith(".")) continue;
+      const fullPath = join(dirPath, name);
+      const relPath = prefix ? `${prefix}/${name}` : name;
+      try {
+        const st = await stat(fullPath);
+        entries.push({
+          path: relPath,
+          name,
+          size: st.size,
+          mtime: st.mtime.toISOString(),
+          isDirectory: st.isDirectory(),
+        });
+        if (st.isDirectory()) {
+          const children = await this.walkDir(rootDir, relPath);
+          entries.push(...children);
+        }
+      } catch {
+        // skip inaccessible files
+      }
+    }
+
+    return entries;
   }
 }

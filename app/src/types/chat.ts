@@ -33,6 +33,10 @@ export interface AppResponse {
   partialResult?: string;
   result?: string;
   isError?: boolean;
+  details?: unknown;
+  // artifacts
+  event?: string;
+  path?: string;
   // error
   error?: string;
   // session browsing fields

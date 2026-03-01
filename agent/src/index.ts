@@ -79,6 +79,9 @@ async function main() {
       port: config.artifacts.port,
       host: config.artifacts.host ?? "127.0.0.1",
       rootDir: resolve(SAM_DIR, "artifacts"),
+      onChange: (event, path) => {
+        appChannel?.broadcastArtifactsChanged(event, path);
+      },
     });
     await artifactsServer.start();
   }
