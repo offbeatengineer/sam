@@ -36,6 +36,11 @@ function buildContent(tool: ToolExecution): string {
     case "write": {
       const path = (args?.file_path ?? args?.path) as string | undefined;
       if (path) parts.push(`write ${shortenPath(path)}`);
+      const content = args?.content as string | undefined;
+      if (content) {
+        parts.push("");
+        parts.push(content);
+      }
       break;
     }
     case "edit": {
