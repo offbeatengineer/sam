@@ -121,17 +121,8 @@ export function ChatContainer() {
   return (
     <div className="relative flex flex-col h-full overflow-hidden">
       <ChatHeader />
-      <MessageList />
+      <MessageList isReadOnly={isReadOnly} />
       {!isReadOnly && <MessageInput />}
-      {isReadOnly && (
-        <div className="absolute bottom-4 left-0 right-0 z-10 px-6">
-          <div className="max-w-3xl mx-auto text-center">
-            <span className="text-xs text-muted-foreground bg-muted px-3 py-1.5 rounded-full">
-              Read-only session ({activeSession?.channelId})
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
