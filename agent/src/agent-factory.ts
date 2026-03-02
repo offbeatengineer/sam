@@ -116,7 +116,7 @@ export async function createSession(config: SamConfig, key: SessionKey) {
   const sessionDir = resolve(config.sessions, key.channelId, key.conversationId);
   mkdirSync(sessionDir, { recursive: true });
 
-  const authStorage = new AuthStorage(resolve(SAM_DIR, "auth.json"));
+  const authStorage = AuthStorage.create(resolve(SAM_DIR, "auth.json"));
   if (config.model.apiKey) {
     authStorage.setRuntimeApiKey(config.model.provider, config.model.apiKey);
   }
