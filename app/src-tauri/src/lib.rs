@@ -79,7 +79,20 @@ async fn establish_connection(
         return Ok(());
     }
 
-    let (ws_stream, _) = connect_async(url)
+    // Normalize URL: ensure path "/" before query params so tungstenite
+    // sends "GET /?... HTTP/1.1" instead of "GET ?... HTTP/1.1" (400 Bad Request).
+    let normalized = if let Some(idx) = url.find('?') {
+        let before_q = &url[..idx];
+        if before_q.ends_with('/') {
+            url.to_string()
+        } else {
+            format!("{}/{}", before_q, &url[idx..])
+        }
+    } else {
+        url.to_string()
+    };
+
+    let (ws_stream, _) = connect_async(&normalized)
         .await
         .map_err(|e| format!("Failed to connect to sam at {}: {}", url, e))?;
 

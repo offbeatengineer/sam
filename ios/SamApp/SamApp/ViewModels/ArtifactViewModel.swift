@@ -13,7 +13,7 @@ final class ArtifactViewModel {
         guard let baseURL = artifactsBaseURL else { return }
         isLoading = true
         do {
-            let url = baseURL.appendingPathComponent("__list__")
+            let url = baseURL.appendingPathComponent("__files")
             let (data, _) = try await URLSession.shared.data(from: url)
             let listing = try JSONDecoder().decode([ArtifactListEntry].self, from: data)
             await MainActor.run {
@@ -45,5 +45,6 @@ private struct ArtifactListEntry: Decodable {
     let name: String
     let path: String
     let size: Int?
+    let mtime: String?
     let isDirectory: Bool
 }
