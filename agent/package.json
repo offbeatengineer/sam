@@ -23,8 +23,8 @@
     "prepublishOnly": "tsc"
   },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.52.12",
-    "@mariozechner/pi-coding-agent": "^0.52.12",
+    "@mariozechner/pi-ai": "^0.55.3",
+    "@mariozechner/pi-coding-agent": "^0.55.3",
     "@mozilla/readability": "^0.6.0",
     "chokidar": "^4.0.0",
     "discord.js": "^14.25.1",
