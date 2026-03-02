@@ -14,6 +14,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
+import { readFileSync, existsSync } from "node:fs";
 import { getSystemPrompt } from "./system-prompt.js";
 import { SAM_DIR, type SamConfig } from "./config.js";
 import { createWebSearchTool } from "./tools/web-search.js";
@@ -78,9 +79,13 @@ function createTmuxSpawnHook(): (context: any) => any {
 
 export type { AgentSession } from "@mariozechner/pi-coding-agent";
 
-function createResourceLoader(cwd: string, systemPromptPath: string, skillsDir: string): ResourceLoader {
+function createResourceLoader(cwd: string, systemPromptPath: string, agentsPromptPath: string, skillsDir: string): ResourceLoader {
   const systemPrompt = getSystemPrompt(cwd, systemPromptPath);
   const runtime = createExtensionRuntime();
+
+  const agentsFiles = existsSync(agentsPromptPath)
+    ? [{ path: agentsPromptPath, content: readFileSync(agentsPromptPath, "utf-8") }]
+    : [];
 
   return {
     getExtensions: () => ({ extensions: [], errors: [], diagnostics: [], runtime }),
@@ -97,7 +102,7 @@ function createResourceLoader(cwd: string, systemPromptPath: string, skillsDir: 
     },
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
-    getAgentsFiles: () => ({ agentsFiles: [] }),
+    getAgentsFiles: () => ({ agentsFiles }),
     getSystemPrompt: () => systemPrompt,
     getAppendSystemPrompt: () => [],
     getPathMetadata: () => new Map(),
@@ -151,7 +156,7 @@ export async function createSession(config: SamConfig, key: SessionKey) {
     retry: { enabled: true, maxRetries: 3 },
   });
 
-  const resourceLoader = createResourceLoader(cwd, config.prompts.system, config.skills);
+  const resourceLoader = createResourceLoader(cwd, config.prompts.system, config.prompts.agents, config.skills);
 
   const { session } = await createAgentSession({
     cwd,
