@@ -40,6 +40,7 @@ export interface SamConfig {
   prompts: {
     system: string;
     pulse: string;
+    agents: string;
   };
   transcription?: {
     modelPath: string;
@@ -99,8 +100,9 @@ model:
 # sessions: ~/.sam/sessions
 
 # prompts:
-#   system: ~/.sam/prompts/system.md
-#   pulse: ~/.sam/prompts/pulse.md
+#   system: ~/.sam/prompts/SYSTEM.md
+#   pulse: ~/.sam/prompts/PULSE.md
+#   agents: ~/.sam/prompts/AGENTS.md
 
 # pulse:
 #   enabled: true
@@ -154,7 +156,7 @@ export function ensureSamDir(): void {
   }
 
   // Copy bundled prompts to ~/.sam/prompts/ on first run
-  for (const name of ["system.md", "pulse.md"]) {
+  for (const name of ["SYSTEM.md", "PULSE.md", "AGENTS.md"]) {
     const dest = resolve(SAM_DIR, "prompts", name);
     if (!existsSync(dest)) {
       const src = resolve(BUNDLED_PROMPTS_DIR, name);
@@ -224,8 +226,9 @@ export function loadConfig(): SamConfig {
     sessions: expandHome(yaml.sessions ?? resolve(SAM_DIR, "sessions")),
     skills: expandHome(yaml.skills ?? resolve(SAM_DIR, "skills")),
     prompts: {
-      system: expandHome(yaml.prompts?.system ?? resolve(SAM_DIR, "prompts", "system.md")),
-      pulse: expandHome(yaml.prompts?.pulse ?? resolve(SAM_DIR, "prompts", "pulse.md")),
+      system: expandHome(yaml.prompts?.system ?? resolve(SAM_DIR, "prompts", "SYSTEM.md")),
+      pulse: expandHome(yaml.prompts?.pulse ?? resolve(SAM_DIR, "prompts", "PULSE.md")),
+      agents: expandHome(yaml.prompts?.agents ?? resolve(SAM_DIR, "prompts", "AGENTS.md")),
     },
     transcription: yaml.transcription?.modelPath
       ? { modelPath: expandHome(yaml.transcription.modelPath) }
