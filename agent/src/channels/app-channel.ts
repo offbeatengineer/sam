@@ -105,6 +105,8 @@ export class AppChannel {
         return this.handleListSessions(ws, request);
       case "get_session_entries":
         return this.handleGetSessionEntries(ws, request);
+      case "rename_session":
+        return this.handleRenameSession(ws, request);
       case "memory_list":
       case "memory_search":
       case "memory_save":
@@ -320,6 +322,23 @@ export class AppChannel {
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
       this.sendTo(ws, { type: "error", error: `Failed to read session entries: ${errorText}` });
+    }
+  }
+
+  private async handleRenameSession(
+    ws: WebSocket,
+    request: Extract<AppRequest, { type: "rename_session" }>,
+  ): Promise<void> {
+    const { requestId, sessionPath, name } = request;
+
+    try {
+      const sessionDir = dirname(sessionPath);
+      const sm = SessionManager.open(sessionPath, sessionDir);
+      sm.appendSessionInfo(name);
+      this.sendTo(ws, { type: "rename_session_result", requestId, success: true });
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "error", error: `Failed to rename session: ${errorText}` });
     }
   }
 

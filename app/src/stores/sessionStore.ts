@@ -101,6 +101,7 @@ interface SessionState {
   loadSessionEntries: (path: string) => Promise<void>;
   createNewSession: () => string;
   refreshActiveSession: () => Promise<void>;
+  renameSession: (sessionPath: string, name: string) => Promise<void>;
 
   // Streaming
   setPendingUserMessage: (text: string) => void;
@@ -217,6 +218,21 @@ export const useSessionStore = create<SessionState>()(
 
       if (!activeSessionPath) return;
       await get().loadSessionEntries(activeSessionPath);
+    },
+
+    renameSession: async (sessionPath: string, name: string) => {
+      const response = await requestResponse({
+        type: "rename_session",
+        sessionPath,
+        name,
+      });
+      if (response.success) {
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.path === sessionPath ? { ...s, name } : s,
+          ),
+        }));
+      }
     },
 
     // Streaming

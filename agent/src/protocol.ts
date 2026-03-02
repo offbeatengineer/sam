@@ -10,6 +10,7 @@ export type AppRequest =
   // Session browsing
   | { type: "list_sessions"; requestId: string }
   | { type: "get_session_entries"; requestId: string; sessionPath: string }
+  | { type: "rename_session"; requestId: string; sessionPath: string; name: string }
   // Memory management
   | { type: "memory_list"; requestId: string; limit?: number; offset?: number }
   | { type: "memory_search"; requestId: string; query: string; limit?: number; tags?: string[] }
@@ -46,6 +47,8 @@ export type AppResponse =
   | { type: "memory_update_result"; requestId: string; success: boolean }
   | { type: "memory_delete_result"; requestId: string; success: boolean }
   | { type: "memory_error"; requestId: string; error: string }
+  // Session mutation
+  | { type: "rename_session_result"; requestId: string; success: boolean }
   // Artifacts
   | { type: "artifacts_changed"; event: string; path: string };
 
