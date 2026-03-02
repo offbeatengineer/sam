@@ -201,7 +201,20 @@ export const useSessionStore = create<SessionState>()(
     },
 
     refreshActiveSession: async () => {
-      const { activeSessionPath } = get();
+      let { activeSessionPath, activeSessionId } = get();
+
+      // New session: path unknown yet — discover it from the sessions list
+      if (!activeSessionPath && activeSessionId) {
+        await get().loadSessions();
+        const session = get().sessions.find(
+          (s) => sessionIdFromInfo(s) === activeSessionId,
+        );
+        if (session) {
+          activeSessionPath = session.path;
+          set({ activeSessionPath });
+        }
+      }
+
       if (!activeSessionPath) return;
       await get().loadSessionEntries(activeSessionPath);
     },
