@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let previewLineCount = 12
+private let collapsedLineCount = 3
 
 struct ToolCardCell: View {
     let tool: StreamingToolExecution
@@ -9,41 +9,28 @@ struct ToolCardCell: View {
     var body: some View {
         let content = Self.buildContent(tool)
         let lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let isLong = lines.count > previewLineCount
-        let displayLines = isExpanded || !isLong
+        let isLong = lines.count > collapsedLineCount
+        let displayLines = isExpanded
             ? lines
-            : Array(lines.prefix(previewLineCount))
-        let remainingCount = lines.count - previewLineCount
+            : Array(lines.prefix(collapsedLineCount))
+        let remainingCount = lines.count - collapsedLineCount
         let isRunning = !tool.isDone && !tool.isError
 
         HStack {
             VStack(alignment: .leading, spacing: 0) {
-                // Tap target — the entire card toggles expand/collapse
-                Button {
-                    guard isLong else { return }
-                    withAnimation { isExpanded.toggle() }
-                } label: {
-                    VStack(alignment: .leading, spacing: 0) {
-                        // First line — bold summary
-                        if let firstLine = displayLines.first {
-                            Text(firstLine)
-                                .font(.caption.monospaced().bold())
-                                .foregroundStyle(.primary)
-                        }
-
-                        // Remaining visible lines
-                        if displayLines.count > 1 {
-                            Text(displayLines.dropFirst().joined(separator: "\n"))
-                                .font(.caption.monospaced())
-                                .foregroundStyle(tool.isError ? .red : .secondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let firstLine = displayLines.first {
+                    Text(firstLine)
+                        .font(.caption.monospaced().bold())
+                        .foregroundStyle(.primary)
+                        .lineLimit(isExpanded ? nil : 1)
                 }
-                .buttonStyle(.plain)
-                .opacity(isRunning ? 0.7 : 1.0)
 
-                // "N more lines" indicator
+                if displayLines.count > 1 {
+                    Text(displayLines.dropFirst().joined(separator: "\n"))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(tool.isError ? (isExpanded ? .red : Color.red.opacity(0.6)) : (isExpanded ? .primary : .secondary))
+                }
+
                 if isLong && !isExpanded {
                     Text("... (\(remainingCount) more lines)")
                         .font(.caption.monospaced())
@@ -51,36 +38,40 @@ struct ToolCardCell: View {
                         .padding(.top, 2)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(isRunning ? 0.7 : 1.0)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(backgroundColor)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+            .onTapGesture { isExpanded.toggle() }
 
-            Spacer(minLength: 40)
         }
+        .transaction { $0.animation = nil }
     }
 
     private var backgroundColor: Color {
-        if tool.isError { return Color.red.opacity(0.08) }
+        if tool.isError { return Color.red.opacity(0.05) }
         if !tool.isDone { return Color.primary.opacity(0.04) }
         return Color.green.opacity(0.06)
     }
 
-    // MARK: - Content builder (mirrors desktop ToolCard.tsx buildContent)
+    // MARK: - Content builder
 
     static func buildContent(_ tool: StreamingToolExecution) -> String {
         var parts: [String] = []
         let args = tool.args.value as? [String: Any]
 
         switch tool.toolName {
-        case "bash":
+        case "bash", "Bash":
             if let cmd = args?["command"] as? String {
                 parts.append("$ \(cmd)")
             } else {
                 parts.append("bash")
             }
 
-        case "read":
+        case "read", "Read":
             let path = (args?["file_path"] ?? args?["path"]) as? String
             if let path {
                 parts.append("read \(shortenPath(path))")
@@ -88,7 +79,7 @@ struct ToolCardCell: View {
                 parts.append("read")
             }
 
-        case "write":
+        case "write", "Write":
             let path = (args?["file_path"] ?? args?["path"]) as? String
             if let path {
                 parts.append("write \(shortenPath(path))")
@@ -100,13 +91,30 @@ struct ToolCardCell: View {
                 parts.append(content)
             }
 
-        case "edit":
+        case "edit", "Edit":
             let path = (args?["file_path"] ?? args?["path"]) as? String
             if let path {
                 parts.append("edit \(shortenPath(path))")
             } else {
                 parts.append("edit")
             }
+
+        case "Grep", "grep":
+            let pattern = args?["pattern"] as? String ?? ""
+            let path = args?["path"] as? String
+            if let path {
+                parts.append("grep \(pattern) \(shortenPath(path))")
+            } else {
+                parts.append("grep \(pattern)")
+            }
+
+        case "Glob", "glob":
+            let pattern = args?["pattern"] as? String ?? ""
+            parts.append("glob \(pattern)")
+
+        case "Agent":
+            let desc = args?["description"] as? String ?? "subagent"
+            parts.append("agent: \(desc)")
 
         default:
             parts.append(tool.toolName)
@@ -118,11 +126,9 @@ struct ToolCardCell: View {
             }
         }
 
-        // Append output
         let output = tool.isDone ? tool.result : tool.partialResult
         if !output.isEmpty {
             if !parts.isEmpty { parts.append("") }
-            // Truncate very long output for display
             if output.count > 2000 {
                 parts.append(String(output.prefix(2000)) + "\n... (truncated)")
             } else {

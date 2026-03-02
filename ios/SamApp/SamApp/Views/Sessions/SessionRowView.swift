@@ -37,9 +37,7 @@ struct SessionRowView: View {
             Spacer()
 
             if isStreaming {
-                Circle()
-                    .fill(.blue)
-                    .frame(width: 8, height: 8)
+                PulsingDot()
             }
 
             channelDot
@@ -61,5 +59,20 @@ struct SessionRowView: View {
         case "pulse": return .orange
         default: return .gray
         }
+    }
+}
+
+// MARK: - Pulsing streaming dot
+
+private struct PulsingDot: View {
+    @State private var isPulsing = false
+
+    var body: some View {
+        Circle()
+            .fill(.blue)
+            .frame(width: 8, height: 8)
+            .opacity(isPulsing ? 0.4 : 1.0)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
+            .onAppear { isPulsing = true }
     }
 }

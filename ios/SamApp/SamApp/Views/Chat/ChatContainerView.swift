@@ -2,7 +2,13 @@ import SwiftUI
 
 struct ChatContainerView: View {
     @Environment(AppViewModel.self) private var appVM
-    let session: SessionInfo
+    let session: SessionInfo?
+
+    /// Whether this is the initial load (skip animation for scroll-to-bottom).
+    @State private var isInitialLoad = true
+
+    private var isNewChat: Bool { session == nil }
+    private var isReadOnly: Bool { session?.isReadOnly ?? false }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,24 +23,42 @@ struct ChatContainerView: View {
                     .padding()
                 }
                 .onChange(of: appVM.chatVM.chatItems.count) { _, _ in
-                    if let lastId = appVM.chatVM.chatItems.last?.id {
-                        withAnimation {
-                            proxy.scrollTo(lastId, anchor: .bottom)
-                        }
-                    }
+                    scrollToBottom(proxy: proxy)
+                }
+                .onAppear {
+                    // Jump to bottom immediately on first appear
+                    scrollToBottom(proxy: proxy)
                 }
             }
 
-            if session.isReadOnly {
+            if isReadOnly {
                 readOnlyBanner
             } else {
                 inputBar
             }
         }
-        .navigationTitle(session.displayName)
+        .navigationTitle(session?.displayName ?? "New Chat")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            await appVM.chatVM.selectSession(session, using: appVM)
+            if let session {
+                await appVM.chatVM.selectSession(session, using: appVM)
+            }
+            // After entries load, mark initial load done
+            try? await Task.sleep(for: .milliseconds(100))
+            isInitialLoad = false
+        }
+    }
+
+    // MARK: - Scroll
+
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        guard let lastId = appVM.chatVM.chatItems.last?.id else { return }
+        if isInitialLoad {
+            proxy.scrollTo(lastId, anchor: .bottom)
+        } else {
+            withAnimation(.easeOut(duration: 0.15)) {
+                proxy.scrollTo(lastId, anchor: .bottom)
+            }
         }
     }
 
@@ -86,9 +110,13 @@ struct ChatContainerView: View {
             TextField("Message...", text: $chatVM.inputText, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1...5)
+                .onSubmit {
+                    sendMessage()
+                }
 
             if appVM.chatVM.isStreaming {
                 Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     Task { await appVM.chatVM.abort(using: appVM) }
                 } label: {
                     Image(systemName: "stop.circle.fill")
@@ -97,7 +125,7 @@ struct ChatContainerView: View {
                 }
             } else {
                 Button {
-                    Task { await appVM.chatVM.sendMessage(using: appVM) }
+                    sendMessage()
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title2)
@@ -110,12 +138,17 @@ struct ChatContainerView: View {
         .background(.bar)
     }
 
+    private func sendMessage() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task { await appVM.chatVM.sendMessage(using: appVM) }
+    }
+
     // MARK: - Read-only banner
 
     private var readOnlyBanner: some View {
         HStack {
             Image(systemName: "eye")
-            Text("Read-only session (\(session.channelId))")
+            Text("Read-only session (\(session?.channelId ?? ""))")
         }
         .font(.caption)
         .foregroundStyle(.secondary)
