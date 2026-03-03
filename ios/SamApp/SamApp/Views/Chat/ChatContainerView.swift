@@ -1,40 +1,35 @@
 import SwiftUI
+import UIKit
+import ExyteChat
 
 struct ChatContainerView: View {
     @Environment(AppViewModel.self) private var appVM
     let session: SessionInfo?
 
-    /// Whether this is the initial load (skip animation for scroll-to-bottom).
-    @State private var isInitialLoad = true
-
     private var isNewChat: Bool { session == nil }
     private var isReadOnly: Bool { session?.isReadOnly ?? false }
 
+    /// Lookup dictionary for our custom cells, keyed by item ID.
+    private var chatItemsByID: [String: ChatMessageItem] {
+        Dictionary(appVM.chatVM.chatItems.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+    }
+
+    /// Convert our chat items to ExyteChat Messages.
+    private var exyteMessages: [ExyteChat.Message] {
+        appVM.chatVM.chatItems.map { $0.toExyteMessage() }
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(appVM.chatVM.chatItems) { item in
-                            chatCell(for: item)
-                                .id(item.id)
-                        }
-                    }
-                    .padding()
-                }
-                .onChange(of: appVM.chatVM.chatItems.count) { _, _ in
-                    scrollToBottom(proxy: proxy)
-                }
-                .onAppear {
-                    // Jump to bottom immediately on first appear
-                    scrollToBottom(proxy: proxy)
-                }
+        ZStack(alignment: .bottom) {
+            if isReadOnly {
+                readOnlyView
+            } else {
+                chatView
             }
 
-            if isReadOnly {
-                readOnlyBanner
-            } else {
-                inputBar
+            // Abort button overlay during streaming
+            if appVM.chatVM.isStreaming {
+                abortButton
             }
         }
         .navigationTitle(session?.displayName ?? "New Chat")
@@ -43,22 +38,47 @@ struct ChatContainerView: View {
             if let session {
                 await appVM.chatVM.selectSession(session, using: appVM)
             }
-            // After entries load, mark initial load done
-            try? await Task.sleep(for: .milliseconds(100))
-            isInitialLoad = false
         }
     }
 
-    // MARK: - Scroll
+    // MARK: - ExyteChat ChatView
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        guard let lastId = appVM.chatVM.chatItems.last?.id else { return }
-        if isInitialLoad {
-            proxy.scrollTo(lastId, anchor: .bottom)
-        } else {
-            withAnimation(.easeOut(duration: 0.15)) {
-                proxy.scrollTo(lastId, anchor: .bottom)
+    private var chatView: some View {
+        ChatView(messages: exyteMessages) { draft in
+            Task { await appVM.chatVM.sendMessage(draft: draft, using: appVM) }
+        } messageBuilder: { message, _, _, _, _, _, _ in
+            if let item = chatItemsByID[message.id] {
+                AnyView(
+                    chatCell(for: item)
+                        .padding(.vertical, 8)
+                )
+            } else {
+                AnyView(EmptyView())
             }
+        }
+        .setAvailableInputs([.text, .media, .audio])
+        .setRecorderSettings(RecorderSettings(
+            sampleRate: 44100,
+            encoderBitRateKey: 128000
+        ))
+        .showMessageMenuOnLongPress(false)
+        .showDateHeaders(false)
+        .showMessageTimeView(false)
+    }
+
+    // MARK: - Read-only fallback (no input bar)
+
+    private var readOnlyView: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(appVM.chatVM.chatItems) { item in
+                        chatCell(for: item)
+                    }
+                }
+                .padding()
+            }
+            readOnlyBanner
         }
     }
 
@@ -84,6 +104,18 @@ struct ChatContainerView: View {
 
         case .systemEvent(let text):
             SystemEventCell(text: text)
+
+        case .imageAttachment(let image, let caption):
+            imageBubble(image, caption: caption)
+
+        case .remoteImageAttachment(let remotePath, let caption):
+            remoteImageBubble(remotePath: remotePath, caption: caption)
+
+        case .audioAttachment(let caption):
+            audioBubble(caption: caption)
+
+        case .remoteAudioAttachment:
+            audioBubble(caption: nil)
         }
     }
 
@@ -101,46 +133,124 @@ struct ChatContainerView: View {
         }
     }
 
-    // MARK: - Input bar
+    // MARK: - Image bubble
 
-    private var inputBar: some View {
-        HStack(spacing: 8) {
-            @Bindable var chatVM = appVM.chatVM
+    private func imageBubble(_ image: UIImage, caption: String?) -> some View {
+        HStack {
+            Spacer()
+            VStack(alignment: .trailing, spacing: 6) {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: 220, maxHeight: 220)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
 
-            TextField("Message...", text: $chatVM.inputText, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1...5)
-                .onSubmit {
-                    sendMessage()
+                if let caption, !caption.isEmpty {
+                    Text(caption)
+                        .font(.subheadline)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.blue)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
-
-            if appVM.chatVM.isStreaming {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    Task { await appVM.chatVM.abort(using: appVM) }
-                } label: {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.red)
-                }
-            } else {
-                Button {
-                    sendMessage()
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                }
-                .disabled(appVM.chatVM.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(.bar)
     }
 
-    private func sendMessage() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        Task { await appVM.chatVM.sendMessage(using: appVM) }
+    // MARK: - Remote image bubble
+
+    private func remoteImageBubble(remotePath: String, caption: String?) -> some View {
+        let fullURL: URL? = {
+            guard let base = appVM.settingsVM.artifactsURL,
+                  var components = URLComponents(string: remotePath) else { return nil }
+            components.scheme = base.scheme
+            components.host = base.host
+            components.port = base.port
+            if let apiKey = appVM.settingsVM.apiKey, !apiKey.isEmpty {
+                let existing = components.queryItems ?? []
+                components.queryItems = existing + [URLQueryItem(name: "apiKey", value: apiKey)]
+            }
+            return components.url
+        }()
+        return HStack {
+            Spacer()
+            VStack(alignment: .trailing, spacing: 6) {
+                if let fullURL {
+                    AsyncImage(url: fullURL) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(maxWidth: 220, maxHeight: 220)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                        case .failure:
+                            imagePlaceholder(systemName: "exclamationmark.triangle")
+                        default:
+                            imagePlaceholder(systemName: "photo")
+                        }
+                    }
+                } else {
+                    imagePlaceholder(systemName: "photo")
+                }
+
+                if let caption, !caption.isEmpty {
+                    Text(caption)
+                        .font(.subheadline)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.blue)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+            }
+        }
+    }
+
+    private func imagePlaceholder(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.largeTitle)
+            .foregroundStyle(.secondary)
+            .frame(width: 120, height: 120)
+            .background(Color.gray.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Audio bubble
+
+    private func audioBubble(caption: String?) -> some View {
+        HStack {
+            Spacer()
+            HStack(spacing: 8) {
+                Image(systemName: "waveform")
+                    .font(.title3)
+                Text(caption ?? "Audio message")
+                    .font(.subheadline)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.blue)
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    // MARK: - Abort button
+
+    private var abortButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            Task { await appVM.chatVM.abort(using: appVM) }
+        } label: {
+            Label("Stop", systemImage: "stop.circle.fill")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.red, in: Capsule())
+        }
+        .padding(.bottom, 80) // above the input bar
     }
 
     // MARK: - Read-only banner

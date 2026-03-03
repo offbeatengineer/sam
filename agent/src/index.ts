@@ -34,16 +34,17 @@ async function main() {
   const registry = new SessionRegistry(config);
   const dispatcher = new Dispatcher(registry);
 
+  // Create transcriber once, shared by all channels
+  const transcriber = config.transcription?.modelPath
+    ? new CliTranscriber(config.transcription.modelPath)
+    : undefined;
+
   let discord: DiscordChannel | undefined;
   let appChannel: AppChannel | undefined;
   let artifactsServer: ArtifactsServer | undefined;
 
   // Start Discord channel if configured
   if (config.discord) {
-    const transcriber = config.transcription?.modelPath
-      ? new CliTranscriber(config.transcription.modelPath)
-      : undefined;
-
     discord = new DiscordChannel({
       token: config.discord.token,
       allowedChannelIds: config.discord.allowedChannelIds,
@@ -92,6 +93,7 @@ async function main() {
       sessionsDir: config.sessions,
       skillsDir: config.skills,
       artifactsServer,
+      transcriber,
     });
     await appChannel.start();
   } else if (artifactsServer) {

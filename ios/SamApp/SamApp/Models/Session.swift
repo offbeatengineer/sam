@@ -40,8 +40,20 @@ struct SessionEntry: Identifiable {
 
 // MARK: - Agent message (role-based, mirrors pi-coding-agent types)
 
+/// Image attachment parsed from a user message content array.
+struct UserImageAttachment {
+    let mediaType: String       // e.g. "image/jpeg"
+    let data: Data?             // decoded from inline base64 (nil if remote)
+    let remotePath: String?     // relative URL path e.g. "/uploads/2025-03-03/abc.jpg" (nil if inline)
+}
+
+/// Audio attachment reference parsed from a user message content array.
+struct UserAudioAttachment {
+    let remotePath: String      // e.g. "/uploads/2025-03-03/abc.aac"
+}
+
 enum AgentMessage {
-    case user(content: String)
+    case user(content: String, images: [UserImageAttachment], audioAttachments: [UserAudioAttachment])
     case assistant(content: [AssistantContentBlock])
     case toolResult(toolCallId: String, toolName: String, content: String, isError: Bool, details: AnyCodable?)
     case bashExecution(command: String, output: String, exitCode: Int?)
@@ -93,6 +105,19 @@ extension SessionEntry {
                 timestamp: timestamp, modelId: nil, summary: dict["summary"] as? String
             )
 
+        case "custom":
+            let customType = dict["customType"] as? String
+            if customType == "audio_attachment",
+               let data = dict["data"] as? [String: Any],
+               let url = data["url"] as? String {
+                return SessionEntry(
+                    id: entryId, entryType: entryType,
+                    message: .user(content: "", images: [], audioAttachments: [UserAudioAttachment(remotePath: url)]),
+                    timestamp: timestamp, modelId: nil, summary: nil
+                )
+            }
+            return nil
+
         default:
             return SessionEntry(
                 id: entryId, entryType: entryType, message: nil,
@@ -107,15 +132,33 @@ extension SessionEntry {
         switch role {
         case "user":
             if let contentStr = msg["content"] as? String {
-                return .user(content: contentStr)
+                return .user(content: contentStr, images: [], audioAttachments: [])
             } else if let contentArr = msg["content"] as? [[String: Any]] {
                 let text = contentArr
                     .filter { ($0["type"] as? String) == "text" }
                     .compactMap { $0["text"] as? String }
                     .joined(separator: "\n")
-                return .user(content: text)
+                var images: [UserImageAttachment] = []
+                for part in contentArr where (part["type"] as? String) == "image" {
+                    let mediaType = part["mimeType"] as? String
+                        ?? part["media_type"] as? String
+                        ?? "image/jpeg"
+                    if let urlPath = part["url"] as? String {
+                        images.append(UserImageAttachment(mediaType: mediaType, data: nil, remotePath: urlPath))
+                    } else if let base64Str = part["data"] as? String,
+                              let data = Data(base64Encoded: base64Str) {
+                        images.append(UserImageAttachment(mediaType: mediaType, data: data, remotePath: nil))
+                    }
+                }
+                var audioAttachments: [UserAudioAttachment] = []
+                for part in contentArr where (part["type"] as? String) == "audio_ref" {
+                    if let urlPath = part["url"] as? String {
+                        audioAttachments.append(UserAudioAttachment(remotePath: urlPath))
+                    }
+                }
+                return .user(content: text, images: images, audioAttachments: audioAttachments)
             }
-            return .user(content: "")
+            return .user(content: "", images: [], audioAttachments: [])
 
         case "assistant":
             var blocks: [AssistantContentBlock] = []

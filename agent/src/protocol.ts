@@ -2,9 +2,16 @@
 // App ↔ Sam WebSocket protocol
 // ---------------------------------------------------------------------------
 
+/** Attachment reference included in a chat request (file already uploaded via POST /upload) */
+export interface ChatAttachment {
+  type: "image" | "audio";
+  path: string;       // server-side file path from upload response
+  mimeType: string;
+}
+
 /** Requests sent from the app to sam */
 export type AppRequest =
-  | { type: "chat"; requestId: string; conversationId: string; text: string }
+  | { type: "chat"; requestId: string; conversationId: string; text: string; attachments?: ChatAttachment[] }
   | { type: "abort"; conversationId: string }
   | { type: "close_session"; conversationId: string }
   // Session browsing
