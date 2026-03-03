@@ -19,7 +19,7 @@ async function main() {
     sessions: config.sessions,
     prompts: config.prompts,
     discord: config.discord ? { allowedChannelIds: config.discord.allowedChannelIds } : undefined,
-    app: config.app,
+    app: config.app ? { ...config.app, apiKey: config.app.apiKey ? "***" : undefined } : undefined,
     transcription: config.transcription,
     pulse: config.pulse,
   }, null, 2));
@@ -66,9 +66,11 @@ async function main() {
     appChannel = new AppChannel({
       port: config.app.port,
       host: config.app.host,
+      apiKey: config.app.apiKey,
       registry,
       memoryConfig: config.memory,
       sessionsDir: config.sessions,
+      skillsDir: config.skills,
     });
     await appChannel.start();
   }

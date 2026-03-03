@@ -1,19 +1,22 @@
 import { WebSocketServer, type WebSocket } from "ws";
+import type { IncomingMessage } from "node:http";
 import type { SessionRegistry } from "../session-registry.js";
-import type { AppRequest, AppResponse, SessionInfoDTO } from "../protocol.js";
+import type { AppRequest, AppResponse, SessionInfoDTO, SkillInfoDTO } from "../protocol.js";
 import type { SessionKey } from "../types.js";
 import { MemoryStore } from "../memory/store.js";
 import type { MemoryConfig } from "../memory/types.js";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
-import { readdirSync, statSync } from "node:fs";
-import { resolve, basename, dirname } from "node:path";
+import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync } from "node:fs";
+import { resolve, basename, dirname, join, relative } from "node:path";
 
 interface AppChannelOptions {
   port: number;
   host?: string;
+  apiKey?: string;
   registry: SessionRegistry;
   memoryConfig?: MemoryConfig;
   sessionsDir: string;
+  skillsDir: string;
 }
 
 /**
@@ -23,6 +26,17 @@ interface AppChannelOptions {
  * manages its own session interaction to forward rich streaming events
  * (thinking, tool calls, etc.) directly to the connected client.
  */
+// Rate limiting constants
+const MAX_CONNECTIONS_PER_MINUTE = 10;
+const MAX_MESSAGES_PER_MINUTE = 30;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+// Input validation constants
+const MAX_CONVERSATION_ID_LENGTH = 100;
+const MAX_REQUEST_ID_LENGTH = 100;
+const MAX_TEXT_LENGTH = 100 * 1024; // 100KB
+const CONVERSATION_ID_PATTERN = /^[a-zA-Z0-9-]+$/;
+
 export class AppChannel {
   private wss: WebSocketServer | null = null;
   private clients = new Set<WebSocket>();
@@ -32,15 +46,41 @@ export class AppChannel {
   private activeRequests = new Map<string, string>();
   /** Tracks which sessions already have subscriptions */
   private subscriptions = new Set<string>();
+  /** Connection rate limiting: IP → timestamps */
+  private connectionAttempts = new Map<string, number[]>();
+  /** Message rate limiting: WebSocket → { count, resetAt } */
+  private messageCounters = new WeakMap<WebSocket, { count: number; resetAt: number }>();
 
   constructor(private options: AppChannelOptions) {}
 
   async start(): Promise<void> {
-    const { port, host } = this.options;
-    return new Promise((resolve, reject) => {
-      this.wss = new WebSocketServer({ port, host: host ?? "127.0.0.1" }, () => {
+    const { port, host, apiKey } = this.options;
+    return new Promise((resolvePromise, reject) => {
+      this.wss = new WebSocketServer({
+        port,
+        host: host ?? "127.0.0.1",
+        verifyClient: (info, cb) => {
+          // API key authentication (if configured)
+          if (apiKey) {
+            const authorized = this.verifyApiKey(info.req, apiKey);
+            if (!authorized) {
+              cb(false, 401, "Unauthorized");
+              return;
+            }
+          }
+
+          // Connection rate limiting
+          const ip = this.getClientIp(info.req);
+          if (!this.checkConnectionRateLimit(ip)) {
+            cb(false, 429, "Too Many Requests");
+            return;
+          }
+
+          cb(true);
+        },
+      }, () => {
         console.log(`App channel listening on ${host ?? "127.0.0.1"}:${port}`);
-        resolve();
+        resolvePromise();
       });
 
       this.wss.on("error", (err) => {
@@ -53,8 +93,20 @@ export class AppChannel {
         console.log(`App client connected (${this.clients.size} total)`);
 
         ws.on("message", (data) => {
+          // Message rate limiting
+          if (!this.checkMessageRateLimit(ws)) {
+            this.sendTo(ws, { type: "error", error: "Rate limit exceeded: too many messages" });
+            return;
+          }
+
           try {
             const request = JSON.parse(data.toString()) as AppRequest;
+            // Input validation
+            const validationError = this.validateRequest(request);
+            if (validationError) {
+              this.sendTo(ws, { type: "error", error: validationError });
+              return;
+            }
             this.handleRequest(ws, request);
           } catch (err) {
             this.sendTo(ws, { type: "error", error: `Invalid message: ${err}` });
@@ -90,6 +142,100 @@ export class AppChannel {
   }
 
   // ---------------------------------------------------------------------------
+  // Authentication & rate limiting
+  // ---------------------------------------------------------------------------
+
+  private verifyApiKey(req: IncomingMessage, expectedKey: string): boolean {
+    // Check Authorization: Bearer <key> header
+    const authHeader = req.headers["authorization"];
+    if (authHeader) {
+      const [scheme, token] = authHeader.split(" ");
+      if (scheme?.toLowerCase() === "bearer" && token === expectedKey) return true;
+    }
+    // Check ?apiKey= query param
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const queryKey = url.searchParams.get("apiKey");
+    if (queryKey === expectedKey) return true;
+
+    return false;
+  }
+
+  private getClientIp(req: IncomingMessage): string {
+    // Support Cloudflare Tunnel forwarded IP
+    const forwarded = req.headers["cf-connecting-ip"] ?? req.headers["x-forwarded-for"];
+    if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
+    return req.socket.remoteAddress ?? "unknown";
+  }
+
+  private checkConnectionRateLimit(ip: string): boolean {
+    const now = Date.now();
+    let attempts = this.connectionAttempts.get(ip);
+    if (!attempts) {
+      attempts = [];
+      this.connectionAttempts.set(ip, attempts);
+    }
+    // Remove entries outside the window
+    const cutoff = now - RATE_LIMIT_WINDOW_MS;
+    while (attempts.length > 0 && attempts[0] < cutoff) attempts.shift();
+    if (attempts.length >= MAX_CONNECTIONS_PER_MINUTE) return false;
+    attempts.push(now);
+    return true;
+  }
+
+  private checkMessageRateLimit(ws: WebSocket): boolean {
+    const now = Date.now();
+    let counter = this.messageCounters.get(ws);
+    if (!counter || now >= counter.resetAt) {
+      counter = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+      this.messageCounters.set(ws, counter);
+    }
+    counter.count++;
+    return counter.count <= MAX_MESSAGES_PER_MINUTE;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Input validation
+  // ---------------------------------------------------------------------------
+
+  private validateRequest(request: AppRequest): string | null {
+    // Validate conversationId where present
+    if ("conversationId" in request && request.conversationId != null) {
+      const cid = request.conversationId;
+      if (typeof cid !== "string" || cid.length > MAX_CONVERSATION_ID_LENGTH) {
+        return "conversationId must be a string of max 100 characters";
+      }
+      if (!CONVERSATION_ID_PATTERN.test(cid)) {
+        return "conversationId must contain only alphanumeric characters and hyphens";
+      }
+    }
+
+    // Validate requestId where present
+    if ("requestId" in request && (request as any).requestId != null) {
+      const rid = (request as any).requestId as string;
+      if (typeof rid !== "string" || rid.length > MAX_REQUEST_ID_LENGTH) {
+        return "requestId must be a string of max 100 characters";
+      }
+    }
+
+    // Validate text length for chat messages
+    if (request.type === "chat") {
+      if (typeof request.text !== "string" || request.text.length > MAX_TEXT_LENGTH) {
+        return "text must be a string of max 100KB";
+      }
+    }
+
+    // Validate sessionPath — prevent path traversal
+    if ("sessionPath" in request && (request as any).sessionPath != null) {
+      const sp = (request as any).sessionPath as string;
+      if (typeof sp !== "string" || sp.includes("..")) {
+        return "sessionPath must not contain path traversal sequences";
+      }
+    }
+
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
   // Request handling
   // ---------------------------------------------------------------------------
 
@@ -113,6 +259,11 @@ export class AppChannel {
       case "memory_update":
       case "memory_delete":
         return this.handleMemoryRequest(ws, request);
+      case "list_skills":
+      case "get_skill":
+      case "save_skill":
+      case "delete_skill":
+        return this.handleSkillRequest(ws, request);
       default:
         this.sendTo(ws, { type: "error", error: `Unknown request type: ${(request as any).type}` });
     }
@@ -408,6 +559,86 @@ export class AppChannel {
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
       this.sendTo(ws, { type: "memory_error", requestId, error: errorText });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Skill request handling
+  // ---------------------------------------------------------------------------
+
+  private async handleSkillRequest(
+    ws: WebSocket,
+    request: Extract<AppRequest, { type: `${"list" | "get" | "save" | "delete"}_skill${"" | "s"}` }>,
+  ): Promise<void> {
+    const requestId = (request as any).requestId as string;
+    const skillsDir = this.options.skillsDir;
+
+    try {
+      mkdirSync(skillsDir, { recursive: true });
+
+      switch (request.type) {
+        case "list_skills": {
+          const files = readdirSync(skillsDir).filter((f) => f.endsWith(".md") || f.endsWith(".yaml") || f.endsWith(".yml") || f.endsWith(".json") || f.endsWith(".txt"));
+          const skills: SkillInfoDTO[] = [];
+          for (const filename of files) {
+            try {
+              const st = statSync(join(skillsDir, filename));
+              skills.push({ filename, modified: st.mtime.toISOString(), size: st.size });
+            } catch {
+              // skip unreadable files
+            }
+          }
+          this.sendTo(ws, { type: "skills_list_result", requestId, skills });
+          break;
+        }
+
+        case "get_skill": {
+          const filename = (request as any).filename as string;
+          if (!filename || filename.includes("..") || filename.includes("/")) {
+            this.sendTo(ws, { type: "skill_error", requestId, error: "Invalid filename" });
+            return;
+          }
+          const filePath = join(skillsDir, filename);
+          if (!existsSync(filePath)) {
+            this.sendTo(ws, { type: "skill_error", requestId, error: "Skill not found" });
+            return;
+          }
+          const content = readFileSync(filePath, "utf-8");
+          this.sendTo(ws, { type: "skill_content_result", requestId, filename, content });
+          break;
+        }
+
+        case "save_skill": {
+          const filename = (request as any).filename as string;
+          const content = (request as any).content as string;
+          if (!filename || filename.includes("..") || filename.includes("/")) {
+            this.sendTo(ws, { type: "skill_error", requestId, error: "Invalid filename" });
+            return;
+          }
+          writeFileSync(join(skillsDir, filename), content, "utf-8");
+          this.sendTo(ws, { type: "skill_save_result", requestId, success: true });
+          break;
+        }
+
+        case "delete_skill": {
+          const filename = (request as any).filename as string;
+          if (!filename || filename.includes("..") || filename.includes("/")) {
+            this.sendTo(ws, { type: "skill_error", requestId, error: "Invalid filename" });
+            return;
+          }
+          const filePath = join(skillsDir, filename);
+          if (!existsSync(filePath)) {
+            this.sendTo(ws, { type: "skill_error", requestId, error: "Skill not found" });
+            return;
+          }
+          unlinkSync(filePath);
+          this.sendTo(ws, { type: "skill_delete_result", requestId, success: true });
+          break;
+        }
+      }
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "skill_error", requestId, error: errorText });
     }
   }
 

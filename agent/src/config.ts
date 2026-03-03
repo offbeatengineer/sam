@@ -27,6 +27,7 @@ export interface SamConfig {
     enabled: boolean;
     port: number;
     host?: string;
+    apiKey?: string;
   };
   model: {
     provider: string;
@@ -119,6 +120,7 @@ model:
 #   enabled: true
 #   port: 9222
 #   host: 127.0.0.1
+#   apiKey: ""  # or set SAM_APP_API_KEY env var — required for remote access
 
 # artifacts:
 #   enabled: true
@@ -189,8 +191,9 @@ export function loadConfig(): SamConfig {
 
   // App channel config
   const appEnabled = yaml.app?.enabled !== false;
+  const appApiKey = process.env.SAM_APP_API_KEY ?? yaml.app?.apiKey;
   const appConfig = appEnabled
-    ? { enabled: true as const, port: yaml.app?.port ?? 9222, host: yaml.app?.host }
+    ? { enabled: true as const, port: yaml.app?.port ?? 9222, host: yaml.app?.host, apiKey: appApiKey }
     : undefined;
 
   // Artifacts server config — defaults to enabled when app channel is enabled
