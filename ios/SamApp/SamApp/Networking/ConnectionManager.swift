@@ -25,7 +25,15 @@ final class ConnectionManager: @unchecked Sendable {
     private var reconnectAttempt = 0
 
     func connect(url: URL, apiKey: String?, onMessage: @escaping (ServerMessage) -> Void) {
-        disconnect()
+        // Cancel local tasks but don't fire a background client.disconnect() —
+        // client.connect() handles cleanup internally on the actor, avoiding a
+        // race where a background disconnect cancels the newly created connection.
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        receiveTask?.cancel()
+        receiveTask = nil
+        reconnectAttempt = 0
+
         currentURL = url
         currentApiKey = apiKey
         messageHandler = onMessage

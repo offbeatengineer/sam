@@ -14,11 +14,6 @@ struct SettingsView: View {
                     .textContentType(.URL)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
-
-                TextField("Artifacts URL", text: $settings.artifactsURLString, prompt: Text("https://sam-artifacts.yourdomain.com"))
-                    .textContentType(.URL)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
             }
 
             Section("Authentication") {
@@ -66,7 +61,7 @@ struct SettingsView: View {
                 appVM.artifactVM.artifactsBaseURL = artifactsURL
             }
         }
-        .onChange(of: settings.artifactsURLString) { _, _ in
+        .onChange(of: settings.serverURLString) { _, _ in
             if let artifactsURL = settings.artifactsURL {
                 appVM.artifactVM.artifactsBaseURL = artifactsURL
             }
