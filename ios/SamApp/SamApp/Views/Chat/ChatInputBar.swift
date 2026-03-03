@@ -13,7 +13,9 @@ struct ChatDraft {
 
 struct ChatInputBar: View {
     @Binding var text: String
+    var isStreaming: Bool = false
     var onSend: (ChatDraft) -> Void
+    var onAbort: (() -> Void)?
 
     // Photos
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -32,6 +34,7 @@ struct ChatInputBar: View {
     @State private var lastRecorderOffset: CGFloat = 0
     @State private var recorderStartTimeStamp: Date = .now
     @State private var disableBottomBar: Bool = false
+    @State private var breatheScale: CGFloat = 1
 
     private var hasText: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -47,6 +50,7 @@ struct ChatInputBar: View {
     }
 
     var mainActionSymbol: String {
+        if isStreaming { return "stop.fill" }
         if showSendMode { return "paperplane.fill" }
         return isRecordingGesture ? "waveform" : "mic.fill"
     }
@@ -102,14 +106,16 @@ struct ChatInputBar: View {
                 // Right action button
                 Image(systemName: mainActionSymbol)
                     .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(isStreaming ? Color(.darkGray) : .white)
                     .contentTransition(.symbolEffect(.replace, options: .default.speed(1.2)))
                     .frame(width: 48, height: 48)
-                    .background(.blue.gradient, in: .circle)
-                    .scaleEffect(isHolding ? 1.28 : 1)
+                    .background(isStreaming ? AnyShapeStyle(Color(.systemGray4)) : AnyShapeStyle(.blue.gradient), in: .circle)
+                    .scaleEffect(isHolding ? 1.28 : (isStreaming ? breatheScale : 1))
                     .offset(x: recorderOffset)
+                    // Tap to abort (when streaming)
+                    .gesture(abortGesture, isEnabled: isStreaming)
                     // Tap to send (when there's content)
-                    .gesture(sendGesture, isEnabled: showSendMode)
+                    .gesture(sendGesture, isEnabled: !isStreaming && showSendMode)
                     // Long-press to record (when idle)
                     .gesture(
                         LongPressGesture(minimumDuration: 0.3)
@@ -128,13 +134,14 @@ struct ChatInputBar: View {
                                     out = max(min(translation, 0), -200)
                                 }
                             },
-                        isEnabled: !showSendMode
+                        isEnabled: !isStreaming && !showSendMode
                     )
             }
             .padding(.horizontal, 15)
             .padding(.vertical, 8)
             .animation(.interpolatingSpring(duration: 0.4), value: isHolding)
             .animation(.interactiveSpring(duration: 0.3), value: recorderOffset == 0)
+            .animation(.easeInOut(duration: 0.2), value: isStreaming)
             .onChange(of: isRecordingGesture) { oldValue, newValue in
                 if newValue {
                     recorderStartTimeStamp = .now
@@ -175,13 +182,31 @@ struct ChatInputBar: View {
         .onChange(of: selectedPhotos) { _, newItems in
             Task { await loadPhotos(newItems) }
         }
+        .onChange(of: isStreaming) { _, streaming in
+            if streaming {
+                withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                    breatheScale = 1.12
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    breatheScale = 1
+                }
+            }
+        }
     }
 
-    // MARK: - Send gesture
+    // MARK: - Gestures
 
     private var sendGesture: some Gesture {
         TapGesture(count: 1).onEnded { _ in
             send()
+        }
+    }
+
+    private var abortGesture: some Gesture {
+        TapGesture(count: 1).onEnded { _ in
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onAbort?()
         }
     }
 

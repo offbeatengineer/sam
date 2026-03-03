@@ -10,15 +10,11 @@ struct ChatContainerView: View {
     private var isReadOnly: Bool { session?.isReadOnly ?? false }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        Group {
             if isReadOnly {
                 readOnlyView
             } else {
                 chatView
-            }
-
-            if appVM.chatVM.isStreaming {
-                abortButton
             }
         }
         .navigationTitle(session?.displayName ?? "New Chat")
@@ -60,9 +56,16 @@ struct ChatContainerView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            ChatInputBar(text: Bindable(appVM.chatVM).inputText) { draft in
-                Task { await appVM.chatVM.sendMessage(draft: draft, using: appVM) }
-            }
+            ChatInputBar(
+                text: Bindable(appVM.chatVM).inputText,
+                isStreaming: appVM.chatVM.isStreaming,
+                onSend: { draft in
+                    Task { await appVM.chatVM.sendMessage(draft: draft, using: appVM) }
+                },
+                onAbort: {
+                    Task { await appVM.chatVM.abort(using: appVM) }
+                }
+            )
         }
     }
 
@@ -284,22 +287,6 @@ struct ChatContainerView: View {
         return components.url
     }
 
-    // MARK: - Abort button
-
-    private var abortButton: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            Task { await appVM.chatVM.abort(using: appVM) }
-        } label: {
-            Label("Stop", systemImage: "stop.circle.fill")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.red, in: Capsule())
-        }
-        .padding(.bottom, 16)
-    }
 
     // MARK: - Read-only banner
 
