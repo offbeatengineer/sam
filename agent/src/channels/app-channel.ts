@@ -1,10 +1,11 @@
 import { WebSocketServer, type WebSocket } from "ws";
-import type { IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { SessionRegistry } from "../session-registry.js";
 import type { AppRequest, AppResponse, SessionInfoDTO, SkillInfoDTO } from "../protocol.js";
 import type { SessionKey } from "../types.js";
 import { MemoryStore } from "../memory/store.js";
 import type { MemoryConfig } from "../memory/types.js";
+import type { ArtifactsServer } from "../artifacts-server.js";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, basename, dirname, join, relative } from "node:path";
@@ -17,6 +18,7 @@ interface AppChannelOptions {
   memoryConfig?: MemoryConfig;
   sessionsDir: string;
   skillsDir: string;
+  artifactsServer?: ArtifactsServer;
 }
 
 /**
@@ -38,6 +40,7 @@ const MAX_TEXT_LENGTH = 100 * 1024; // 100KB
 const CONVERSATION_ID_PATTERN = /^[a-zA-Z0-9-]+$/;
 
 export class AppChannel {
+  private httpServer: Server | null = null;
   private wss: WebSocketServer | null = null;
   private clients = new Set<WebSocket>();
   /** Maps conversationId → the WebSocket client that owns it */
@@ -54,89 +57,112 @@ export class AppChannel {
   constructor(private options: AppChannelOptions) {}
 
   async start(): Promise<void> {
-    const { port, host, apiKey } = this.options;
-    return new Promise((resolvePromise, reject) => {
-      this.wss = new WebSocketServer({
-        port,
-        host: host ?? "127.0.0.1",
-        verifyClient: (info, cb) => {
-          // API key authentication (if configured)
-          if (apiKey) {
-            const authorized = this.verifyApiKey(info.req, apiKey);
-            if (!authorized) {
-              cb(false, 401, "Unauthorized");
-              return;
-            }
-          }
+    const { port, host, apiKey, artifactsServer } = this.options;
+    const listenHost = host ?? "127.0.0.1";
 
-          // Connection rate limiting
-          const ip = this.getClientIp(info.req);
-          if (!this.checkConnectionRateLimit(ip)) {
-            cb(false, 429, "Too Many Requests");
+    // HTTP server — delegates to artifacts handler when available,
+    // otherwise returns 426 (Upgrade Required) for plain HTTP requests.
+    this.httpServer = createServer((req, res) => {
+      if (artifactsServer) {
+        artifactsServer.handleRequest(req, res);
+      } else {
+        res.writeHead(426, { "Content-Type": "text/plain" });
+        res.end("WebSocket required");
+      }
+    });
+
+    this.wss = new WebSocketServer({ noServer: true });
+
+    this.httpServer.on("upgrade", (req, socket, head) => {
+      const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+
+      // Route /__live upgrades to the artifacts live reload WSS
+      if (pathname === "/__live" && artifactsServer) {
+        artifactsServer.handleLiveReloadUpgrade(req, socket, head);
+        return;
+      }
+
+      // Auth check
+      if (apiKey && !this.verifyApiKey(req, apiKey)) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      // Rate limit check
+      const ip = this.getClientIp(req);
+      if (!this.checkConnectionRateLimit(ip)) {
+        socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      this.wss!.handleUpgrade(req, socket, head, (ws) => {
+        this.wss!.emit("connection", ws);
+      });
+    });
+
+    // Wire up connection handling on the WSS
+    this.wss.on("connection", (ws) => {
+      this.clients.add(ws);
+      console.log(`App client connected (${this.clients.size} total)`);
+
+      ws.on("message", (data) => {
+        // Message rate limiting
+        if (!this.checkMessageRateLimit(ws)) {
+          this.sendTo(ws, { type: "error", error: "Rate limit exceeded: too many messages" });
+          return;
+        }
+
+        try {
+          const request = JSON.parse(data.toString()) as AppRequest;
+          // Input validation
+          const validationError = this.validateRequest(request);
+          if (validationError) {
+            this.sendTo(ws, { type: "error", error: validationError });
             return;
           }
+          this.handleRequest(ws, request);
+        } catch (err) {
+          this.sendTo(ws, { type: "error", error: `Invalid message: ${err}` });
+        }
+      });
 
-          cb(true);
-        },
-      }, () => {
-        console.log(`App channel listening on ${host ?? "127.0.0.1"}:${port}`);
+      ws.on("close", () => {
+        this.clients.delete(ws);
+        // Clean up conversation ownership for this client
+        for (const [convId, owner] of this.conversationOwners) {
+          if (owner === ws) {
+            this.conversationOwners.delete(convId);
+            this.activeRequests.delete(convId);
+          }
+        }
+        console.log(`App client disconnected (${this.clients.size} remaining)`);
+      });
+    });
+
+    return new Promise((resolvePromise, reject) => {
+      this.httpServer!.listen(port, listenHost, () => {
+        console.log(`App channel listening on ${listenHost}:${port}`);
         resolvePromise();
       });
-
-      this.wss.on("error", (err) => {
-        console.error("App channel server error:", err);
-        reject(err);
-      });
-
-      this.wss.on("connection", (ws) => {
-        this.clients.add(ws);
-        console.log(`App client connected (${this.clients.size} total)`);
-
-        ws.on("message", (data) => {
-          // Message rate limiting
-          if (!this.checkMessageRateLimit(ws)) {
-            this.sendTo(ws, { type: "error", error: "Rate limit exceeded: too many messages" });
-            return;
-          }
-
-          try {
-            const request = JSON.parse(data.toString()) as AppRequest;
-            // Input validation
-            const validationError = this.validateRequest(request);
-            if (validationError) {
-              this.sendTo(ws, { type: "error", error: validationError });
-              return;
-            }
-            this.handleRequest(ws, request);
-          } catch (err) {
-            this.sendTo(ws, { type: "error", error: `Invalid message: ${err}` });
-          }
-        });
-
-        ws.on("close", () => {
-          this.clients.delete(ws);
-          // Clean up conversation ownership for this client
-          for (const [convId, owner] of this.conversationOwners) {
-            if (owner === ws) {
-              this.conversationOwners.delete(convId);
-              this.activeRequests.delete(convId);
-            }
-          }
-          console.log(`App client disconnected (${this.clients.size} remaining)`);
-        });
-      });
+      this.httpServer!.on("error", reject);
     });
   }
 
   async stop(): Promise<void> {
-    if (!this.wss) return;
     for (const ws of this.clients) {
       ws.close();
     }
-    return new Promise((resolve) => {
-      this.wss!.close(() => {
-        this.wss = null;
-        resolve();
+    if (this.wss) {
+      this.wss.close();
+      this.wss = null;
+    }
+    return new Promise((resolveP) => {
+      if (!this.httpServer) return resolveP();
+      this.httpServer.close(() => {
+        this.httpServer = null;
+        resolveP();
       });
     });
   }

@@ -51,7 +51,7 @@ export interface SamConfig {
   };
   artifacts?: {
     enabled: boolean;
-    port: number;
+    port?: number;
     host?: string;
   };
   memory?: MemoryConfig;
@@ -124,7 +124,6 @@ model:
 
 # artifacts:
 #   enabled: true
-#   port: 9223
 #   host: 127.0.0.1
 
 # tools:
@@ -196,12 +195,13 @@ export function loadConfig(): SamConfig {
     ? { enabled: true as const, port: yaml.app?.port ?? 9222, host: yaml.app?.host, apiKey: appApiKey }
     : undefined;
 
-  // Artifacts server config — defaults to enabled when app channel is enabled
+  // Artifacts server config — defaults to enabled when app channel is enabled.
+  // When sharing the app channel port, artifacts.port is omitted.
   const artifactsEnabled = yaml.artifacts?.enabled ?? appEnabled;
   const artifactsConfig = artifactsEnabled
     ? {
         enabled: true as const,
-        port: yaml.artifacts?.port ?? (appConfig?.port ? appConfig.port + 1 : 9223),
+        port: yaml.artifacts?.port as number | undefined,
         host: yaml.artifacts?.host ?? appConfig?.host,
       }
     : undefined;

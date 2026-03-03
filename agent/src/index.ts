@@ -61,8 +61,28 @@ async function main() {
     console.log("Discord channel started.");
   }
 
+  // Start artifacts server if configured
+  if (config.artifacts?.enabled) {
+    const artifactsHost = config.artifacts.host ?? config.app?.host ?? "127.0.0.1";
+    artifactsServer = new ArtifactsServer({
+      port: config.artifacts.port ?? config.app?.port ?? 9222,
+      host: artifactsHost,
+      rootDir: resolve(SAM_DIR, "artifacts"),
+      onChange: (event, path) => {
+        appChannel?.broadcastArtifactsChanged(event, path);
+      },
+    });
+  }
+
   // Start App channel if configured
   if (config.app?.enabled) {
+    const appHost = config.app.host ?? "127.0.0.1";
+
+    // In attached mode, artifacts shares the app channel's HTTP server
+    if (artifactsServer) {
+      artifactsServer.startAttached(`ws://${appHost}:${config.app.port}`);
+    }
+
     appChannel = new AppChannel({
       port: config.app.port,
       host: config.app.host,
@@ -71,20 +91,11 @@ async function main() {
       memoryConfig: config.memory,
       sessionsDir: config.sessions,
       skillsDir: config.skills,
+      artifactsServer,
     });
     await appChannel.start();
-  }
-
-  // Start artifacts server if configured
-  if (config.artifacts?.enabled) {
-    artifactsServer = new ArtifactsServer({
-      port: config.artifacts.port,
-      host: config.artifacts.host ?? "127.0.0.1",
-      rootDir: resolve(SAM_DIR, "artifacts"),
-      onChange: (event, path) => {
-        appChannel?.broadcastArtifactsChanged(event, path);
-      },
-    });
+  } else if (artifactsServer) {
+    // Standalone mode — artifacts runs its own HTTP server
     await artifactsServer.start();
   }
 
