@@ -1,23 +1,13 @@
 import SwiftUI
 import UIKit
-import ExyteChat
 
 struct ChatContainerView: View {
     @Environment(AppViewModel.self) private var appVM
+    @State private var audioPlayer = AudioPlayerManager()
     let session: SessionInfo?
 
     private var isNewChat: Bool { session == nil }
     private var isReadOnly: Bool { session?.isReadOnly ?? false }
-
-    /// Lookup dictionary for our custom cells, keyed by item ID.
-    private var chatItemsByID: [String: ChatMessageItem] {
-        Dictionary(appVM.chatVM.chatItems.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
-    }
-
-    /// Convert our chat items to ExyteChat Messages.
-    private var exyteMessages: [ExyteChat.Message] {
-        appVM.chatVM.chatItems.map { $0.toExyteMessage() }
-    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -27,13 +17,14 @@ struct ChatContainerView: View {
                 chatView
             }
 
-            // Abort button overlay during streaming
             if appVM.chatVM.isStreaming {
                 abortButton
             }
         }
         .navigationTitle(session?.displayName ?? "New Chat")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .task {
             if let session {
                 await appVM.chatVM.selectSession(session, using: appVM)
@@ -41,29 +32,38 @@ struct ChatContainerView: View {
         }
     }
 
-    // MARK: - ExyteChat ChatView
+    // MARK: - Native chat view
 
     private var chatView: some View {
-        ChatView(messages: exyteMessages) { draft in
-            Task { await appVM.chatVM.sendMessage(draft: draft, using: appVM) }
-        } messageBuilder: { message, _, _, _, _, _, _ in
-            if let item = chatItemsByID[message.id] {
-                AnyView(
-                    chatCell(for: item)
-                        .padding(.vertical, 8)
-                )
-            } else {
-                AnyView(EmptyView())
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(appVM.chatVM.chatItems) { item in
+                        chatCell(for: item)
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 16)
+                            .id(item.id)
+                    }
+                }
+            }
+            .scrollDismissesKeyboard(.immediately)
+            .onTapGesture {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+            .defaultScrollAnchor(.bottom)
+            .onChange(of: appVM.chatVM.chatItems.last?.id) { _, newId in
+                if let newId {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(newId, anchor: .bottom)
+                    }
+                }
             }
         }
-        .setAvailableInputs([.text, .media, .audio])
-        .setRecorderSettings(RecorderSettings(
-            sampleRate: 44100,
-            encoderBitRateKey: 128000
-        ))
-        .showMessageMenuOnLongPress(false)
-        .showDateHeaders(false)
-        .showMessageTimeView(false)
+        .safeAreaInset(edge: .bottom) {
+            ChatInputBar(text: Bindable(appVM.chatVM).inputText) { draft in
+                Task { await appVM.chatVM.sendMessage(draft: draft, using: appVM) }
+            }
+        }
     }
 
     // MARK: - Read-only fallback (no input bar)
@@ -111,11 +111,11 @@ struct ChatContainerView: View {
         case .remoteImageAttachment(let remotePath, let caption):
             remoteImageBubble(remotePath: remotePath, caption: caption)
 
-        case .audioAttachment(let caption):
-            audioBubble(caption: caption)
+        case .audioAttachment(let caption, let localURL):
+            audioBubble(id: item.id, caption: caption, localURL: localURL, remotePath: nil)
 
-        case .remoteAudioAttachment:
-            audioBubble(caption: nil)
+        case .remoteAudioAttachment(let remotePath):
+            audioBubble(id: item.id, caption: nil, localURL: nil, remotePath: remotePath)
         }
     }
 
@@ -219,21 +219,69 @@ struct ChatContainerView: View {
 
     // MARK: - Audio bubble
 
-    private func audioBubble(caption: String?) -> some View {
-        HStack {
+    private func audioBubble(id: String, caption: String?, localURL: URL?, remotePath: String?) -> some View {
+        let isActive = audioPlayer.currentlyPlayingId == id
+        let playing = isActive && audioPlayer.isPlaying
+
+        return HStack {
             Spacer()
-            HStack(spacing: 8) {
-                Image(systemName: "waveform")
-                    .font(.title3)
-                Text(caption ?? "Audio message")
-                    .font(.subheadline)
+            Button {
+                if let localURL {
+                    audioPlayer.play(id: id, url: localURL)
+                } else if let remotePath, let url = buildFullURL(remotePath: remotePath) {
+                    audioPlayer.playStreaming(id: id, url: url)
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: playing ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.title2)
+                        .contentTransition(.symbolEffect(.replace))
+
+                    if isActive {
+                        GeometryReader { geo in
+                            Capsule()
+                                .fill(.white.opacity(0.35))
+                                .frame(height: 4)
+                                .frame(maxHeight: .infinity, alignment: .center)
+                                .overlay(alignment: .leading) {
+                                    Capsule()
+                                        .fill(.white)
+                                        .frame(width: geo.size.width * audioPlayer.progress, height: 4)
+                                }
+                        }
+                        .frame(height: 20)
+                    } else {
+                        Image(systemName: "waveform")
+                            .font(.callout)
+                    }
+
+                    if let caption {
+                        Text(caption)
+                            .font(.subheadline)
+                    }
+                }
+                .frame(minWidth: 120)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.blue)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Color.blue)
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
+    }
+
+    /// Build a full URL from a remote path, matching the pattern used by remoteImageBubble.
+    private func buildFullURL(remotePath: String) -> URL? {
+        guard let base = appVM.settingsVM.artifactsURL,
+              var components = URLComponents(string: remotePath) else { return nil }
+        components.scheme = base.scheme
+        components.host = base.host
+        components.port = base.port
+        if let apiKey = appVM.settingsVM.apiKey, !apiKey.isEmpty {
+            let existing = components.queryItems ?? []
+            components.queryItems = existing + [URLQueryItem(name: "apiKey", value: apiKey)]
+        }
+        return components.url
     }
 
     // MARK: - Abort button
@@ -250,7 +298,7 @@ struct ChatContainerView: View {
                 .padding(.vertical, 8)
                 .background(.red, in: Capsule())
         }
-        .padding(.bottom, 80) // above the input bar
+        .padding(.bottom, 16)
     }
 
     // MARK: - Read-only banner
