@@ -7,9 +7,6 @@ options:
   generateEmptyDirectories: true
 
 packages:
-  ExyteChat:
-    url: https://github.com/exyte/Chat.git
-    from: "2.7.0"
   MarkdownUI:
     url: https://github.com/gonzalezreal/swift-markdown-ui
     from: "2.3.0"
@@ -30,7 +27,6 @@ targets:
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
-      - package: ExyteChat
       - package: MarkdownUI
 
   SamAppTests:

@@ -1,6 +1,4 @@
 import Foundation
-import ExyteChat
-import ExyteMediaPicker
 import UIKit
 
 @Observable
@@ -102,14 +100,14 @@ final class ChatViewModel {
         }
     }
 
-    /// Send a message from an ExyteChat DraftMessage (may include media/audio attachments).
-    func sendMessage(draft: DraftMessage, using app: AppViewModel) async {
+    /// Send a message from a ChatDraft (may include image data/audio attachments).
+    func sendMessage(draft: ChatDraft, using app: AppViewModel) async {
         guard let convId = activeConversationId else { return }
         let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let hasMedia = !draft.medias.isEmpty
-        let hasAudio = draft.recording != nil
-        let hasAttachments = hasMedia || hasAudio
+        let hasImages = !draft.imageData.isEmpty
+        let hasAudio = draft.audioURL != nil
+        let hasAttachments = hasImages || hasAudio
 
         // Nothing to send
         guard !text.isEmpty || hasAttachments else { return }
@@ -139,8 +137,8 @@ final class ChatViewModel {
 
         // Collect resized images for display and upload
         var imageItems: [(UIImage, Data)] = []
-        for media in draft.medias {
-            if let data = await resizedImageData(from: media),
+        for rawData in draft.imageData {
+            if let data = resizedImageData(from: rawData),
                let image = UIImage(data: data) {
                 imageItems.append((image, data))
             }
@@ -157,7 +155,7 @@ final class ChatViewModel {
             ))
         }
         if hasAudio {
-            let duration = draft.recording?.duration ?? 0
+            let duration = draft.audioDuration ?? 0
             let durationText = duration > 0
                 ? String(format: "%d:%02d", Int(duration) / 60, Int(duration) % 60)
                 : nil
@@ -165,7 +163,7 @@ final class ChatViewModel {
                 id: UUID().uuidString,
                 isUser: true,
                 timestamp: Date(),
-                content: .audioAttachment(caption: durationText)
+                content: .audioAttachment(caption: durationText, localURL: draft.audioURL)
             ))
         }
         if !attachItemsForEntry.isEmpty {
@@ -187,10 +185,10 @@ final class ChatViewModel {
                 }
             }
 
-            if let recording = draft.recording, let url = recording.url {
+            if let audioURL = draft.audioURL {
                 do {
-                    let data = try Data(contentsOf: url)
-                    let ext = url.pathExtension.lowercased()
+                    let data = try Data(contentsOf: audioURL)
+                    let ext = audioURL.pathExtension.lowercased()
                     let mimeType = ext == "wav" ? "audio/wav" : "audio/aac"
                     let response = try await UploadClient.upload(
                         data: data, mimeType: mimeType, baseURL: baseURL, apiKey: apiKey
@@ -214,9 +212,8 @@ final class ChatViewModel {
         }
     }
 
-    /// Resize an ExyteMediaPicker Media to max 1024px and JPEG compress.
-    private func resizedImageData(from media: ExyteMediaPicker.Media) async -> Data? {
-        guard let data = await media.getData() else { return nil }
+    /// Resize raw image data to max 1024px and JPEG compress.
+    private func resizedImageData(from data: Data) -> Data? {
         guard let image = UIImage(data: data) else { return data }
 
         let maxDimension: CGFloat = 1024
