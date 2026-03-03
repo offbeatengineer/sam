@@ -116,7 +116,7 @@ extension ChatMessageItem {
                     ))
                 }
 
-            case .assistant(let blocks):
+            case .assistant(let blocks, _, _, _):
                 for block in blocks {
                     switch block {
                     case .text(let text):

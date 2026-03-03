@@ -4,6 +4,9 @@ import UIKit
 struct ChatContainerView: View {
     @Environment(AppViewModel.self) private var appVM
     @State private var audioPlayer = AudioPlayerManager()
+    @State private var showStats = false
+    @State private var showRename = false
+    @State private var renameText = ""
     let session: SessionInfo?
 
     private var isNewChat: Bool { session == nil }
@@ -21,6 +24,44 @@ struct ChatContainerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
+        .toolbar {
+            if session != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { showStats = true } label: {
+                            Label("Stats", systemImage: "chart.bar")
+                        }
+                        Button {
+                            renameText = session?.name ?? ""
+                            showRename = true
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showStats) {
+            SessionStatsSheet(entries: appVM.chatVM.historicalEntries, session: session)
+        }
+        .alert("Rename Session", isPresented: $showRename) {
+            TextField("Session name", text: $renameText)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") {
+                guard let session, !renameText.isEmpty else { return }
+                Task {
+                    let requestId = UUID().uuidString
+                    _ = try? await appVM.request(
+                        .renameSession(requestId: requestId, sessionPath: session.path, name: renameText),
+                        requestId: requestId
+                    )
+                    await appVM.sessionListVM.loadSessions(using: appVM)
+                }
+            }
+        }
         .task {
             if let session {
                 await appVM.chatVM.selectSession(session, using: appVM)

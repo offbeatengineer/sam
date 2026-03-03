@@ -6,8 +6,8 @@ final class SessionListViewModel {
     var isLoading = false
     var error: String?
 
-    /// Tracks which channel sections are expanded (all expanded by default).
-    var collapsedChannels: Set<String> = []
+    /// Tracks which channel sections are collapsed.
+    var collapsedChannels: Set<String> = ["pulse"]
 
     /// Sessions grouped by channelId.
     var groupedSessions: [(channelId: String, sessions: [SessionInfo])] {

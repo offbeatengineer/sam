@@ -317,7 +317,7 @@ final class ChatViewModel {
             historicalEntries.append(SessionEntry(
                 id: UUID().uuidString,
                 entryType: "message",
-                message: .assistant(content: blocks),
+                message: .assistant(content: blocks, model: nil, provider: nil, usage: nil),
                 timestamp: ISO8601DateFormatter().string(from: Date()),
                 modelId: nil, summary: nil
             ))
