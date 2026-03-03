@@ -1,14 +1,17 @@
 import { WebSocketServer, type WebSocket } from "ws";
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { SessionRegistry } from "../session-registry.js";
-import type { AppRequest, AppResponse, SessionInfoDTO, SkillInfoDTO } from "../protocol.js";
+import type { AppRequest, AppResponse, ChatAttachment, SessionInfoDTO, SkillInfoDTO } from "../protocol.js";
 import type { SessionKey } from "../types.js";
 import { MemoryStore } from "../memory/store.js";
 import type { MemoryConfig } from "../memory/types.js";
 import type { ArtifactsServer } from "../artifacts-server.js";
+import type { Transcriber } from "../transcriber.js";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
-import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync, createReadStream } from "node:fs";
 import { resolve, basename, dirname, join, relative } from "node:path";
+import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 
 interface AppChannelOptions {
   port: number;
@@ -19,6 +22,7 @@ interface AppChannelOptions {
   sessionsDir: string;
   skillsDir: string;
   artifactsServer?: ArtifactsServer;
+  transcriber?: Transcriber;
 }
 
 /**
@@ -32,6 +36,17 @@ interface AppChannelOptions {
 const MAX_CONNECTIONS_PER_MINUTE = 10;
 const MAX_MESSAGES_PER_MINUTE = 30;
 const RATE_LIMIT_WINDOW_MS = 60_000;
+
+// Upload constants
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_UPLOAD_MIMES = new Set([
+  "image/jpeg", "image/png", "image/webp", "image/heic",
+  "audio/aac", "audio/m4a", "audio/mp4", "audio/mpeg", "audio/wav",
+]);
+const MIME_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic",
+  "audio/aac": "aac", "audio/m4a": "m4a", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav",
+};
 
 // Input validation constants
 const MAX_CONVERSATION_ID_LENGTH = 100;
@@ -60,9 +75,23 @@ export class AppChannel {
     const { port, host, apiKey, artifactsServer } = this.options;
     const listenHost = host ?? "127.0.0.1";
 
-    // HTTP server — delegates to artifacts handler when available,
-    // otherwise returns 426 (Upgrade Required) for plain HTTP requests.
+    // HTTP server — handles /upload, /uploads/*, delegates to artifacts, or returns 426.
     this.httpServer = createServer((req, res) => {
+      const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+      if (req.method === "POST" && url.pathname === "/upload") {
+        this.handleUpload(req, res).catch((err) => {
+          console.error("Upload error:", err);
+          if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Internal server error" }));
+          }
+        });
+        return;
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/uploads/")) {
+        this.handleServeUpload(req, res, url);
+        return;
+      }
       if (artifactsServer) {
         artifactsServer.handleRequest(req, res);
       } else {
@@ -262,6 +291,162 @@ export class AppChannel {
   }
 
   // ---------------------------------------------------------------------------
+  // File upload handling
+  // ---------------------------------------------------------------------------
+
+  private async handleUpload(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // Auth check
+    const { apiKey } = this.options;
+    if (apiKey && !this.verifyApiKey(req, apiKey)) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+
+    const contentType = (req.headers["content-type"] ?? "").split(";")[0].trim();
+    if (!ALLOWED_UPLOAD_MIMES.has(contentType)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: `Unsupported content type: ${contentType}. Allowed: ${[...ALLOWED_UPLOAD_MIMES].join(", ")}` }));
+      return;
+    }
+
+    // Read body with size limit
+    const chunks: Buffer[] = [];
+    let totalSize = 0;
+    for await (const chunk of req) {
+      totalSize += (chunk as Buffer).length;
+      if (totalSize > MAX_UPLOAD_SIZE) {
+        res.writeHead(413, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: `File too large. Max size: ${MAX_UPLOAD_SIZE / 1024 / 1024}MB` }));
+        return;
+      }
+      chunks.push(chunk as Buffer);
+    }
+    const body = Buffer.concat(chunks);
+    if (body.length === 0) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Empty body" }));
+      return;
+    }
+
+    // Save to ~/.sam/uploads/YYYY-MM-DD/<uuid>.<ext>
+    const now = new Date();
+    const dateDir = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const uploadsDir = resolve(homedir(), ".sam", "uploads", dateDir);
+    mkdirSync(uploadsDir, { recursive: true });
+
+    const id = randomUUID();
+    const ext = MIME_EXTENSIONS[contentType] ?? "bin";
+    const filePath = join(uploadsDir, `${id}.${ext}`);
+    writeFileSync(filePath, body);
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ id, path: filePath, mimeType: contentType }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Serve uploaded files via HTTP GET /uploads/*
+  // ---------------------------------------------------------------------------
+
+  private handleServeUpload(req: IncomingMessage, res: ServerResponse, url: URL): void {
+    // API key check
+    if (this.options.apiKey) {
+      const auth = req.headers.authorization;
+      const qKey = url.searchParams.get("apiKey");
+      const token = auth?.startsWith("Bearer ") ? auth.slice(7) : qKey;
+      if (token !== this.options.apiKey) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+    }
+
+    const uploadsDir = join(homedir(), ".sam", "uploads");
+    const relativePath = decodeURIComponent(url.pathname.slice("/uploads/".length));
+    const filePath = resolve(uploadsDir, relativePath);
+
+    // Path traversal protection
+    if (!filePath.startsWith(uploadsDir)) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Forbidden" }));
+      return;
+    }
+
+    if (!existsSync(filePath)) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Not found" }));
+      return;
+    }
+
+    // Determine MIME type from extension
+    const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+    const mimeMap: Record<string, string> = {
+      jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+      heic: "image/heic", aac: "audio/aac", m4a: "audio/m4a", mp3: "audio/mpeg", wav: "audio/wav",
+    };
+    const contentType = mimeMap[ext] ?? "application/octet-stream";
+
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=31536000, immutable",
+    });
+    createReadStream(filePath).pipe(res);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Strip base64 image data from session entries for WebSocket transfer
+  // ---------------------------------------------------------------------------
+
+  private stripAttachmentData(entries: any[]): any[] {
+    const uploadsDir = join(homedir(), ".sam", "uploads");
+    const cacheDir = join(uploadsDir, "entry-cache");
+
+    return entries.map((entry) => {
+      // Transform custom audio_attachment entries: add URL from uploadPath
+      if (entry?.type === "custom" && entry?.customType === "audio_attachment" && entry?.data?.uploadPath) {
+        return { ...entry, data: { ...entry.data, url: `/uploads/${entry.data.uploadPath}` } };
+      }
+
+      if (entry?.message?.role !== "user" || !Array.isArray(entry.message.content)) {
+        return entry;
+      }
+
+      let changed = false;
+      const processedContent: any[] = [];
+
+      for (let idx = 0; idx < entry.message.content.length; idx++) {
+        const block = entry.message.content[idx];
+
+        // Strip base64 from image blocks
+        if (block.type === "image" && block.data) {
+          changed = true;
+          if (block.uploadPath) {
+            const { data: _data, ...rest } = block;
+            processedContent.push({ ...rest, url: `/uploads/${block.uploadPath}` });
+          } else {
+            // Legacy fallback: extract base64 to cache file
+            const ext = MIME_EXTENSIONS[block.mimeType] || "jpg";
+            const filename = `${entry.id}-${idx}.${ext}`;
+            const cachePath = join(cacheDir, filename);
+            if (!existsSync(cachePath)) {
+              mkdirSync(cacheDir, { recursive: true });
+              writeFileSync(cachePath, Buffer.from(block.data, "base64"));
+            }
+            const { data: _data, ...rest } = block;
+            processedContent.push({ ...rest, url: `/uploads/entry-cache/${filename}` });
+          }
+          continue;
+        }
+
+        processedContent.push(block);
+      }
+
+      if (!changed) return entry;
+      return { ...entry, message: { ...entry.message, content: processedContent } };
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Request handling
   // ---------------------------------------------------------------------------
 
@@ -299,7 +484,7 @@ export class AppChannel {
     ws: WebSocket,
     request: Extract<AppRequest, { type: "chat" }>,
   ): Promise<void> {
-    const { conversationId, requestId, text } = request;
+    const { conversationId, requestId, text, attachments } = request;
     const registry = this.options.registry;
     const sessionKey: SessionKey = { channelId: "app", conversationId };
 
@@ -318,7 +503,64 @@ export class AppChannel {
 
       this.sendTo(ws, { type: "turn_start", conversationId, requestId });
 
-      await session.prompt(text, { streamingBehavior: "followUp" } as any);
+      // Process attachments if present
+      let promptText = text;
+      const uploadsDir = join(homedir(), ".sam", "uploads");
+      const images: { type: "image"; data: string; mimeType: string; uploadPath?: string }[] = [];
+      const audioMeta: { uploadPath: string; mimeType: string }[] = [];
+
+      if (attachments && attachments.length > 0) {
+        for (const att of attachments) {
+          if (!existsSync(att.path)) {
+            console.warn(`Attachment file not found: ${att.path}`);
+            continue;
+          }
+          const fileBuffer = readFileSync(att.path);
+
+          if (att.type === "image") {
+            const uploadPath = att.path.startsWith(uploadsDir)
+              ? relative(uploadsDir, att.path)
+              : undefined;
+            images.push({
+              type: "image",
+              data: fileBuffer.toString("base64"),
+              mimeType: att.mimeType,
+              ...(uploadPath ? { uploadPath } : {}),
+            });
+          } else if (att.type === "audio") {
+            const uploadPath = att.path.startsWith(uploadsDir)
+              ? relative(uploadsDir, att.path)
+              : undefined;
+            if (uploadPath) {
+              audioMeta.push({ uploadPath, mimeType: att.mimeType });
+            }
+
+            const transcriber = this.options.transcriber;
+            if (!transcriber) {
+              this.sendTo(ws, { type: "error", conversationId, error: "Audio transcription is not configured on this server" });
+              continue;
+            }
+            const transcript = await transcriber.transcribe(fileBuffer, att.mimeType);
+            if (transcript) {
+              promptText = `[Audio transcript]: ${transcript}\n\n${promptText}`;
+            } else {
+              this.sendTo(ws, { type: "error", conversationId, error: "Failed to transcribe audio" });
+            }
+          }
+        }
+      }
+
+      // Persist audio attachment metadata as custom entries (before prompt so
+      // they appear adjacent to the user message in the JSONL timeline).
+      for (const audio of audioMeta) {
+        session.sessionManager.appendCustomEntry("audio_attachment", audio);
+      }
+
+      const promptOptions: any = { streamingBehavior: "followUp" };
+      if (images.length > 0) {
+        promptOptions.images = images;
+      }
+      await session.prompt(promptText, promptOptions);
 
       this.sendTo(ws, { type: "turn_end", conversationId, requestId });
     } catch (error) {
@@ -494,7 +736,7 @@ export class AppChannel {
         type: "session_entries",
         requestId,
         header: header as object | null,
-        entries: entries as object[],
+        entries: this.stripAttachmentData(entries as any[]),
       });
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);

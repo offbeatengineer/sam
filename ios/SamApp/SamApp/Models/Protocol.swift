@@ -1,9 +1,17 @@
 import Foundation
 
+// MARK: - Chat Attachment
+
+struct ChatAttachment: Encodable {
+    let type: String      // "image" or "audio"
+    let path: String      // server path from upload response
+    let mimeType: String
+}
+
 // MARK: - Client → Server Requests
 
 enum ClientRequest: Encodable {
-    case chat(requestId: String, conversationId: String, text: String)
+    case chat(requestId: String, conversationId: String, text: String, attachments: [ChatAttachment]? = nil)
     case abort(conversationId: String)
     case closeSession(conversationId: String)
     case listSessions(requestId: String)
@@ -25,11 +33,12 @@ enum ClientRequest: Encodable {
         var container = encoder.container(keyedBy: DynamicCodingKey.self)
 
         switch self {
-        case .chat(let requestId, let conversationId, let text):
+        case .chat(let requestId, let conversationId, let text, let attachments):
             try container.encode("chat", forKey: .key("type"))
             try container.encode(requestId, forKey: .key("requestId"))
             try container.encode(conversationId, forKey: .key("conversationId"))
             try container.encode(text, forKey: .key("text"))
+            try container.encodeIfPresent(attachments, forKey: .key("attachments"))
 
         case .abort(let conversationId):
             try container.encode("abort", forKey: .key("type"))

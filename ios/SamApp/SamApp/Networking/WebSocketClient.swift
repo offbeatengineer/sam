@@ -22,6 +22,7 @@ actor WebSocketClient {
         }
 
         let wsTask = session!.webSocketTask(with: request)
+        wsTask.maximumMessageSize = 16 * 1024 * 1024 // 16MB safety net
         self.task = wsTask
 
         let stream = AsyncStream<ServerMessage> { cont in

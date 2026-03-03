@@ -1,4 +1,6 @@
 import Foundation
+import UIKit
+import ExyteChat
 
 /// Bridges Sam's internal models to a flat list suitable for the Chat UI.
 /// Each item represents one renderable cell in the chat view.
@@ -15,6 +17,10 @@ struct ChatMessageItem: Identifiable {
         case toolExecution(StreamingToolExecution)
         case artifactCard(toolCallId: String, toolName: String, title: String)
         case systemEvent(String)
+        case imageAttachment(UIImage, caption: String?)
+        case remoteImageAttachment(remotePath: String, caption: String?)
+        case audioAttachment(caption: String?)
+        case remoteAudioAttachment(remotePath: String)
     }
 }
 
@@ -72,13 +78,44 @@ extension ChatMessageItem {
             let ts = parseTimestamp(entry.timestamp)
 
             switch message {
-            case .user(let content):
-                items.append(ChatMessageItem(
-                    id: entry.id,
-                    isUser: true,
-                    timestamp: ts,
-                    content: .text(content)
-                ))
+            case .user(let content, let images, let audioAttachments):
+                let hasAttachments = !images.isEmpty || !audioAttachments.isEmpty
+                // Add text item (skip if empty and there are attachments to show)
+                if !content.isEmpty || !hasAttachments {
+                    items.append(ChatMessageItem(
+                        id: entry.id,
+                        isUser: true,
+                        timestamp: ts,
+                        content: .text(content)
+                    ))
+                }
+                // Add image items from stored data or remote URL
+                for (imgIdx, img) in images.enumerated() {
+                    if let data = img.data, let uiImage = UIImage(data: data) {
+                        items.append(ChatMessageItem(
+                            id: "\(entry.id)-img-\(imgIdx)",
+                            isUser: true,
+                            timestamp: ts,
+                            content: .imageAttachment(uiImage, caption: nil)
+                        ))
+                    } else if let remotePath = img.remotePath {
+                        items.append(ChatMessageItem(
+                            id: "\(entry.id)-img-\(imgIdx)",
+                            isUser: true,
+                            timestamp: ts,
+                            content: .remoteImageAttachment(remotePath: remotePath, caption: nil)
+                        ))
+                    }
+                }
+                // Add audio items from remote URL
+                for (audioIdx, audio) in audioAttachments.enumerated() {
+                    items.append(ChatMessageItem(
+                        id: "\(entry.id)-audio-\(audioIdx)",
+                        isUser: true,
+                        timestamp: ts,
+                        content: .remoteAudioAttachment(remotePath: audio.remotePath)
+                    ))
+                }
 
             case .assistant(let blocks):
                 for block in blocks {
@@ -227,5 +264,38 @@ extension ChatMessageItem {
     private static func parseTimestamp(_ ts: String?) -> Date {
         guard let ts else { return Date() }
         return ISO8601DateFormatter().date(from: ts) ?? Date()
+    }
+}
+
+// MARK: - ExyteChat adapter
+
+extension ChatMessageItem {
+    /// Convert to an ExyteChat Message for use in ChatView.
+    func toExyteMessage() -> ExyteChat.Message {
+        let user = ExyteChat.User(
+            id: isUser ? "user" : "sam",
+            name: isUser ? "You" : "Sam",
+            avatarURL: nil,
+            isCurrentUser: isUser
+        )
+        let displayText: String
+        switch content {
+        case .text(let t): displayText = t
+        case .markdown(let t): displayText = t
+        case .thinking(_, _): displayText = "[Thinking...]"
+        case .toolExecution(let tool): displayText = "[Tool: \(tool.toolName)]"
+        case .artifactCard(_, _, let title): displayText = "[Artifact: \(title)]"
+        case .systemEvent(let t): displayText = t
+        case .imageAttachment(_, let caption): displayText = caption ?? "[Image]"
+        case .remoteImageAttachment(_, let caption): displayText = caption ?? "[Image]"
+        case .audioAttachment(let caption): displayText = caption ?? "[Audio]"
+        case .remoteAudioAttachment: displayText = "[Audio]"
+        }
+        return ExyteChat.Message(
+            id: id,
+            user: user,
+            createdAt: timestamp,
+            text: displayText
+        )
     }
 }
