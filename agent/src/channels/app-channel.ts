@@ -1,19 +1,28 @@
 import { WebSocketServer, type WebSocket } from "ws";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { SessionRegistry } from "../session-registry.js";
-import type { AppRequest, AppResponse, SessionInfoDTO } from "../protocol.js";
+import type { AppRequest, AppResponse, ChatAttachment, SessionInfoDTO, SkillInfoDTO } from "../protocol.js";
 import type { SessionKey } from "../types.js";
 import { MemoryStore } from "../memory/store.js";
 import type { MemoryConfig } from "../memory/types.js";
+import type { ArtifactsServer } from "../artifacts-server.js";
+import type { Transcriber } from "../transcriber.js";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
-import { readdirSync, statSync } from "node:fs";
-import { resolve, basename, dirname } from "node:path";
+import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync, createReadStream } from "node:fs";
+import { resolve, basename, dirname, join, relative } from "node:path";
+import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 
 interface AppChannelOptions {
   port: number;
   host?: string;
+  apiKey?: string;
   registry: SessionRegistry;
   memoryConfig?: MemoryConfig;
   sessionsDir: string;
+  skillsDir: string;
+  artifactsServer?: ArtifactsServer;
+  transcriber?: Transcriber;
 }
 
 /**
@@ -23,7 +32,30 @@ interface AppChannelOptions {
  * manages its own session interaction to forward rich streaming events
  * (thinking, tool calls, etc.) directly to the connected client.
  */
+// Rate limiting constants
+const MAX_CONNECTIONS_PER_MINUTE = 10;
+const MAX_MESSAGES_PER_MINUTE = 30;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+// Upload constants
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_UPLOAD_MIMES = new Set([
+  "image/jpeg", "image/png", "image/webp", "image/heic",
+  "audio/aac", "audio/m4a", "audio/mp4", "audio/mpeg", "audio/wav",
+]);
+const MIME_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic",
+  "audio/aac": "aac", "audio/m4a": "m4a", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav",
+};
+
+// Input validation constants
+const MAX_CONVERSATION_ID_LENGTH = 100;
+const MAX_REQUEST_ID_LENGTH = 100;
+const MAX_TEXT_LENGTH = 100 * 1024; // 100KB
+const CONVERSATION_ID_PATTERN = /^[a-zA-Z0-9-]+$/;
+
 export class AppChannel {
+  private httpServer: Server | null = null;
   private wss: WebSocketServer | null = null;
   private clients = new Set<WebSocket>();
   /** Maps conversationId → the WebSocket client that owns it */
@@ -32,60 +64,385 @@ export class AppChannel {
   private activeRequests = new Map<string, string>();
   /** Tracks which sessions already have subscriptions */
   private subscriptions = new Set<string>();
+  /** Connection rate limiting: IP → timestamps */
+  private connectionAttempts = new Map<string, number[]>();
+  /** Message rate limiting: WebSocket → { count, resetAt } */
+  private messageCounters = new WeakMap<WebSocket, { count: number; resetAt: number }>();
 
   constructor(private options: AppChannelOptions) {}
 
   async start(): Promise<void> {
-    const { port, host } = this.options;
-    return new Promise((resolve, reject) => {
-      this.wss = new WebSocketServer({ port, host: host ?? "127.0.0.1" }, () => {
-        console.log(`App channel listening on ${host ?? "127.0.0.1"}:${port}`);
-        resolve();
-      });
+    const { port, host, apiKey, artifactsServer } = this.options;
+    const listenHost = host ?? "127.0.0.1";
 
-      this.wss.on("error", (err) => {
-        console.error("App channel server error:", err);
-        reject(err);
-      });
-
-      this.wss.on("connection", (ws) => {
-        this.clients.add(ws);
-        console.log(`App client connected (${this.clients.size} total)`);
-
-        ws.on("message", (data) => {
-          try {
-            const request = JSON.parse(data.toString()) as AppRequest;
-            this.handleRequest(ws, request);
-          } catch (err) {
-            this.sendTo(ws, { type: "error", error: `Invalid message: ${err}` });
+    // HTTP server — handles /upload, /uploads/*, delegates to artifacts, or returns 426.
+    this.httpServer = createServer((req, res) => {
+      const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+      if (req.method === "POST" && url.pathname === "/upload") {
+        this.handleUpload(req, res).catch((err) => {
+          console.error("Upload error:", err);
+          if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Internal server error" }));
           }
         });
+        return;
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/uploads/")) {
+        this.handleServeUpload(req, res, url);
+        return;
+      }
+      if (artifactsServer) {
+        artifactsServer.handleRequest(req, res);
+      } else {
+        res.writeHead(426, { "Content-Type": "text/plain" });
+        res.end("WebSocket required");
+      }
+    });
 
-        ws.on("close", () => {
-          this.clients.delete(ws);
-          // Clean up conversation ownership for this client
-          for (const [convId, owner] of this.conversationOwners) {
-            if (owner === ws) {
-              this.conversationOwners.delete(convId);
-              this.activeRequests.delete(convId);
-            }
-          }
-          console.log(`App client disconnected (${this.clients.size} remaining)`);
-        });
+    this.wss = new WebSocketServer({ noServer: true });
+
+    this.httpServer.on("upgrade", (req, socket, head) => {
+      const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+
+      // Route /__live upgrades to the artifacts live reload WSS
+      if (pathname === "/__live" && artifactsServer) {
+        artifactsServer.handleLiveReloadUpgrade(req, socket, head);
+        return;
+      }
+
+      // Auth check
+      if (apiKey && !this.verifyApiKey(req, apiKey)) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      // Rate limit check
+      const ip = this.getClientIp(req);
+      if (!this.checkConnectionRateLimit(ip)) {
+        socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      this.wss!.handleUpgrade(req, socket, head, (ws) => {
+        this.wss!.emit("connection", ws);
       });
+    });
+
+    // Wire up connection handling on the WSS
+    this.wss.on("connection", (ws) => {
+      this.clients.add(ws);
+      console.log(`App client connected (${this.clients.size} total)`);
+
+      ws.on("message", (data) => {
+        // Message rate limiting
+        if (!this.checkMessageRateLimit(ws)) {
+          this.sendTo(ws, { type: "error", error: "Rate limit exceeded: too many messages" });
+          return;
+        }
+
+        try {
+          const request = JSON.parse(data.toString()) as AppRequest;
+          // Input validation
+          const validationError = this.validateRequest(request);
+          if (validationError) {
+            this.sendTo(ws, { type: "error", error: validationError });
+            return;
+          }
+          this.handleRequest(ws, request);
+        } catch (err) {
+          this.sendTo(ws, { type: "error", error: `Invalid message: ${err}` });
+        }
+      });
+
+      ws.on("close", () => {
+        this.clients.delete(ws);
+        // Clean up conversation ownership for this client
+        for (const [convId, owner] of this.conversationOwners) {
+          if (owner === ws) {
+            this.conversationOwners.delete(convId);
+            this.activeRequests.delete(convId);
+          }
+        }
+        console.log(`App client disconnected (${this.clients.size} remaining)`);
+      });
+    });
+
+    return new Promise((resolvePromise, reject) => {
+      this.httpServer!.listen(port, listenHost, () => {
+        console.log(`App channel listening on ${listenHost}:${port}`);
+        resolvePromise();
+      });
+      this.httpServer!.on("error", reject);
     });
   }
 
   async stop(): Promise<void> {
-    if (!this.wss) return;
     for (const ws of this.clients) {
       ws.close();
     }
-    return new Promise((resolve) => {
-      this.wss!.close(() => {
-        this.wss = null;
-        resolve();
+    if (this.wss) {
+      this.wss.close();
+      this.wss = null;
+    }
+    return new Promise((resolveP) => {
+      if (!this.httpServer) return resolveP();
+      this.httpServer.close(() => {
+        this.httpServer = null;
+        resolveP();
       });
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Authentication & rate limiting
+  // ---------------------------------------------------------------------------
+
+  private verifyApiKey(req: IncomingMessage, expectedKey: string): boolean {
+    // Check Authorization: Bearer <key> header
+    const authHeader = req.headers["authorization"];
+    if (authHeader) {
+      const [scheme, token] = authHeader.split(" ");
+      if (scheme?.toLowerCase() === "bearer" && token === expectedKey) return true;
+    }
+    // Check ?apiKey= query param
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const queryKey = url.searchParams.get("apiKey");
+    if (queryKey === expectedKey) return true;
+
+    return false;
+  }
+
+  private getClientIp(req: IncomingMessage): string {
+    // Support Cloudflare Tunnel forwarded IP
+    const forwarded = req.headers["cf-connecting-ip"] ?? req.headers["x-forwarded-for"];
+    if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
+    return req.socket.remoteAddress ?? "unknown";
+  }
+
+  private checkConnectionRateLimit(ip: string): boolean {
+    const now = Date.now();
+    let attempts = this.connectionAttempts.get(ip);
+    if (!attempts) {
+      attempts = [];
+      this.connectionAttempts.set(ip, attempts);
+    }
+    // Remove entries outside the window
+    const cutoff = now - RATE_LIMIT_WINDOW_MS;
+    while (attempts.length > 0 && attempts[0] < cutoff) attempts.shift();
+    if (attempts.length >= MAX_CONNECTIONS_PER_MINUTE) return false;
+    attempts.push(now);
+    return true;
+  }
+
+  private checkMessageRateLimit(ws: WebSocket): boolean {
+    const now = Date.now();
+    let counter = this.messageCounters.get(ws);
+    if (!counter || now >= counter.resetAt) {
+      counter = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+      this.messageCounters.set(ws, counter);
+    }
+    counter.count++;
+    return counter.count <= MAX_MESSAGES_PER_MINUTE;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Input validation
+  // ---------------------------------------------------------------------------
+
+  private validateRequest(request: AppRequest): string | null {
+    // Validate conversationId where present
+    if ("conversationId" in request && request.conversationId != null) {
+      const cid = request.conversationId;
+      if (typeof cid !== "string" || cid.length > MAX_CONVERSATION_ID_LENGTH) {
+        return "conversationId must be a string of max 100 characters";
+      }
+      if (!CONVERSATION_ID_PATTERN.test(cid)) {
+        return "conversationId must contain only alphanumeric characters and hyphens";
+      }
+    }
+
+    // Validate requestId where present
+    if ("requestId" in request && (request as any).requestId != null) {
+      const rid = (request as any).requestId as string;
+      if (typeof rid !== "string" || rid.length > MAX_REQUEST_ID_LENGTH) {
+        return "requestId must be a string of max 100 characters";
+      }
+    }
+
+    // Validate text length for chat messages
+    if (request.type === "chat") {
+      if (typeof request.text !== "string" || request.text.length > MAX_TEXT_LENGTH) {
+        return "text must be a string of max 100KB";
+      }
+    }
+
+    // Validate sessionPath — prevent path traversal
+    if ("sessionPath" in request && (request as any).sessionPath != null) {
+      const sp = (request as any).sessionPath as string;
+      if (typeof sp !== "string" || sp.includes("..")) {
+        return "sessionPath must not contain path traversal sequences";
+      }
+    }
+
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // File upload handling
+  // ---------------------------------------------------------------------------
+
+  private async handleUpload(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // Auth check
+    const { apiKey } = this.options;
+    if (apiKey && !this.verifyApiKey(req, apiKey)) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+
+    const contentType = (req.headers["content-type"] ?? "").split(";")[0].trim();
+    if (!ALLOWED_UPLOAD_MIMES.has(contentType)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: `Unsupported content type: ${contentType}. Allowed: ${[...ALLOWED_UPLOAD_MIMES].join(", ")}` }));
+      return;
+    }
+
+    // Read body with size limit
+    const chunks: Buffer[] = [];
+    let totalSize = 0;
+    for await (const chunk of req) {
+      totalSize += (chunk as Buffer).length;
+      if (totalSize > MAX_UPLOAD_SIZE) {
+        res.writeHead(413, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: `File too large. Max size: ${MAX_UPLOAD_SIZE / 1024 / 1024}MB` }));
+        return;
+      }
+      chunks.push(chunk as Buffer);
+    }
+    const body = Buffer.concat(chunks);
+    if (body.length === 0) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Empty body" }));
+      return;
+    }
+
+    // Save to ~/.sam/uploads/YYYY-MM-DD/<uuid>.<ext>
+    const now = new Date();
+    const dateDir = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const uploadsDir = resolve(homedir(), ".sam", "uploads", dateDir);
+    mkdirSync(uploadsDir, { recursive: true });
+
+    const id = randomUUID();
+    const ext = MIME_EXTENSIONS[contentType] ?? "bin";
+    const filePath = join(uploadsDir, `${id}.${ext}`);
+    writeFileSync(filePath, body);
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ id, path: filePath, mimeType: contentType }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Serve uploaded files via HTTP GET /uploads/*
+  // ---------------------------------------------------------------------------
+
+  private handleServeUpload(req: IncomingMessage, res: ServerResponse, url: URL): void {
+    // API key check
+    if (this.options.apiKey) {
+      const auth = req.headers.authorization;
+      const qKey = url.searchParams.get("apiKey");
+      const token = auth?.startsWith("Bearer ") ? auth.slice(7) : qKey;
+      if (token !== this.options.apiKey) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+    }
+
+    const uploadsDir = join(homedir(), ".sam", "uploads");
+    const relativePath = decodeURIComponent(url.pathname.slice("/uploads/".length));
+    const filePath = resolve(uploadsDir, relativePath);
+
+    // Path traversal protection
+    if (!filePath.startsWith(uploadsDir)) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Forbidden" }));
+      return;
+    }
+
+    if (!existsSync(filePath)) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Not found" }));
+      return;
+    }
+
+    // Determine MIME type from extension
+    const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+    const mimeMap: Record<string, string> = {
+      jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+      heic: "image/heic", aac: "audio/aac", m4a: "audio/m4a", mp3: "audio/mpeg", wav: "audio/wav",
+    };
+    const contentType = mimeMap[ext] ?? "application/octet-stream";
+
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=31536000, immutable",
+    });
+    createReadStream(filePath).pipe(res);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Strip base64 image data from session entries for WebSocket transfer
+  // ---------------------------------------------------------------------------
+
+  private stripAttachmentData(entries: any[]): any[] {
+    const uploadsDir = join(homedir(), ".sam", "uploads");
+    const cacheDir = join(uploadsDir, "entry-cache");
+
+    return entries.map((entry) => {
+      // Transform custom audio_attachment entries: add URL from uploadPath
+      if (entry?.type === "custom" && entry?.customType === "audio_attachment" && entry?.data?.uploadPath) {
+        return { ...entry, data: { ...entry.data, url: `/uploads/${entry.data.uploadPath}` } };
+      }
+
+      if (entry?.message?.role !== "user" || !Array.isArray(entry.message.content)) {
+        return entry;
+      }
+
+      let changed = false;
+      const processedContent: any[] = [];
+
+      for (let idx = 0; idx < entry.message.content.length; idx++) {
+        const block = entry.message.content[idx];
+
+        // Strip base64 from image blocks
+        if (block.type === "image" && block.data) {
+          changed = true;
+          if (block.uploadPath) {
+            const { data: _data, ...rest } = block;
+            processedContent.push({ ...rest, url: `/uploads/${block.uploadPath}` });
+          } else {
+            // Legacy fallback: extract base64 to cache file
+            const ext = MIME_EXTENSIONS[block.mimeType] || "jpg";
+            const filename = `${entry.id}-${idx}.${ext}`;
+            const cachePath = join(cacheDir, filename);
+            if (!existsSync(cachePath)) {
+              mkdirSync(cacheDir, { recursive: true });
+              writeFileSync(cachePath, Buffer.from(block.data, "base64"));
+            }
+            const { data: _data, ...rest } = block;
+            processedContent.push({ ...rest, url: `/uploads/entry-cache/${filename}` });
+          }
+          continue;
+        }
+
+        processedContent.push(block);
+      }
+
+      if (!changed) return entry;
+      return { ...entry, message: { ...entry.message, content: processedContent } };
     });
   }
 
@@ -113,6 +470,11 @@ export class AppChannel {
       case "memory_update":
       case "memory_delete":
         return this.handleMemoryRequest(ws, request);
+      case "list_skills":
+      case "get_skill":
+      case "save_skill":
+      case "delete_skill":
+        return this.handleSkillRequest(ws, request);
       default:
         this.sendTo(ws, { type: "error", error: `Unknown request type: ${(request as any).type}` });
     }
@@ -122,7 +484,7 @@ export class AppChannel {
     ws: WebSocket,
     request: Extract<AppRequest, { type: "chat" }>,
   ): Promise<void> {
-    const { conversationId, requestId, text } = request;
+    const { conversationId, requestId, text, attachments } = request;
     const registry = this.options.registry;
     const sessionKey: SessionKey = { channelId: "app", conversationId };
 
@@ -141,7 +503,64 @@ export class AppChannel {
 
       this.sendTo(ws, { type: "turn_start", conversationId, requestId });
 
-      await session.prompt(text, { streamingBehavior: "followUp" } as any);
+      // Process attachments if present
+      let promptText = text;
+      const uploadsDir = join(homedir(), ".sam", "uploads");
+      const images: { type: "image"; data: string; mimeType: string; uploadPath?: string }[] = [];
+      const audioMeta: { uploadPath: string; mimeType: string }[] = [];
+
+      if (attachments && attachments.length > 0) {
+        for (const att of attachments) {
+          if (!existsSync(att.path)) {
+            console.warn(`Attachment file not found: ${att.path}`);
+            continue;
+          }
+          const fileBuffer = readFileSync(att.path);
+
+          if (att.type === "image") {
+            const uploadPath = att.path.startsWith(uploadsDir)
+              ? relative(uploadsDir, att.path)
+              : undefined;
+            images.push({
+              type: "image",
+              data: fileBuffer.toString("base64"),
+              mimeType: att.mimeType,
+              ...(uploadPath ? { uploadPath } : {}),
+            });
+          } else if (att.type === "audio") {
+            const uploadPath = att.path.startsWith(uploadsDir)
+              ? relative(uploadsDir, att.path)
+              : undefined;
+            if (uploadPath) {
+              audioMeta.push({ uploadPath, mimeType: att.mimeType });
+            }
+
+            const transcriber = this.options.transcriber;
+            if (!transcriber) {
+              this.sendTo(ws, { type: "error", conversationId, error: "Audio transcription is not configured on this server" });
+              continue;
+            }
+            const transcript = await transcriber.transcribe(fileBuffer, att.mimeType);
+            if (transcript) {
+              promptText = `[Audio transcript]: ${transcript}\n\n${promptText}`;
+            } else {
+              this.sendTo(ws, { type: "error", conversationId, error: "Failed to transcribe audio" });
+            }
+          }
+        }
+      }
+
+      // Persist audio attachment metadata as custom entries (before prompt so
+      // they appear adjacent to the user message in the JSONL timeline).
+      for (const audio of audioMeta) {
+        session.sessionManager.appendCustomEntry("audio_attachment", audio);
+      }
+
+      const promptOptions: any = { streamingBehavior: "followUp" };
+      if (images.length > 0) {
+        promptOptions.images = images;
+      }
+      await session.prompt(promptText, promptOptions);
 
       this.sendTo(ws, { type: "turn_end", conversationId, requestId });
     } catch (error) {
@@ -317,7 +736,7 @@ export class AppChannel {
         type: "session_entries",
         requestId,
         header: header as object | null,
-        entries: entries as object[],
+        entries: this.stripAttachmentData(entries as any[]),
       });
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
@@ -408,6 +827,86 @@ export class AppChannel {
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
       this.sendTo(ws, { type: "memory_error", requestId, error: errorText });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Skill request handling
+  // ---------------------------------------------------------------------------
+
+  private async handleSkillRequest(
+    ws: WebSocket,
+    request: Extract<AppRequest, { type: `${"list" | "get" | "save" | "delete"}_skill${"" | "s"}` }>,
+  ): Promise<void> {
+    const requestId = (request as any).requestId as string;
+    const skillsDir = this.options.skillsDir;
+
+    try {
+      mkdirSync(skillsDir, { recursive: true });
+
+      switch (request.type) {
+        case "list_skills": {
+          const files = readdirSync(skillsDir).filter((f) => f.endsWith(".md") || f.endsWith(".yaml") || f.endsWith(".yml") || f.endsWith(".json") || f.endsWith(".txt"));
+          const skills: SkillInfoDTO[] = [];
+          for (const filename of files) {
+            try {
+              const st = statSync(join(skillsDir, filename));
+              skills.push({ filename, modified: st.mtime.toISOString(), size: st.size });
+            } catch {
+              // skip unreadable files
+            }
+          }
+          this.sendTo(ws, { type: "skills_list_result", requestId, skills });
+          break;
+        }
+
+        case "get_skill": {
+          const filename = (request as any).filename as string;
+          if (!filename || filename.includes("..") || filename.includes("/")) {
+            this.sendTo(ws, { type: "skill_error", requestId, error: "Invalid filename" });
+            return;
+          }
+          const filePath = join(skillsDir, filename);
+          if (!existsSync(filePath)) {
+            this.sendTo(ws, { type: "skill_error", requestId, error: "Skill not found" });
+            return;
+          }
+          const content = readFileSync(filePath, "utf-8");
+          this.sendTo(ws, { type: "skill_content_result", requestId, filename, content });
+          break;
+        }
+
+        case "save_skill": {
+          const filename = (request as any).filename as string;
+          const content = (request as any).content as string;
+          if (!filename || filename.includes("..") || filename.includes("/")) {
+            this.sendTo(ws, { type: "skill_error", requestId, error: "Invalid filename" });
+            return;
+          }
+          writeFileSync(join(skillsDir, filename), content, "utf-8");
+          this.sendTo(ws, { type: "skill_save_result", requestId, success: true });
+          break;
+        }
+
+        case "delete_skill": {
+          const filename = (request as any).filename as string;
+          if (!filename || filename.includes("..") || filename.includes("/")) {
+            this.sendTo(ws, { type: "skill_error", requestId, error: "Invalid filename" });
+            return;
+          }
+          const filePath = join(skillsDir, filename);
+          if (!existsSync(filePath)) {
+            this.sendTo(ws, { type: "skill_error", requestId, error: "Skill not found" });
+            return;
+          }
+          unlinkSync(filePath);
+          this.sendTo(ws, { type: "skill_delete_result", requestId, success: true });
+          break;
+        }
+      }
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "skill_error", requestId, error: errorText });
     }
   }
 

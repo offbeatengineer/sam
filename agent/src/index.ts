@@ -19,7 +19,7 @@ async function main() {
     sessions: config.sessions,
     prompts: config.prompts,
     discord: config.discord ? { allowedChannelIds: config.discord.allowedChannelIds } : undefined,
-    app: config.app,
+    app: config.app ? { ...config.app, apiKey: config.app.apiKey ? "***" : undefined } : undefined,
     transcription: config.transcription,
     pulse: config.pulse,
   }, null, 2));
@@ -34,16 +34,17 @@ async function main() {
   const registry = new SessionRegistry(config);
   const dispatcher = new Dispatcher(registry);
 
+  // Create transcriber once, shared by all channels
+  const transcriber = config.transcription?.modelPath
+    ? new CliTranscriber(config.transcription.modelPath)
+    : undefined;
+
   let discord: DiscordChannel | undefined;
   let appChannel: AppChannel | undefined;
   let artifactsServer: ArtifactsServer | undefined;
 
   // Start Discord channel if configured
   if (config.discord) {
-    const transcriber = config.transcription?.modelPath
-      ? new CliTranscriber(config.transcription.modelPath)
-      : undefined;
-
     discord = new DiscordChannel({
       token: config.discord.token,
       allowedChannelIds: config.discord.allowedChannelIds,
@@ -61,28 +62,42 @@ async function main() {
     console.log("Discord channel started.");
   }
 
-  // Start App channel if configured
-  if (config.app?.enabled) {
-    appChannel = new AppChannel({
-      port: config.app.port,
-      host: config.app.host,
-      registry,
-      memoryConfig: config.memory,
-      sessionsDir: config.sessions,
-    });
-    await appChannel.start();
-  }
-
   // Start artifacts server if configured
   if (config.artifacts?.enabled) {
+    const artifactsHost = config.artifacts.host ?? config.app?.host ?? "127.0.0.1";
     artifactsServer = new ArtifactsServer({
-      port: config.artifacts.port,
-      host: config.artifacts.host ?? "127.0.0.1",
+      port: config.artifacts.port ?? config.app?.port ?? 9222,
+      host: artifactsHost,
       rootDir: resolve(SAM_DIR, "artifacts"),
       onChange: (event, path) => {
         appChannel?.broadcastArtifactsChanged(event, path);
       },
     });
+  }
+
+  // Start App channel if configured
+  if (config.app?.enabled) {
+    const appHost = config.app.host ?? "127.0.0.1";
+
+    // In attached mode, artifacts shares the app channel's HTTP server
+    if (artifactsServer) {
+      artifactsServer.startAttached(`ws://${appHost}:${config.app.port}`);
+    }
+
+    appChannel = new AppChannel({
+      port: config.app.port,
+      host: config.app.host,
+      apiKey: config.app.apiKey,
+      registry,
+      memoryConfig: config.memory,
+      sessionsDir: config.sessions,
+      skillsDir: config.skills,
+      artifactsServer,
+      transcriber,
+    });
+    await appChannel.start();
+  } else if (artifactsServer) {
+    // Standalone mode — artifacts runs its own HTTP server
     await artifactsServer.start();
   }
 
