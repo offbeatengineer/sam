@@ -261,25 +261,24 @@ final class ChatViewModel {
 
     func endStreaming(conversationId: String) {
         guard streamingTurn?.conversationId == conversationId else { return }
-        streamingTurn?.isActive = false
-        isStreaming = false
-        // Merge streaming content into historical entries
         if let turn = streamingTurn {
             mergeStreamingTurn(turn)
         }
+        streamingTurn?.isActive = false
+        isStreaming = false
         streamingTurn = nil
     }
 
-    func appendTextDelta(_ delta: String, contentIndex: Int) {
-        streamingTurn?.appendTextDelta(delta, contentIndex: contentIndex)
+    func appendTextDelta(_ delta: String) {
+        streamingTurn?.appendTextDelta(delta)
     }
 
-    func appendThinkingDelta(_ delta: String, contentIndex: Int) {
-        streamingTurn?.appendThinkingDelta(delta, contentIndex: contentIndex)
+    func appendThinkingDelta(_ delta: String) {
+        streamingTurn?.appendThinkingDelta(delta)
     }
 
-    func completeThinking(contentIndex: Int) {
-        streamingTurn?.completeThinking(contentIndex: contentIndex)
+    func completeThinking() {
+        streamingTurn?.completeThinking()
     }
 
     func addToolStart(toolCallId: String, toolName: String, args: AnyCodable) {
@@ -298,21 +297,23 @@ final class ChatViewModel {
 
     private func mergeStreamingTurn(_ turn: StreamingTurn) {
         var blocks: [AssistantContentBlock] = []
-        for block in turn.contentBlocks {
-            switch block {
+        var doneTools: [StreamingToolExecution] = []
+
+        for item in turn.items {
+            switch item {
             case .text(let text) where !text.isEmpty:
                 blocks.append(.text(text))
             case .thinking(let text, _) where !text.isEmpty:
                 blocks.append(.thinking(text))
+            case .tool(let tool):
+                blocks.append(.toolCall(id: tool.toolCallId, name: tool.toolName, arguments: tool.args))
+                if tool.isDone { doneTools.append(tool) }
             default:
                 break
             }
         }
-        for tool in turn.toolExecutions {
-            blocks.append(.toolCall(id: tool.toolCallId, name: tool.toolName, arguments: tool.args))
-        }
+
         if !blocks.isEmpty {
-            // Add assistant entry
             historicalEntries.append(SessionEntry(
                 id: UUID().uuidString,
                 entryType: "message",
@@ -320,8 +321,7 @@ final class ChatViewModel {
                 timestamp: ISO8601DateFormatter().string(from: Date()),
                 modelId: nil, summary: nil
             ))
-            // Add tool result entries so the toolResults map can pick them up
-            for tool in turn.toolExecutions where tool.isDone {
+            for tool in doneTools {
                 historicalEntries.append(SessionEntry(
                     id: UUID().uuidString,
                     entryType: "message",

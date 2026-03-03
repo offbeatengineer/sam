@@ -72,20 +72,20 @@ final class AppViewModel {
             Task { await sessionListVM.loadSessions(using: self) }
 
         // Text streaming
-        case .textDelta(let convId, let delta, let contentIndex):
+        case .textDelta(let convId, let delta, _):
             if chatVM.activeConversationId == convId {
-                chatVM.appendTextDelta(delta, contentIndex: contentIndex)
+                chatVM.appendTextDelta(delta)
             }
 
         // Thinking streaming
-        case .thinkingDelta(let convId, let delta, let contentIndex):
+        case .thinkingDelta(let convId, let delta, _):
             if chatVM.activeConversationId == convId {
-                chatVM.appendThinkingDelta(delta, contentIndex: contentIndex)
+                chatVM.appendThinkingDelta(delta)
             }
 
-        case .thinkingEnd(let convId, let contentIndex):
+        case .thinkingEnd(let convId, _):
             if chatVM.activeConversationId == convId {
-                chatVM.completeThinking(contentIndex: contentIndex)
+                chatVM.completeThinking()
             }
 
         // Tool execution

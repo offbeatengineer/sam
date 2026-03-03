@@ -210,52 +210,50 @@ extension ChatMessageItem {
         return items
     }
 
-    /// Append streaming turn content to the items list.
+    /// Append streaming turn content to the items list, preserving stream order.
     static func fromStreamingTurn(_ turn: StreamingTurn) -> [ChatMessageItem] {
-        var items: [ChatMessageItem] = []
         let now = Date()
+        var result: [ChatMessageItem] = []
 
-        for (i, block) in turn.contentBlocks.enumerated() {
-            switch block {
+        for (i, item) in turn.items.enumerated() {
+            switch item {
             case .text(let text) where !text.isEmpty:
-                items.append(ChatMessageItem(
+                result.append(ChatMessageItem(
                     id: "streaming-text-\(i)",
                     isUser: false,
                     timestamp: now,
                     content: .markdown(text)
                 ))
             case .thinking(let text, let done) where !text.isEmpty:
-                items.append(ChatMessageItem(
+                result.append(ChatMessageItem(
                     id: "streaming-thinking-\(i)",
                     isUser: false,
                     timestamp: now,
                     content: .thinking(text, done: done)
                 ))
+            case .tool(let tool):
+                if tool.toolName == "report_artifact" {
+                    let title = (tool.args.value as? [String: Any])?["title"] as? String ?? "Artifact"
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .artifactCard(toolCallId: tool.toolCallId, toolName: tool.toolName, title: title)
+                    ))
+                } else {
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .toolExecution(tool)
+                    ))
+                }
             default:
                 break
             }
         }
 
-        for tool in turn.toolExecutions {
-            if tool.toolName == "report_artifact" {
-                let title = (tool.args.value as? [String: Any])?["title"] as? String ?? "Artifact"
-                items.append(ChatMessageItem(
-                    id: "streaming-tool-\(tool.toolCallId)",
-                    isUser: false,
-                    timestamp: now,
-                    content: .artifactCard(toolCallId: tool.toolCallId, toolName: tool.toolName, title: title)
-                ))
-            } else {
-                items.append(ChatMessageItem(
-                    id: "streaming-tool-\(tool.toolCallId)",
-                    isUser: false,
-                    timestamp: now,
-                    content: .toolExecution(tool)
-                ))
-            }
-        }
-
-        return items
+        return result
     }
 
     // MARK: - Helpers
