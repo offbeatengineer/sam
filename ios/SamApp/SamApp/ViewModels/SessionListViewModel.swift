@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 @Observable
 final class SessionListViewModel {
@@ -6,15 +6,33 @@ final class SessionListViewModel {
     var isLoading = false
     var error: String?
 
+    /// Tracks which channel sections are expanded (all expanded by default).
+    var collapsedChannels: Set<String> = []
+
     /// Sessions grouped by channelId.
     var groupedSessions: [(channelId: String, sessions: [SessionInfo])] {
         let grouped = Dictionary(grouping: sessions, by: \.channelId)
-        // Sort channels: "app" first, then alphabetical
+        let order = ["app", "discord", "pulse"]
         return grouped.sorted { a, b in
-            if a.key == "app" { return true }
-            if b.key == "app" { return false }
+            let ia = order.firstIndex(of: a.key) ?? Int.max
+            let ib = order.firstIndex(of: b.key) ?? Int.max
+            if ia != ib { return ia < ib }
             return a.key < b.key
         }.map { (channelId: $0.key, sessions: $0.value) }
+    }
+
+    /// Binding for Section(isExpanded:) — inverted because Section uses isExpanded (true = open).
+    func bindingForChannel(_ channelId: String) -> Binding<Bool> {
+        Binding(
+            get: { !self.collapsedChannels.contains(channelId) },
+            set: { isExpanded in
+                if isExpanded {
+                    self.collapsedChannels.remove(channelId)
+                } else {
+                    self.collapsedChannels.insert(channelId)
+                }
+            }
+        )
     }
 
     func loadSessions(using app: AppViewModel) async {

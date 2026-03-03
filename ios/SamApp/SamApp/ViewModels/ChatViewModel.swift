@@ -72,12 +72,13 @@ final class ChatViewModel {
         }
     }
 
-    func sendMessageToNewSession(using app: AppViewModel) async {
-        let convId = UUID().uuidString
-        activeConversationId = convId
+    /// Prepare state for a brand-new chat (no message sent yet).
+    func prepareNewSession() {
+        activeConversationId = UUID().uuidString
         historicalEntries = []
         streamingTurn = nil
-        await sendMessage(using: app)
+        isStreaming = false
+        inputText = ""
     }
 
     // MARK: - Abort

@@ -12,12 +12,19 @@ final class AppViewModel {
     let artifactVM = ArtifactViewModel()
     let settingsVM = SettingsViewModel()
 
+    /// Tracks which conversations are currently streaming (for sidebar indicators).
+    var streamingConversations: Set<String> = []
+
     var hasConfiguredConnection: Bool {
         settingsVM.serverURL != nil
     }
 
     func connect() {
         guard let url = settingsVM.serverURL else { return }
+        // Sync artifacts base URL on connect
+        if let artifactsURL = settingsVM.artifactsURL {
+            artifactVM.artifactsBaseURL = artifactsURL
+        }
         connectionManager.connect(url: url, apiKey: settingsVM.apiKey) { [weak self] message in
             self?.routeMessage(message)
         }
@@ -55,9 +62,11 @@ final class AppViewModel {
         switch message {
         // Turn lifecycle
         case .turnStart(let convId, let reqId):
+            streamingConversations.insert(convId)
             chatVM.beginStreaming(conversationId: convId, requestId: reqId)
 
         case .turnEnd(let convId, _):
+            streamingConversations.remove(convId)
             chatVM.endStreaming(conversationId: convId)
             // Refresh session list after a turn completes
             Task { await sessionListVM.loadSessions(using: self) }
@@ -105,6 +114,7 @@ final class AppViewModel {
             break
 
         case .aborted(let convId):
+            streamingConversations.remove(convId)
             if chatVM.activeConversationId == convId {
                 chatVM.endStreaming(conversationId: convId)
             }

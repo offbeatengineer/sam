@@ -29,7 +29,6 @@ struct ArtifactCardCell: View {
                     ArtifactBrowserView()
                 }
             }
-            Spacer(minLength: 40)
         }
     }
 }
