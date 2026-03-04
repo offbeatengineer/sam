@@ -5,7 +5,7 @@ actor WebSocketClient {
     private var task: URLSessionWebSocketTask?
     private var session: URLSession?
     private var continuation: AsyncStream<ServerMessage>.Continuation?
-    private var isReceiving = false
+    private var receiveLoopTask: Task<Void, Never>?
 
     /// Connect to the given URL with optional API key authentication.
     func connect(url: URL, apiKey: String?) -> AsyncStream<ServerMessage> {
@@ -30,8 +30,7 @@ actor WebSocketClient {
         }
 
         wsTask.resume()
-        isReceiving = true
-        Task { await receiveLoop() }
+        receiveLoopTask = Task { await receiveLoop() }
 
         return stream
     }
@@ -46,7 +45,8 @@ actor WebSocketClient {
     }
 
     func disconnect() {
-        isReceiving = false
+        receiveLoopTask?.cancel()
+        receiveLoopTask = nil
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
         continuation?.finish()
@@ -64,9 +64,10 @@ actor WebSocketClient {
     private func receiveLoop() async {
         guard let task else { return }
 
-        while isReceiving {
+        while !Task.isCancelled {
             do {
                 let message = try await task.receive()
+                guard !Task.isCancelled else { return }
                 switch message {
                 case .string(let text):
                     guard let data = text.data(using: .utf8) else { continue }
@@ -87,9 +88,10 @@ actor WebSocketClient {
                     break
                 }
             } catch {
-                if isReceiving {
+                // Only log/finish if this receive loop wasn't cancelled (i.e. a real error,
+                // not cleanup from disconnect() during a connection switch).
+                if !Task.isCancelled {
                     print("[WebSocket] Receive error: \(error)")
-                    isReceiving = false
                     continuation?.finish()
                 }
                 return

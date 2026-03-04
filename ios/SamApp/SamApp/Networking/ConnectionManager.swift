@@ -1,8 +1,11 @@
 import Foundation
 
 /// Manages WebSocket connection lifecycle with automatic reconnection.
-@Observable
-final class ConnectionManager: @unchecked Sendable {
+///
+/// MainActor-isolated to serialize all state access and prevent data races.
+/// Connect/disconnect are async to ensure proper sequencing of socket operations.
+@MainActor @Observable
+final class ConnectionManager {
     enum Status: Equatable {
         case disconnected
         case connecting
@@ -13,7 +16,6 @@ final class ConnectionManager: @unchecked Sendable {
 
     private(set) var status: Status = .disconnected
     private let client = WebSocketClient()
-    private var messageStream: AsyncStream<ServerMessage>?
     private var receiveTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var currentURL: URL?
@@ -25,62 +27,61 @@ final class ConnectionManager: @unchecked Sendable {
     private static let maxBackoff: TimeInterval = 30
     private var reconnectAttempt = 0
 
-    func connect(url: URL, apiKey: String?, onConnected: (() -> Void)? = nil, onMessage: @escaping (ServerMessage) -> Void) {
-        // Cancel local tasks but don't fire a background client.disconnect() —
-        // client.connect() handles cleanup internally on the actor, avoiding a
-        // race where a background disconnect cancels the newly created connection.
-        reconnectTask?.cancel()
-        reconnectTask = nil
-        receiveTask?.cancel()
-        receiveTask = nil
-        reconnectAttempt = 0
+    /// Connect to the given URL. Tears down any existing connection first.
+    func connect(url: URL, apiKey: String?, onConnected: (() -> Void)? = nil, onMessage: @escaping (ServerMessage) -> Void) async {
+        await tearDown()
 
         currentURL = url
         currentApiKey = apiKey
         connectedHandler = onConnected
         messageHandler = onMessage
-        performConnect()
+        startReceiveLoop()
     }
 
-    func disconnect() {
-        reconnectTask?.cancel()
-        reconnectTask = nil
-        receiveTask?.cancel()
-        receiveTask = nil
-        reconnectAttempt = 0
-        Task { await client.disconnect() }
+    /// Disconnect and clean up.
+    func disconnect() async {
+        await tearDown()
         status = .disconnected
     }
 
-    func send(_ request: ClientRequest) async throws {
+    nonisolated func send(_ request: ClientRequest) async throws {
         try await client.send(request)
     }
 
     // MARK: - Internal
 
-    private func performConnect() {
+    private func tearDown() async {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        receiveTask?.cancel()
+        receiveTask = nil
+        reconnectAttempt = 0
+        connectedHandler = nil
+        messageHandler = nil
+        currentURL = nil
+        await client.disconnect()
+    }
+
+    private func startReceiveLoop() {
         guard let url = currentURL else { return }
         status = reconnectAttempt > 0 ? .reconnecting(attempt: reconnectAttempt) : .connecting
 
-        receiveTask?.cancel()
         receiveTask = Task { [weak self] in
             guard let self else { return }
             let stream = await client.connect(url: url, apiKey: currentApiKey)
 
-            await MainActor.run {
-                self.status = .connected
-                self.reconnectAttempt = 0
-                self.connectedHandler?()
-            }
+            guard !Task.isCancelled else { return }
+            status = .connected
+            reconnectAttempt = 0
+            connectedHandler?()
 
             for await message in stream {
                 guard !Task.isCancelled else { break }
-                await MainActor.run { self.messageHandler?(message) }
+                messageHandler?(message)
             }
 
-            // Stream ended — attempt reconnect if not explicitly disconnected
             guard !Task.isCancelled else { return }
-            await MainActor.run { self.scheduleReconnect() }
+            scheduleReconnect()
         }
     }
 
@@ -96,7 +97,7 @@ final class ConnectionManager: @unchecked Sendable {
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
-            await MainActor.run { self?.performConnect() }
+            self?.startReceiveLoop()
         }
     }
 }
