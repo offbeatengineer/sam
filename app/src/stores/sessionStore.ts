@@ -114,6 +114,9 @@ interface SessionState {
   endTool: (toolCallId: string, result: string, isError: boolean, details?: unknown) => void;
   endStreaming: () => void;
 
+  // Reset
+  clearAll: () => void;
+
   // Internal
   getActiveSession: () => SessionInfo | undefined;
 }
@@ -363,6 +366,20 @@ export const useSessionStore = create<SessionState>()(
       });
       // Refresh entries from JSONL
       get().refreshActiveSession();
+    },
+
+    clearAll: () => {
+      set({
+        sessions: [],
+        isLoaded: false,
+        activeSessionId: null,
+        activeSessionPath: null,
+        activeEntries: [],
+        activeHeader: null,
+        streamingSessionId: null,
+        streamingTurn: null,
+        pendingUserMessage: null,
+      });
     },
 
     getActiveSession: () => {

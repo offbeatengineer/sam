@@ -3,6 +3,7 @@ import { useSessionStore } from "@/stores/sessionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { requestNotificationPermission } from "@/lib/notifications";
 import { connectToSam } from "@/lib/tauri";
+import { buildConnectionUrl } from "@/types/instance";
 
 interface StartupScreenProps {
   onComplete: () => void;
@@ -23,13 +24,15 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
         setStatus("Loading settings...");
         await loadSettings();
 
-        // Step 2: Connect to sam
+        // Step 2: Connect to sam using active instance
         setStatus("Connecting to sam...");
-        const samUrl = useSettingsStore.getState().samUrl;
-        try {
-          await connectToSam(samUrl);
-        } catch (err) {
-          console.warn("Failed to connect to sam:", err);
+        const activeInstance = useSettingsStore.getState().getActiveInstance();
+        if (activeInstance) {
+          try {
+            await connectToSam(buildConnectionUrl(activeInstance));
+          } catch (err) {
+            console.warn("Failed to connect to sam:", err);
+          }
         }
 
         // Step 3: Start connection status polling
@@ -37,10 +40,12 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
 
         // Step 4: Load sessions from agent
         setStatus("Loading sessions...");
-        try {
-          await loadSessions();
-        } catch (err) {
-          console.warn("Failed to load sessions:", err);
+        if (activeInstance) {
+          try {
+            await loadSessions();
+          } catch (err) {
+            console.warn("Failed to load sessions:", err);
+          }
         }
 
         // Step 5: Auto-select most recently modified app session
