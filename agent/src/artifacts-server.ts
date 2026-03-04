@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import { readFile, stat, readdir } from "node:fs/promises";
 import { resolve, extname, relative, normalize, join } from "node:path";
 import { watch } from "chokidar";
@@ -32,9 +33,9 @@ const MIME_TYPES: Record<string, string> = {
 // Live reload script injected into HTML responses
 // ---------------------------------------------------------------------------
 
-function liveReloadScript(wsPort: number, wsHost: string): string {
+function liveReloadScript(wsOrigin: string): string {
   return `<script>
-(function(){var ws=new WebSocket("ws://"+${JSON.stringify(wsHost)}+":"+${JSON.stringify(wsPort)}+"/__live");ws.onmessage=function(){location.reload()};ws.onclose=function(){setTimeout(function(){location.reload()},1000)}})();
+(function(){var ws=new WebSocket(${JSON.stringify(wsOrigin + "/__live")});ws.onmessage=function(){location.reload()};ws.onclose=function(){setTimeout(function(){location.reload()},1000)}})();
 </script>`;
 }
 
@@ -59,12 +60,16 @@ export interface ArtifactsServerConfig {
 
 export class ArtifactsServer {
   private server: ReturnType<typeof createServer> | null = null;
-  private wss: WebSocketServer | null = null;
+  private liveReloadWss: WebSocketServer | null = null;
   private watcher: ReturnType<typeof watch> | null = null;
   private wsClients = new Set<WebSocket>();
+  private wsOrigin: string;
 
-  constructor(private config: ArtifactsServerConfig) {}
+  constructor(private config: ArtifactsServerConfig) {
+    this.wsOrigin = `ws://${config.host}:${config.port}`;
+  }
 
+  /** Standalone mode: creates its own HTTP server + live reload WSS. */
   async start(): Promise<void> {
     const { port, host, rootDir } = this.config;
 
@@ -72,13 +77,69 @@ export class ArtifactsServer {
     this.server = createServer((req, res) => this.handleRequest(req, res));
 
     // WebSocket server on the same HTTP server
-    this.wss = new WebSocketServer({ server: this.server, path: "/__live" });
-    this.wss.on("connection", (ws) => {
+    this.liveReloadWss = new WebSocketServer({ server: this.server, path: "/__live" });
+    this.liveReloadWss.on("connection", (ws) => {
       this.wsClients.add(ws);
       ws.on("close", () => this.wsClients.delete(ws));
     });
 
-    // File watcher
+    this.startWatcher(rootDir);
+
+    return new Promise((resolve, reject) => {
+      this.server!.listen(port, host, () => {
+        console.log(`Artifacts server at http://${host}:${port}/ (root: ${rootDir})`);
+        resolve();
+      });
+      this.server!.on("error", reject);
+    });
+  }
+
+  /**
+   * Attached mode: creates a noServer live reload WSS and starts the file
+   * watcher, but does NOT create its own HTTP server. The caller (AppChannel)
+   * owns the HTTP server and delegates requests/upgrades here.
+   */
+  startAttached(wsOrigin: string): void {
+    this.wsOrigin = wsOrigin;
+    this.liveReloadWss = new WebSocketServer({ noServer: true });
+    this.liveReloadWss.on("connection", (ws) => {
+      this.wsClients.add(ws);
+      ws.on("close", () => this.wsClients.delete(ws));
+    });
+    this.startWatcher(this.config.rootDir);
+    console.log(`Artifacts attached (root: ${this.config.rootDir})`);
+  }
+
+  /** Handle a WebSocket upgrade for the /__live path. */
+  handleLiveReloadUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    if (!this.liveReloadWss) return;
+    this.liveReloadWss.handleUpgrade(req, socket, head, (ws) => {
+      this.liveReloadWss!.emit("connection", ws, req);
+    });
+  }
+
+  async stop(): Promise<void> {
+    this.watcher?.close();
+    this.watcher = null;
+
+    for (const ws of this.wsClients) ws.close();
+    this.wsClients.clear();
+
+    if (this.liveReloadWss) {
+      this.liveReloadWss.close();
+      this.liveReloadWss = null;
+    }
+
+    return new Promise((resolveP) => {
+      if (!this.server) return resolveP();
+      this.server.close(() => {
+        this.server = null;
+        resolveP();
+      });
+    });
+  }
+
+  private startWatcher(rootDir: string): void {
     this.watcher = watch(rootDir, {
       ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
@@ -91,42 +152,13 @@ export class ArtifactsServer {
       }
       this.config.onChange?.(event, rel);
     });
-
-    return new Promise((resolve, reject) => {
-      this.server!.listen(port, host, () => {
-        console.log(`Artifacts server at http://${host}:${port}/ (root: ${rootDir})`);
-        resolve();
-      });
-      this.server!.on("error", reject);
-    });
-  }
-
-  async stop(): Promise<void> {
-    this.watcher?.close();
-    this.watcher = null;
-
-    for (const ws of this.wsClients) ws.close();
-    this.wsClients.clear();
-
-    if (this.wss) {
-      this.wss.close();
-      this.wss = null;
-    }
-
-    return new Promise((resolveP) => {
-      if (!this.server) return resolveP();
-      this.server.close(() => {
-        this.server = null;
-        resolveP();
-      });
-    });
   }
 
   // ---------------------------------------------------------------------------
   // HTTP request handler
   // ---------------------------------------------------------------------------
 
-  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
     let pathname = decodeURIComponent(url.pathname);
 
@@ -177,7 +209,7 @@ export class ArtifactsServer {
       // Inject live reload script into HTML
       if (ext === ".html") {
         let html = body.toString("utf-8");
-        const script = liveReloadScript(this.config.port, this.config.host);
+        const script = liveReloadScript(this.wsOrigin);
         if (html.includes("</body>")) {
           html = html.replace("</body>", script + "</body>");
         } else {

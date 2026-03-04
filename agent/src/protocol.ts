@@ -2,9 +2,16 @@
 // App ↔ Sam WebSocket protocol
 // ---------------------------------------------------------------------------
 
+/** Attachment reference included in a chat request (file already uploaded via POST /upload) */
+export interface ChatAttachment {
+  type: "image" | "audio";
+  path: string;       // server-side file path from upload response
+  mimeType: string;
+}
+
 /** Requests sent from the app to sam */
 export type AppRequest =
-  | { type: "chat"; requestId: string; conversationId: string; text: string }
+  | { type: "chat"; requestId: string; conversationId: string; text: string; attachments?: ChatAttachment[] }
   | { type: "abort"; conversationId: string }
   | { type: "close_session"; conversationId: string }
   // Session browsing
@@ -16,7 +23,12 @@ export type AppRequest =
   | { type: "memory_search"; requestId: string; query: string; limit?: number; tags?: string[] }
   | { type: "memory_save"; requestId: string; text: string; tags?: string[]; source?: string }
   | { type: "memory_update"; requestId: string; id: string; text: string; tags?: string[] }
-  | { type: "memory_delete"; requestId: string; id: string };
+  | { type: "memory_delete"; requestId: string; id: string }
+  // Skill management
+  | { type: "list_skills"; requestId: string }
+  | { type: "get_skill"; requestId: string; filename: string }
+  | { type: "save_skill"; requestId: string; filename: string; content: string }
+  | { type: "delete_skill"; requestId: string; filename: string };
 
 /** Responses sent from sam to the app */
 export type AppResponse =
@@ -49,6 +61,12 @@ export type AppResponse =
   | { type: "memory_error"; requestId: string; error: string }
   // Session mutation
   | { type: "rename_session_result"; requestId: string; success: boolean }
+  // Skill management responses
+  | { type: "skills_list_result"; requestId: string; skills: SkillInfoDTO[] }
+  | { type: "skill_content_result"; requestId: string; filename: string; content: string }
+  | { type: "skill_save_result"; requestId: string; success: boolean }
+  | { type: "skill_delete_result"; requestId: string; success: boolean }
+  | { type: "skill_error"; requestId: string; error: string }
   // Artifacts
   | { type: "artifacts_changed"; event: string; path: string };
 
@@ -64,6 +82,13 @@ export interface SessionInfoDTO {
   modified: string;
   messageCount: number;
   firstMessage: string;
+}
+
+/** Skill metadata returned by list_skills */
+export interface SkillInfoDTO {
+  filename: string;
+  modified: string;
+  size: number;
 }
 
 /** Memory item returned in protocol responses */

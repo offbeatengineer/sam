@@ -7,9 +7,10 @@ type ConnectionStatus = "unknown" | "connected" | "disconnected";
 function deriveArtifactsUrl(samUrl: string): string {
   try {
     const url = new URL(samUrl);
-    return `http://${url.hostname}:${DEFAULT_ARTIFACTS_PORT}`;
+    const protocol = url.protocol === "wss:" ? "https:" : "http:";
+    return `${protocol}//${url.host}`;
   } catch {
-    return `http://127.0.0.1:${DEFAULT_ARTIFACTS_PORT}`;
+    return "http://127.0.0.1:9222";
   }
 }
 
@@ -28,7 +29,6 @@ interface SettingsStore {
 }
 
 const DEFAULT_SAM_URL = "ws://127.0.0.1:9222";
-const DEFAULT_ARTIFACTS_PORT = 9223;
 const DEFAULT_ARTIFACTS_DIR = "~/.sam/artifacts/";
 
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
