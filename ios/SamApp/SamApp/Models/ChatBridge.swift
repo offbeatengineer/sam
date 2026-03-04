@@ -20,6 +20,7 @@ struct ChatMessageItem: Identifiable {
         case remoteImageAttachment(remotePath: String, caption: String?)
         case audioAttachment(caption: String?, localURL: URL?)
         case remoteAudioAttachment(remotePath: String)
+        case streamingIndicator
     }
 }
 

@@ -7,6 +7,8 @@ final class ChatViewModel {
     var inputText: String = ""
     var isStreaming: Bool = false
     var streamingTurn: StreamingTurn?
+    /// Incremented on every streaming delta to drive auto-scroll.
+    private(set) var streamingRevision: UInt = 0
 
     /// Historical entries loaded from server.
     private(set) var historicalEntries: [SessionEntry] = []
@@ -42,6 +44,14 @@ final class ChatViewModel {
 
         if let turn = streamingTurn, turn.isActive {
             items.append(contentsOf: ChatMessageItem.fromStreamingTurn(turn))
+        }
+        if isStreaming {
+            items.append(ChatMessageItem(
+                id: "__streaming_indicator__",
+                isUser: false,
+                timestamp: Date(),
+                content: .streamingIndicator
+            ))
         }
         return items
     }
@@ -280,26 +290,32 @@ final class ChatViewModel {
 
     func appendTextDelta(_ delta: String) {
         streamingTurn?.appendTextDelta(delta)
+        streamingRevision &+= 1
     }
 
     func appendThinkingDelta(_ delta: String) {
         streamingTurn?.appendThinkingDelta(delta)
+        streamingRevision &+= 1
     }
 
     func completeThinking() {
         streamingTurn?.completeThinking()
+        streamingRevision &+= 1
     }
 
     func addToolStart(toolCallId: String, toolName: String, args: AnyCodable) {
         streamingTurn?.addToolStart(toolCallId: toolCallId, toolName: toolName, args: args)
+        streamingRevision &+= 1
     }
 
     func updateTool(toolCallId: String, partialResult: String) {
         streamingTurn?.updateTool(toolCallId: toolCallId, partialResult: partialResult)
+        streamingRevision &+= 1
     }
 
     func endTool(toolCallId: String, result: String, isError: Bool, details: AnyCodable?) {
         streamingTurn?.endTool(toolCallId: toolCallId, result: result, isError: isError, details: details)
+        streamingRevision &+= 1
     }
 
     // MARK: - Helpers

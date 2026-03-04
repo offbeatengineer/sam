@@ -104,6 +104,13 @@ struct ChatContainerView: View {
                     }
                 }
             }
+            .onChange(of: appVM.chatVM.streamingRevision) { _, _ in
+                if let lastId = appVM.chatVM.chatItems.last?.id {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(lastId, anchor: .bottom)
+                    }
+                }
+            }
         }
         .safeAreaInset(edge: .bottom) {
             ChatInputBar(
@@ -154,6 +161,9 @@ struct ChatContainerView: View {
 
         case .artifactCard(_, _, let title, let path):
             ArtifactCardCell(title: title, artifactPath: path)
+
+        case .streamingIndicator:
+            StreamingDotsView()
 
         case .systemEvent(let text):
             SystemEventCell(text: text)
