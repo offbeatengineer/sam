@@ -25,7 +25,10 @@ final class AppViewModel {
         if let artifactsURL = settingsVM.artifactsURL {
             artifactVM.artifactsBaseURL = artifactsURL
         }
-        connectionManager.connect(url: url, apiKey: settingsVM.apiKey) { [weak self] message in
+        connectionManager.connect(url: url, apiKey: settingsVM.apiKey) { [weak self] in
+            guard let self else { return }
+            Task { await self.sessionListVM.loadSessions(using: self) }
+        } onMessage: { [weak self] message in
             self?.routeMessage(message)
         }
     }

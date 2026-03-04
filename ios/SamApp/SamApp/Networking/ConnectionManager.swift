@@ -19,12 +19,13 @@ final class ConnectionManager: @unchecked Sendable {
     private var currentURL: URL?
     private var currentApiKey: String?
     private var messageHandler: ((ServerMessage) -> Void)?
+    private var connectedHandler: (() -> Void)?
 
     private static let minBackoff: TimeInterval = 2
     private static let maxBackoff: TimeInterval = 30
     private var reconnectAttempt = 0
 
-    func connect(url: URL, apiKey: String?, onMessage: @escaping (ServerMessage) -> Void) {
+    func connect(url: URL, apiKey: String?, onConnected: (() -> Void)? = nil, onMessage: @escaping (ServerMessage) -> Void) {
         // Cancel local tasks but don't fire a background client.disconnect() —
         // client.connect() handles cleanup internally on the actor, avoiding a
         // race where a background disconnect cancels the newly created connection.
@@ -36,6 +37,7 @@ final class ConnectionManager: @unchecked Sendable {
 
         currentURL = url
         currentApiKey = apiKey
+        connectedHandler = onConnected
         messageHandler = onMessage
         performConnect()
     }
@@ -65,7 +67,11 @@ final class ConnectionManager: @unchecked Sendable {
             guard let self else { return }
             let stream = await client.connect(url: url, apiKey: currentApiKey)
 
-            await MainActor.run { self.status = .connected; self.reconnectAttempt = 0 }
+            await MainActor.run {
+                self.status = .connected
+                self.reconnectAttempt = 0
+                self.connectedHandler?()
+            }
 
             for await message in stream {
                 guard !Task.isCancelled else { break }
