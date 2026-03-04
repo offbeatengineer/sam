@@ -1,4 +1,4 @@
-import { MessageSquare, BookOpen, Brain, Settings } from "lucide-react";
+import { MessageSquare, BookOpen, Brain, Files, Settings } from "lucide-react";
 import { useUIStore, SettingsPage } from "@/stores/uiStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { cn } from "@/lib/utils";
@@ -7,6 +7,7 @@ const pages: { id: SettingsPage; icon: typeof MessageSquare; label: string }[] =
   { id: null, icon: MessageSquare, label: "Agent" },
   { id: "skills", icon: BookOpen, label: "Skills" },
   { id: "memory", icon: Brain, label: "Memory" },
+  { id: "artifacts", icon: Files, label: "Artifacts" },
   { id: "settings", icon: Settings, label: "Settings" },
 ];
 

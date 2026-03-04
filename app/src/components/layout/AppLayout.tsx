@@ -4,6 +4,7 @@ import { IconRail } from "./IconRail";
 import { LeftSidebar } from "./LeftSidebar";
 import { MainPanel } from "./MainPanel";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { ArtifactsPage } from "./ArtifactsPage";
 import { RightSidebar } from "./RightSidebar";
 import { SettingsPage } from "./SettingsPage";
 import { SkillEditor } from "@/components/skill/SkillEditor";
@@ -155,6 +156,8 @@ export function AppLayout() {
         <SettingsSkillsPage />
       ) : settingsPage === "memory" ? (
         <SettingsMemoryPage />
+      ) : settingsPage === "artifacts" ? (
+        <ArtifactsPage />
       ) : settingsPage === "settings" ? (
         <SettingsPage />
       ) : (
