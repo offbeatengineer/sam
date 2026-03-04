@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-@Observable
+@MainActor @Observable
 final class ChatViewModel {
     var activeConversationId: String?
     var inputText: String = ""
@@ -234,6 +234,15 @@ final class ChatViewModel {
     /// Prepare state for a brand-new chat (no message sent yet).
     func prepareNewSession() {
         activeConversationId = UUID().uuidString
+        historicalEntries = []
+        localAttachmentsByEntryId = [:]
+        streamingTurn = nil
+        isStreaming = false
+        inputText = ""
+    }
+
+    func clearAll() {
+        activeConversationId = nil
         historicalEntries = []
         localAttachmentsByEntryId = [:]
         streamingTurn = nil
