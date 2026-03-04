@@ -135,7 +135,7 @@ export async function createSession(config: SamConfig, key: SessionKey) {
   ];
 
   const customTools = [
-    createWebSearchTool(config.tools?.webSearch?.apiKey),
+    createWebSearchTool(config.tools?.webSearch),
     createWebFetchTool(),
     createReportArtifactTool(),
   ];

@@ -47,7 +47,11 @@ export interface SamConfig {
     modelPath: string;
   };
   tools?: {
-    webSearch?: { apiKey?: string };
+    webSearch?: {
+      provider?: "brave" | "searxng";
+      apiKey?: string;
+      searxngUrl?: string;
+    };
   };
   artifacts?: {
     enabled: boolean;
@@ -128,7 +132,9 @@ model:
 
 # tools:
 #   webSearch:
-#     apiKey: ""  # or set BRAVE_API_KEY env var
+#     provider: brave  # "brave" or "searxng"
+#     apiKey: ""       # Brave: API key (or set BRAVE_API_KEY env var)
+#     searxngUrl: ""   # SearXNG: base URL (or set SEARXNG_URL env var), e.g. http://localhost:8888
 
 # memory:
 #   enabled: true
@@ -238,7 +244,9 @@ export function loadConfig(): SamConfig {
       : undefined,
     tools: {
       webSearch: {
+        provider: yaml.tools?.webSearch?.provider,
         apiKey: process.env.BRAVE_API_KEY ?? yaml.tools?.webSearch?.apiKey,
+        searxngUrl: process.env.SEARXNG_URL ?? yaml.tools?.webSearch?.searxngUrl,
       },
     },
     memory: {
