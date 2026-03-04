@@ -25,6 +25,14 @@ export function ChatContainer() {
       return;
     }
 
+    // Connection lost — clean up any active streaming turn
+    if (response.type === "connection_lost") {
+      if (store.streamingTurn) {
+        store.endStreaming();
+      }
+      return;
+    }
+
     // Streaming responses use conversationId
     const conversationId = response.conversationId;
     if (!conversationId) return;

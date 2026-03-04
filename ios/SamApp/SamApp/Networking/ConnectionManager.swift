@@ -22,18 +22,20 @@ final class ConnectionManager {
     private var currentApiKey: String?
     private var messageHandler: ((ServerMessage) -> Void)?
     private var connectedHandler: (() -> Void)?
+    private var disconnectHandler: (() -> Void)?
 
     private static let minBackoff: TimeInterval = 2
     private static let maxBackoff: TimeInterval = 30
     private var reconnectAttempt = 0
 
     /// Connect to the given URL. Tears down any existing connection first.
-    func connect(url: URL, apiKey: String?, onConnected: (() -> Void)? = nil, onMessage: @escaping (ServerMessage) -> Void) async {
+    func connect(url: URL, apiKey: String?, onConnected: (() -> Void)? = nil, onDisconnect: (() -> Void)? = nil, onMessage: @escaping (ServerMessage) -> Void) async {
         await tearDown()
 
         currentURL = url
         currentApiKey = apiKey
         connectedHandler = onConnected
+        disconnectHandler = onDisconnect
         messageHandler = onMessage
         startReceiveLoop()
     }
@@ -57,6 +59,7 @@ final class ConnectionManager {
         receiveTask = nil
         reconnectAttempt = 0
         connectedHandler = nil
+        disconnectHandler = nil
         messageHandler = nil
         currentURL = nil
         await client.disconnect()
@@ -87,6 +90,7 @@ final class ConnectionManager {
 
     private func scheduleReconnect() {
         guard currentURL != nil else { return }
+        disconnectHandler?()
         reconnectAttempt += 1
         let delay = min(
             Self.minBackoff * pow(2, Double(reconnectAttempt - 1)),

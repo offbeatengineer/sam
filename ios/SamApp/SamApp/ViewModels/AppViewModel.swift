@@ -35,6 +35,12 @@ final class AppViewModel {
                 print("[App] Connected, reloading sessions...")
                 guard let self else { return }
                 Task { await self.sessionListVM.loadSessions(using: self) }
+            } onDisconnect: { [weak self] in
+                guard let self else { return }
+                for convId in streamingConversations {
+                    chatVM.endStreaming(conversationId: convId)
+                }
+                streamingConversations.removeAll()
             } onMessage: { [weak self] message in
                 self?.routeMessage(message)
             }
@@ -70,6 +76,12 @@ final class AppViewModel {
                 print("[App] Connected, reloading sessions...")
                 guard let self else { return }
                 Task { await self.sessionListVM.loadSessions(using: self) }
+            } onDisconnect: { [weak self] in
+                guard let self else { return }
+                for convId in streamingConversations {
+                    chatVM.endStreaming(conversationId: convId)
+                }
+                streamingConversations.removeAll()
             } onMessage: { [weak self] message in
                 self?.routeMessage(message)
             }

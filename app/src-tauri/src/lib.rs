@@ -143,6 +143,9 @@ async fn establish_connection(
             *connected = false;
         }
         println!("[tauri] Disconnected from sam");
+        let _ = app_handle.emit("app-response", &serde_json::json!({
+            "type": "connection_lost"
+        }));
 
         // Auto-reconnect if enabled
         let should_reconnect = *state_clone.auto_reconnect.lock().await;
