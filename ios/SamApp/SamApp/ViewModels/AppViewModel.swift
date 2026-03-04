@@ -1,7 +1,7 @@
 import Foundation
 
 /// Root view model. Owns the connection and routes messages to sub-VMs.
-@Observable
+@MainActor @Observable
 final class AppViewModel {
     let connectionManager = ConnectionManager()
     let correlator = RequestCorrelator()
@@ -21,18 +21,59 @@ final class AppViewModel {
 
     func connect() {
         guard let url = settingsVM.serverURL else { return }
-        // Sync artifacts base URL on connect
+        // Avoid duplicate connect calls (onAppear + onChange(.active) can both fire)
+        switch connectionManager.status {
+        case .disconnected, .error: break
+        default: return
+        }
         if let artifactsURL = settingsVM.artifactsURL {
             artifactVM.artifactsBaseURL = artifactsURL
         }
-        connectionManager.connect(url: url, apiKey: settingsVM.apiKey) { [weak self] message in
-            self?.routeMessage(message)
+        print("[App] Connecting to \(url)...")
+        Task {
+            await connectionManager.connect(url: url, apiKey: settingsVM.apiKey) { [weak self] in
+                print("[App] Connected, reloading sessions...")
+                guard let self else { return }
+                Task { await self.sessionListVM.loadSessions(using: self) }
+            } onMessage: { [weak self] message in
+                self?.routeMessage(message)
+            }
         }
     }
 
     func disconnect() {
-        connectionManager.disconnect()
-        Task { await correlator.cancelAll() }
+        Task {
+            await connectionManager.disconnect()
+            await correlator.cancelAll()
+        }
+    }
+
+    /// Switch to a different backend instance.
+    func switchInstance(to id: UUID) {
+        guard id != settingsVM.activeInstanceId else { return }
+        let name = settingsVM.instances.first { $0.id == id }?.name ?? "unknown"
+        print("[App] Switching to instance '\(name)'")
+        // Clear stale data
+        chatVM.clearAll()
+        sessionListVM.clearAll()
+        streamingConversations.removeAll()
+        settingsVM.setActive(id)
+        Task {
+            await correlator.cancelAll()
+            // connect() awaits tearDown() of old connection before starting new one
+            guard let url = settingsVM.serverURL else { return }
+            if let artifactsURL = settingsVM.artifactsURL {
+                artifactVM.artifactsBaseURL = artifactsURL
+            }
+            print("[App] Connecting to \(url)...")
+            await connectionManager.connect(url: url, apiKey: settingsVM.apiKey) { [weak self] in
+                print("[App] Connected, reloading sessions...")
+                guard let self else { return }
+                Task { await self.sessionListVM.loadSessions(using: self) }
+            } onMessage: { [weak self] message in
+                self?.routeMessage(message)
+            }
+        }
     }
 
     /// Send a request and wait for a correlated response.
@@ -54,7 +95,7 @@ final class AppViewModel {
         Task {
             let consumed = await correlator.deliver(message)
             if consumed { return }
-            await MainActor.run { self.handleStreamingMessage(message) }
+            self.handleStreamingMessage(message)
         }
     }
 

@@ -35,27 +35,44 @@ final class SessionListViewModel {
         )
     }
 
-    func loadSessions(using app: AppViewModel) async {
-        let requestId = UUID().uuidString
-        do {
-            isLoading = true
-            let response = try await app.request(
-                .listSessions(requestId: requestId),
-                requestId: requestId
-            )
-            if case .sessionsList(_, let list) = response {
-                await MainActor.run {
+    func clearAll() {
+        sessions = []
+        isLoading = false
+        error = nil
+    }
+
+    func loadSessions(using app: AppViewModel, maxRetries: Int = 2) async {
+        isLoading = true
+        error = nil
+
+        for attempt in 0...maxRetries {
+            let requestId = UUID().uuidString
+            print("[Sessions] Loading sessions (requestId: \(requestId), attempt: \(attempt))...")
+            do {
+                let response = try await app.request(
+                    .listSessions(requestId: requestId),
+                    requestId: requestId
+                )
+                if case .sessionsList(_, let list) = response {
+                    print("[Sessions] Loaded \(list.count) sessions")
                     self.sessions = list
                     self.isLoading = false
                     self.error = nil
+                    return
+                } else {
+                    print("[Sessions] Unexpected response: \(response)")
+                    self.error = "Unexpected response"
+                }
+            } catch {
+                print("[Sessions] Failed to load (attempt \(attempt)): \(error)")
+                self.error = error.localizedDescription
+                if attempt < maxRetries {
+                    try? await Task.sleep(for: .seconds(1))
+                    continue
                 }
             }
-        } catch {
-            await MainActor.run {
-                self.error = error.localizedDescription
-                self.isLoading = false
-            }
         }
+        self.isLoading = false
     }
 
     func createSession() -> String {
