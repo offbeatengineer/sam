@@ -12,56 +12,56 @@ interface StreamingTurnViewProps {
 export function StreamingTurnView({ turn }: StreamingTurnViewProps) {
   return (
     <div className="w-full space-y-1">
-      {/* Content blocks (thinking + text) */}
-      {turn.contentBlocks.map((block, i) => {
-        if (block.type === "thinking") {
+      {turn.items.map((item, i) => {
+        if (item.kind === "thinking") {
           return (
             <ThinkingDisplay
               key={`st-thinking-${i}`}
-              thinking={{ content: block.content, isComplete: block.isComplete }}
+              thinking={{ content: item.content, isComplete: item.isComplete }}
             />
           );
         }
-        if (block.type === "text" && block.content) {
+
+        if (item.kind === "text" && item.content) {
           return (
             <div
               key={`st-text-${i}`}
               className="prose prose-neutral dark:prose-invert max-w-none text-sm [&_pre]:overflow-x-auto"
             >
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {block.content}
+                {item.content}
               </ReactMarkdown>
             </div>
           );
         }
-        return null;
-      })}
 
-      {/* Tool executions — inline with expand/collapse */}
-      {turn.toolExecutions.map((tool) => {
-        // Render ArtifactCard for completed report_artifact tool calls
-        if (
-          tool.name === "report_artifact" &&
-          tool.status !== "running" &&
-          tool.details
-        ) {
-          const details = tool.details as { path: string; title: string; description?: string; type: string };
-          return <ArtifactCard key={tool.id} details={details} />;
+        if (item.kind === "tool") {
+          // Render ArtifactCard for completed report_artifact tool calls
+          if (
+            item.name === "report_artifact" &&
+            item.status !== "running" &&
+            item.details
+          ) {
+            const details = item.details as { path: string; title: string; description?: string; type: string };
+            return <ArtifactCard key={item.id} details={details} />;
+          }
+
+          return (
+            <ToolCard
+              key={item.id}
+              tool={{
+                id: item.id,
+                name: item.name,
+                status: item.status === "running" ? "running" : item.status === "error" ? "error" : "success",
+                expanded: false,
+                input: item.args as Record<string, unknown> | undefined,
+                output: item.result,
+              }}
+            />
+          );
         }
 
-        return (
-          <ToolCard
-            key={tool.id}
-            tool={{
-              id: tool.id,
-              name: tool.name,
-              status: tool.status === "running" ? "running" : tool.status === "error" ? "error" : "success",
-              expanded: false,
-              input: tool.args as Record<string, unknown> | undefined,
-              output: tool.result,
-            }}
-          />
-        );
+        return null;
       })}
     </div>
   );

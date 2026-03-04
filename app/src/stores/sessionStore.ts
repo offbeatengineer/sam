@@ -11,21 +11,14 @@ import { parseSessionInfo as parseInfo } from "@/types/session";
 
 // ======================== Streaming Turn ========================
 
+export type StreamItem =
+  | { kind: "text"; content: string }
+  | { kind: "thinking"; content: string; isComplete: boolean }
+  | { kind: "tool"; id: string; name: string; status: "running" | "success" | "error"; args?: unknown; result?: string; isError?: boolean; details?: unknown };
+
 export interface StreamingTurn {
-  contentBlocks: Array<{
-    type: "text" | "thinking";
-    content: string;
-    isComplete: boolean;
-  }>;
-  toolExecutions: Array<{
-    id: string;
-    name: string;
-    status: "running" | "success" | "error";
-    args?: unknown;
-    result?: string;
-    isError?: boolean;
-    details?: unknown;
-  }>;
+  /** Single ordered timeline — items appended as they arrive from the stream. */
+  items: StreamItem[];
 }
 
 // ======================== Pending Request Tracking ========================
@@ -246,70 +239,56 @@ export const useSessionStore = create<SessionState>()(
     beginStreaming: (sessionId: string) => {
       set({
         streamingSessionId: sessionId,
-        streamingTurn: {
-          contentBlocks: [],
-          toolExecutions: [],
-        },
+        streamingTurn: { items: [] },
       });
     },
 
     appendTextDelta: (delta: string) => {
       set((state) => {
         if (!state.streamingTurn) return state;
-        const blocks = [...state.streamingTurn.contentBlocks];
-        const lastBlock = blocks[blocks.length - 1];
+        const items = [...state.streamingTurn.items];
+        const last = items[items.length - 1];
 
-        if (lastBlock && lastBlock.type === "text") {
-          blocks[blocks.length - 1] = {
-            ...lastBlock,
-            content: lastBlock.content + delta,
-          };
+        if (last && last.kind === "text") {
+          items[items.length - 1] = { ...last, content: last.content + delta };
         } else {
-          blocks.push({ type: "text", content: delta, isComplete: true });
+          items.push({ kind: "text", content: delta });
         }
 
-        return {
-          streamingTurn: { ...state.streamingTurn, contentBlocks: blocks },
-        };
+        return { streamingTurn: { items } };
       });
     },
 
     appendThinkingDelta: (delta: string) => {
       set((state) => {
         if (!state.streamingTurn) return state;
-        const blocks = [...state.streamingTurn.contentBlocks];
-        const lastBlock = blocks[blocks.length - 1];
+        const items = [...state.streamingTurn.items];
+        const last = items[items.length - 1];
 
-        if (lastBlock && lastBlock.type === "thinking" && !lastBlock.isComplete) {
-          blocks[blocks.length - 1] = {
-            ...lastBlock,
-            content: lastBlock.content + delta,
-          };
+        if (last && last.kind === "thinking" && !last.isComplete) {
+          items[items.length - 1] = { ...last, content: last.content + delta };
         } else {
-          blocks.push({ type: "thinking", content: delta, isComplete: false });
+          items.push({ kind: "thinking", content: delta, isComplete: false });
         }
 
-        return {
-          streamingTurn: { ...state.streamingTurn, contentBlocks: blocks },
-        };
+        return { streamingTurn: { items } };
       });
     },
 
     completeThinking: () => {
       set((state) => {
         if (!state.streamingTurn) return state;
-        const blocks = [...state.streamingTurn.contentBlocks];
+        const items = [...state.streamingTurn.items];
 
-        for (let i = blocks.length - 1; i >= 0; i--) {
-          if (blocks[i].type === "thinking" && !blocks[i].isComplete) {
-            blocks[i] = { ...blocks[i], isComplete: true };
+        for (let i = items.length - 1; i >= 0; i--) {
+          const item = items[i];
+          if (item.kind === "thinking" && !item.isComplete) {
+            items[i] = { ...item, isComplete: true };
             break;
           }
         }
 
-        return {
-          streamingTurn: { ...state.streamingTurn, contentBlocks: blocks },
-        };
+        return { streamingTurn: { items } };
       });
     },
 
@@ -318,10 +297,9 @@ export const useSessionStore = create<SessionState>()(
         if (!state.streamingTurn) return state;
         return {
           streamingTurn: {
-            ...state.streamingTurn,
-            toolExecutions: [
-              ...state.streamingTurn.toolExecutions,
-              { id: toolCallId, name: toolName, status: "running" as const, args },
+            items: [
+              ...state.streamingTurn.items,
+              { kind: "tool" as const, id: toolCallId, name: toolName, status: "running" as const, args },
             ],
           },
         };
@@ -333,9 +311,10 @@ export const useSessionStore = create<SessionState>()(
         if (!state.streamingTurn) return state;
         return {
           streamingTurn: {
-            ...state.streamingTurn,
-            toolExecutions: state.streamingTurn.toolExecutions.map((t) =>
-              t.id === toolCallId ? { ...t, result: partialResult } : t
+            items: state.streamingTurn.items.map((item) =>
+              item.kind === "tool" && item.id === toolCallId
+                ? { ...item, result: partialResult }
+                : item
             ),
           },
         };
@@ -347,11 +326,10 @@ export const useSessionStore = create<SessionState>()(
         if (!state.streamingTurn) return state;
         return {
           streamingTurn: {
-            ...state.streamingTurn,
-            toolExecutions: state.streamingTurn.toolExecutions.map((t) =>
-              t.id === toolCallId
-                ? { ...t, status: isError ? "error" as const : "success" as const, result, isError, ...(details !== undefined ? { details } : {}) }
-                : t
+            items: state.streamingTurn.items.map((item) =>
+              item.kind === "tool" && item.id === toolCallId
+                ? { ...item, status: isError ? "error" as const : "success" as const, result, isError, ...(details !== undefined ? { details } : {}) }
+                : item
             ),
           },
         };
