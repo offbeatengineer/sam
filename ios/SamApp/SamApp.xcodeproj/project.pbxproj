@@ -44,6 +44,8 @@
 		AA1111111111111111111111 /* BackendInstance.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2222222222222222222222 /* BackendInstance.swift */; };
 		AA3333333333333333333333 /* BackendInstancesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA4444444444444444444444 /* BackendInstancesView.swift */; };
 		AA5555555555555555555555 /* BackendInstanceEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6666666666666666666666 /* BackendInstanceEditView.swift */; };
+		BB1111111111111111111111 /* ArtifactListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2222222222222222222222 /* ArtifactListView.swift */; };
+		BB3333333333333333333333 /* SessionArtifactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4444444444444444444444 /* SessionArtifactsView.swift */; };
 		BC5521E25934B8D281DBCB0D /* Artifact.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC6962F81665653E56CC7FCA /* Artifact.swift */; };
 		CE3EEBA65755FC1BC2C24320 /* SamAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6A0B60DF25920180AA09E6 /* SamAppUITests.swift */; };
 		CFF247FEBB7B5BBC99EE0BB0 /* Memory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C0B414E2A5E091229833D45 /* Memory.swift */; };
@@ -89,6 +91,8 @@
 		0D2DB82EA46C9603269FF691 /* ArtifactCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactCardCell.swift; sourceTree = "<group>"; };
 		13DB01D65DF7F247DD5205BA /* ToolCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCardCell.swift; sourceTree = "<group>"; };
 		1AEF0DA1E34E51A5FA3A393D /* ArtifactBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactBrowserView.swift; sourceTree = "<group>"; };
+		BB2222222222222222222222 /* ArtifactListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactListView.swift; sourceTree = "<group>"; };
+		BB4444444444444444444444 /* SessionArtifactsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionArtifactsView.swift; sourceTree = "<group>"; };
 		1C0B414E2A5E091229833D45 /* Memory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Memory.swift; sourceTree = "<group>"; };
 		2937D9B1AB07A036F2194DAD /* MarkdownMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMessageCell.swift; sourceTree = "<group>"; };
 		2E864546A4A6F56534BD1A09 /* SkillEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillEditorView.swift; sourceTree = "<group>"; };
@@ -295,6 +299,7 @@
 				7F1450D15AEE9188683EDB74 /* ChatContainerView.swift */,
 				CCDD112233445566778899F1 /* ChatInputBar.swift */,
 				2937D9B1AB07A036F2194DAD /* MarkdownMessageCell.swift */,
+				BB4444444444444444444444 /* SessionArtifactsView.swift */,
 				CCDD112233445566778899F2 /* SlideToCancelText.swift */,
 				CCDD112233445566778899F4 /* SessionStatsSheet.swift */,
 				DE1D1982D599B56CC8C807F8 /* SystemEventCell.swift */,
@@ -308,6 +313,7 @@
 			isa = PBXGroup;
 			children = (
 				1AEF0DA1E34E51A5FA3A393D /* ArtifactBrowserView.swift */,
+				BB2222222222222222222222 /* ArtifactListView.swift */,
 				48EF8901DC673DC538A2AC84 /* ArtifactPreviewView.swift */,
 			);
 			path = Artifacts;
@@ -443,6 +449,8 @@
 				AA1111111111111111111111 /* BackendInstance.swift in Sources */,
 				AA3333333333333333333333 /* BackendInstancesView.swift in Sources */,
 				AA5555555555555555555555 /* BackendInstanceEditView.swift in Sources */,
+				BB1111111111111111111111 /* ArtifactListView.swift in Sources */,
+				BB3333333333333333333333 /* SessionArtifactsView.swift in Sources */,
 				650D4523AB9DFD4149A61288 /* ArtifactBrowserView.swift in Sources */,
 				2184432BD21BCEE05C555F73 /* ArtifactCardCell.swift in Sources */,
 				51D64DC6B732DC3483471BCB /* ArtifactPreviewView.swift in Sources */,

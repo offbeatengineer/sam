@@ -14,7 +14,7 @@ struct ChatMessageItem: Identifiable {
         case markdown(String)
         case thinking(String, done: Bool)
         case toolExecution(StreamingToolExecution)
-        case artifactCard(toolCallId: String, toolName: String, title: String)
+        case artifactCard(toolCallId: String, toolName: String, title: String, artifactPath: String?)
         case systemEvent(String)
         case imageAttachment(UIImage, caption: String?)
         case remoteImageAttachment(remotePath: String, caption: String?)
@@ -143,11 +143,13 @@ extension ChatMessageItem {
                             let title = (details.value as? [String: Any])?["title"] as? String
                                 ?? (arguments.value as? [String: Any])?["title"] as? String
                                 ?? "Artifact"
+                            let path = (details.value as? [String: Any])?["path"] as? String
+                                ?? (arguments.value as? [String: Any])?["path"] as? String
                             items.append(ChatMessageItem(
                                 id: "\(entry.id)-\(block.id)",
                                 isUser: false,
                                 timestamp: ts,
-                                content: .artifactCard(toolCallId: toolId, toolName: name, title: title)
+                                content: .artifactCard(toolCallId: toolId, toolName: name, title: title, artifactPath: path)
                             ))
                         } else {
                             // Truncate long results for historical display
@@ -233,12 +235,14 @@ extension ChatMessageItem {
                 ))
             case .tool(let tool):
                 if tool.toolName == "report_artifact" {
-                    let title = (tool.args.value as? [String: Any])?["title"] as? String ?? "Artifact"
+                    let argsDict = tool.args.value as? [String: Any]
+                    let title = argsDict?["title"] as? String ?? "Artifact"
+                    let path = argsDict?["path"] as? String
                     result.append(ChatMessageItem(
                         id: "streaming-tool-\(tool.toolCallId)",
                         isUser: false,
                         timestamp: now,
-                        content: .artifactCard(toolCallId: tool.toolCallId, toolName: tool.toolName, title: title)
+                        content: .artifactCard(toolCallId: tool.toolCallId, toolName: tool.toolName, title: title, artifactPath: path)
                     ))
                 } else {
                     result.append(ChatMessageItem(

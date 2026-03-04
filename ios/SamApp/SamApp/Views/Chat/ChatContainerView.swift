@@ -7,6 +7,7 @@ struct ChatContainerView: View {
     @State private var showStats = false
     @State private var showRename = false
     @State private var renameText = ""
+    @State private var showSessionArtifacts = false
     let session: SessionInfo?
 
     private var isNewChat: Bool { session == nil }
@@ -31,6 +32,9 @@ struct ChatContainerView: View {
                         Button { showStats = true } label: {
                             Label("Stats", systemImage: "chart.bar")
                         }
+                        Button { showSessionArtifacts = true } label: {
+                            Label("Artifacts", systemImage: "doc.on.doc")
+                        }
                         Button {
                             renameText = session?.name ?? ""
                             showRename = true
@@ -46,6 +50,11 @@ struct ChatContainerView: View {
         }
         .sheet(isPresented: $showStats) {
             SessionStatsSheet(entries: appVM.chatVM.historicalEntries, session: session)
+        }
+        .sheet(isPresented: $showSessionArtifacts) {
+            NavigationStack {
+                SessionArtifactsView(entries: appVM.chatVM.historicalEntries)
+            }
         }
         .alert("Rename Session", isPresented: $showRename) {
             TextField("Session name", text: $renameText)
@@ -143,8 +152,8 @@ struct ChatContainerView: View {
         case .toolExecution(let tool):
             ToolCardCell(tool: tool)
 
-        case .artifactCard(_, _, let title):
-            ArtifactCardCell(title: title)
+        case .artifactCard(_, _, let title, let path):
+            ArtifactCardCell(title: title, artifactPath: path)
 
         case .systemEvent(let text):
             SystemEventCell(text: text)

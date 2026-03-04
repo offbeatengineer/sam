@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct ArtifactFileEntry: Identifiable, Hashable {
     let name: String
@@ -22,5 +23,20 @@ struct ArtifactFileEntry: Identifiable, Hashable {
 
     var isCode: Bool {
         ["js", "ts", "py", "swift", "rs", "go", "css", "json", "yaml", "yml", "md", "txt"].contains(fileExtension)
+    }
+
+    var iconName: String {
+        if isDirectory { return "folder" }
+        if isImage { return "photo" }
+        if isHTML { return "globe" }
+        if isCode { return "doc.text" }
+        return "doc"
+    }
+
+    var iconColor: Color {
+        if isImage { return .purple }
+        if isHTML { return .blue }
+        if isCode { return .orange }
+        return .secondary
     }
 }
