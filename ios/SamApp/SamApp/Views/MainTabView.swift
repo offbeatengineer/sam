@@ -32,8 +32,6 @@ struct MainTabView: View {
     @Environment(AppViewModel.self) private var appVM
     @State private var selectedSection: MenuSection = .chat
     @State private var isDrawerOpen = false
-    @State private var isInstancePickerExpanded = false
-
     private let drawerWidth: CGFloat = 280
 
     var body: some View {
@@ -120,16 +118,35 @@ struct MainTabView: View {
     private var drawerContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Instance switcher header
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isInstancePickerExpanded.toggle()
+            Menu {
+                ForEach(appVM.settingsVM.instances) { instance in
+                    Button {
+                        appVM.switchInstance(to: instance.id)
+                    } label: {
+                        if appVM.settingsVM.activeInstanceId == instance.id {
+                            Label(instance.name, systemImage: "checkmark")
+                        } else {
+                            Text(instance.name)
+                        }
+                    }
+                }
+
+                Divider()
+
+                Button {
+                    selectedSection = .settings
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        isDrawerOpen = false
+                    }
+                } label: {
+                    Label("Manage Instances…", systemImage: "server.rack")
                 }
             } label: {
                 HStack(spacing: 8) {
                     Text(appVM.settingsVM.activeInstance?.name ?? "Sam")
                         .font(.title2.bold())
                         .foregroundStyle(.primary)
-                    Image(systemName: isInstancePickerExpanded ? "chevron.up" : "chevron.down")
+                    Image(systemName: "chevron.up.chevron.down")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -137,57 +154,9 @@ struct MainTabView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 20)
-                .padding(.bottom, isInstancePickerExpanded ? 12 : 24)
+                .padding(.bottom, 24)
             }
-
-            if isInstancePickerExpanded {
-                VStack(spacing: 0) {
-                    ForEach(appVM.settingsVM.instances) { instance in
-                        Button {
-                            appVM.switchInstance(to: instance.id)
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isInstancePickerExpanded = false
-                            }
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: appVM.settingsVM.activeInstanceId == instance.id
-                                      ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(appVM.settingsVM.activeInstanceId == instance.id
-                                                     ? .green : .secondary)
-                                    .font(.body)
-                                Text(instance.name)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 10)
-                            .background(appVM.settingsVM.activeInstanceId == instance.id
-                                        ? Color.green.opacity(0.08) : Color.clear)
-                        }
-                    }
-
-                    Button {
-                        selectedSection = .settings
-                        isInstancePickerExpanded = false
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            isDrawerOpen = false
-                        }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "server.rack")
-                                .font(.body)
-                            Text("Manage Instances…")
-                                .font(.subheadline)
-                            Spacer()
-                        }
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 10)
-                    }
-                }
-                .padding(.bottom, 8)
-            }
+            .compositingGroup()
 
             Divider()
                 .padding(.bottom, 8)
