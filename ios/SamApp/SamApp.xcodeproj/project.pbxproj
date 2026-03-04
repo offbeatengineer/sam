@@ -39,6 +39,9 @@
 		B3DCE3D20283921A7A0A62EE /* SkillEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E864546A4A6F56534BD1A09 /* SkillEditorView.swift */; };
 		BB66E84D9AE3CDD618B225A0 /* WebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04ABA8D1391526CFF358A227 /* WebSocketClient.swift */; };
 		AABB11223344556677889900 /* UploadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB112233445566778899FF /* UploadClient.swift */; };
+		AA1111111111111111111111 /* BackendInstance.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2222222222222222222222 /* BackendInstance.swift */; };
+		AA3333333333333333333333 /* BackendInstancesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA4444444444444444444444 /* BackendInstancesView.swift */; };
+		AA5555555555555555555555 /* BackendInstanceEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6666666666666666666666 /* BackendInstanceEditView.swift */; };
 		BC5521E25934B8D281DBCB0D /* Artifact.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC6962F81665653E56CC7FCA /* Artifact.swift */; };
 		CE3EEBA65755FC1BC2C24320 /* SamAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6A0B60DF25920180AA09E6 /* SamAppUITests.swift */; };
 		CFF247FEBB7B5BBC99EE0BB0 /* Memory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C0B414E2A5E091229833D45 /* Memory.swift */; };
@@ -105,6 +108,9 @@
 		B0EC4B990F3D001D75486569 /* SamAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SamAppTests.swift; sourceTree = "<group>"; };
 		AABB112233445566778899FF /* UploadClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadClient.swift; sourceTree = "<group>"; };
 		BBDA86C41F82968EA63D440C /* RequestCorrelator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestCorrelator.swift; sourceTree = "<group>"; };
+		AA2222222222222222222222 /* BackendInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendInstance.swift; sourceTree = "<group>"; };
+		AA4444444444444444444444 /* BackendInstancesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendInstancesView.swift; sourceTree = "<group>"; };
+		AA6666666666666666666666 /* BackendInstanceEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendInstanceEditView.swift; sourceTree = "<group>"; };
 		BC6962F81665653E56CC7FCA /* Artifact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Artifact.swift; sourceTree = "<group>"; };
 		C02E9B8B6A5F9E03E9D6BE6E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		C3739D179DDB5867DA0BB46A /* ThinkingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingCell.swift; sourceTree = "<group>"; };
@@ -221,6 +227,7 @@
 			isa = PBXGroup;
 			children = (
 				BC6962F81665653E56CC7FCA /* Artifact.swift */,
+				AA2222222222222222222222 /* BackendInstance.swift */,
 				736A577C09DCF78FE617F93A /* ChatBridge.swift */,
 				1C0B414E2A5E091229833D45 /* Memory.swift */,
 				0483AE4F0472F18F823C858E /* Protocol.swift */,
@@ -234,6 +241,8 @@
 		964CC924C09EAD5038D4D909 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				AA6666666666666666666666 /* BackendInstanceEditView.swift */,
+				AA4444444444444444444444 /* BackendInstancesView.swift */,
 				C02E9B8B6A5F9E03E9D6BE6E /* SettingsView.swift */,
 			);
 			path = Settings;
@@ -423,6 +432,9 @@
 				5AD995C272DE2615FDA55777 /* AnyCodable.swift in Sources */,
 				83DB670124DE4DD0FA636A0E /* AppViewModel.swift in Sources */,
 				BC5521E25934B8D281DBCB0D /* Artifact.swift in Sources */,
+				AA1111111111111111111111 /* BackendInstance.swift in Sources */,
+				AA3333333333333333333333 /* BackendInstancesView.swift in Sources */,
+				AA5555555555555555555555 /* BackendInstanceEditView.swift in Sources */,
 				650D4523AB9DFD4149A61288 /* ArtifactBrowserView.swift in Sources */,
 				2184432BD21BCEE05C555F73 /* ArtifactCardCell.swift in Sources */,
 				51D64DC6B732DC3483471BCB /* ArtifactPreviewView.swift in Sources */,

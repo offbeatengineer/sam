@@ -2,37 +2,28 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppViewModel.self) private var appVM
-    @State private var apiKeyInput: String = ""
-    @State private var showApiKey = false
 
     var body: some View {
-        @Bindable var settings = appVM.settingsVM
-
         Form {
-            Section("Connection") {
-                TextField("Server URL", text: $settings.serverURLString, prompt: Text("wss://sam.yourdomain.com"))
-                    .textContentType(.URL)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-            }
-
-            Section("Authentication") {
-                HStack {
-                    if showApiKey {
-                        TextField("API Key", text: $apiKeyInput)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                    } else {
-                        SecureField("API Key", text: $apiKeyInput)
-                    }
-                    Button {
-                        showApiKey.toggle()
-                    } label: {
-                        Image(systemName: showApiKey ? "eye.slash" : "eye")
+            Section("Backend Instances") {
+                NavigationLink {
+                    BackendInstancesView()
+                } label: {
+                    HStack {
+                        Text("Instances")
+                        Spacer()
+                        Text("\(appVM.settingsVM.instances.count)")
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .onChange(of: apiKeyInput) { _, newValue in
-                    settings.apiKey = newValue.isEmpty ? nil : newValue
+
+                if let active = appVM.settingsVM.activeInstance {
+                    HStack {
+                        Text("Active")
+                        Spacer()
+                        Text(active.name)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -46,7 +37,7 @@ struct SettingsView: View {
                 Button("Connect") {
                     appVM.connect()
                 }
-                .disabled(settings.serverURL == nil)
+                .disabled(appVM.settingsVM.serverURL == nil)
 
                 Button("Disconnect") {
                     appVM.disconnect()
@@ -56,13 +47,7 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .onAppear {
-            apiKeyInput = settings.apiKey ?? ""
-            if let artifactsURL = settings.artifactsURL {
-                appVM.artifactVM.artifactsBaseURL = artifactsURL
-            }
-        }
-        .onChange(of: settings.serverURLString) { _, _ in
-            if let artifactsURL = settings.artifactsURL {
+            if let artifactsURL = appVM.settingsVM.artifactsURL {
                 appVM.artifactVM.artifactsBaseURL = artifactsURL
             }
         }

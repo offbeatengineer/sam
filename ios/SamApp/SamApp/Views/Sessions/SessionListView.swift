@@ -87,6 +87,11 @@ struct SessionListView: View {
         .task {
             await appVM.sessionListVM.loadSessions(using: appVM)
         }
+        .onChange(of: appVM.connectionManager.status) { _, newStatus in
+            if newStatus == .connected {
+                Task { await appVM.sessionListVM.loadSessions(using: appVM) }
+            }
+        }
         .overlay {
             if appVM.sessionListVM.sessions.isEmpty && !appVM.sessionListVM.isLoading {
                 ContentUnavailableView(

@@ -244,6 +244,15 @@ final class ChatViewModel {
         inputText = ""
     }
 
+    func clearAll() {
+        activeConversationId = nil
+        historicalEntries = []
+        localAttachmentsByEntryId = [:]
+        streamingTurn = nil
+        isStreaming = false
+        inputText = ""
+    }
+
     // MARK: - Abort
 
     func abort(using app: AppViewModel) async {
