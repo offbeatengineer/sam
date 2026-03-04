@@ -52,9 +52,17 @@ struct UserAudioAttachment {
     let remotePath: String      // e.g. "/uploads/2025-03-03/abc.aac"
 }
 
+struct SessionUsage {
+    var input: Int = 0
+    var output: Int = 0
+    var cacheRead: Int = 0
+    var cacheWrite: Int = 0
+    var costTotal: Double = 0
+}
+
 enum AgentMessage {
     case user(content: String, images: [UserImageAttachment], audioAttachments: [UserAudioAttachment])
-    case assistant(content: [AssistantContentBlock])
+    case assistant(content: [AssistantContentBlock], model: String?, provider: String?, usage: SessionUsage?)
     case toolResult(toolCallId: String, toolName: String, content: String, isError: Bool, details: AnyCodable?)
     case bashExecution(command: String, output: String, exitCode: Int?)
     case compactionSummary(summary: String)
@@ -184,7 +192,21 @@ extension SessionEntry {
                     }
                 }
             }
-            return .assistant(content: blocks)
+            let model = msg["model"] as? String
+            let provider = msg["provider"] as? String
+            var usage: SessionUsage?
+            if let u = msg["usage"] as? [String: Any] {
+                var su = SessionUsage()
+                su.input = u["input"] as? Int ?? 0
+                su.output = u["output"] as? Int ?? 0
+                su.cacheRead = u["cacheRead"] as? Int ?? 0
+                su.cacheWrite = u["cacheWrite"] as? Int ?? 0
+                if let cost = u["cost"] as? [String: Any] {
+                    su.costTotal = cost["total"] as? Double ?? 0
+                }
+                usage = su
+            }
+            return .assistant(content: blocks, model: model, provider: provider, usage: usage)
 
         case "toolResult":
             let toolCallId = msg["toolCallId"] as? String ?? ""

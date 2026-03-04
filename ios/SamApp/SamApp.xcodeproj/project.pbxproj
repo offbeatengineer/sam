@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		CCDD11223344556677889903 /* AudioPlayerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD112233445566778899F3 /* AudioPlayerManager.swift */; };
+		CCDD11223344556677889904 /* SessionStatsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD112233445566778899F4 /* SessionStatsSheet.swift */; };
 		0E3DD7425E8C1BD6277A77F6 /* RequestCorrelator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDA86C41F82968EA63D440C /* RequestCorrelator.swift */; };
 		12E339DC8057B6995AD15DE0 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02E9B8B6A5F9E03E9D6BE6E /* SettingsView.swift */; };
 		2184432BD21BCEE05C555F73 /* ArtifactCardCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D2DB82EA46C9603269FF691 /* ArtifactCardCell.swift */; };
@@ -81,6 +82,7 @@
 		CCDD112233445566778899F3 /* AudioPlayerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerManager.swift; sourceTree = "<group>"; };
 		CCDD112233445566778899F1 /* ChatInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputBar.swift; sourceTree = "<group>"; };
 		CCDD112233445566778899F2 /* SlideToCancelText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlideToCancelText.swift; sourceTree = "<group>"; };
+		CCDD112233445566778899F4 /* SessionStatsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStatsSheet.swift; sourceTree = "<group>"; };
 		0D2DB82EA46C9603269FF691 /* ArtifactCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactCardCell.swift; sourceTree = "<group>"; };
 		13DB01D65DF7F247DD5205BA /* ToolCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCardCell.swift; sourceTree = "<group>"; };
 		1AEF0DA1E34E51A5FA3A393D /* ArtifactBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactBrowserView.swift; sourceTree = "<group>"; };
@@ -285,6 +287,7 @@
 				CCDD112233445566778899F1 /* ChatInputBar.swift */,
 				2937D9B1AB07A036F2194DAD /* MarkdownMessageCell.swift */,
 				CCDD112233445566778899F2 /* SlideToCancelText.swift */,
+				CCDD112233445566778899F4 /* SessionStatsSheet.swift */,
 				DE1D1982D599B56CC8C807F8 /* SystemEventCell.swift */,
 				C3739D179DDB5867DA0BB46A /* ThinkingCell.swift */,
 				13DB01D65DF7F247DD5205BA /* ToolCardCell.swift */,
@@ -437,6 +440,7 @@
 				7C0012EEA95B03502EEBE529 /* ChatContainerView.swift in Sources */,
 				CCDD11223344556677889901 /* ChatInputBar.swift in Sources */,
 				CCDD11223344556677889902 /* SlideToCancelText.swift in Sources */,
+				CCDD11223344556677889904 /* SessionStatsSheet.swift in Sources */,
 				A8CDA92BCA1254D6B8F6932C /* ChatViewModel.swift in Sources */,
 				2846246AC5EA0003EC36CE58 /* ConnectionManager.swift in Sources */,
 				F170ED23C659BB0655F01796 /* ContentView.swift in Sources */,
