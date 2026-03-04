@@ -996,11 +996,20 @@ export class AppChannel {
         const details = resultObj && typeof resultObj === "object" && "details" in resultObj
           ? (resultObj as any).details
           : undefined;
-        const resultText = typeof resultObj === "string"
-          ? resultObj
-          : resultObj && typeof resultObj === "object" && "content" in resultObj
-            ? JSON.stringify(resultObj)
-            : JSON.stringify(resultObj ?? "");
+        let resultText: string;
+        if (typeof resultObj === "string") {
+          resultText = resultObj;
+        } else if (resultObj && typeof resultObj === "object" && "content" in resultObj) {
+          const content = (resultObj as any).content;
+          resultText = Array.isArray(content)
+            ? content
+                .filter((c: any) => c.type === "text")
+                .map((c: any) => c.text)
+                .join("\n")
+            : JSON.stringify(content ?? "");
+        } else {
+          resultText = JSON.stringify(resultObj ?? "");
+        }
         this.sendTo(ws, {
           type: "tool_end",
           conversationId,
