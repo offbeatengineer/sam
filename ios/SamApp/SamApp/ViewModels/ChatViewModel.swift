@@ -1,6 +1,4 @@
 import Foundation
-import ExyteChat
-import ExyteMediaPicker
 import UIKit
 
 @MainActor @Observable
@@ -102,14 +100,14 @@ final class ChatViewModel {
         }
     }
 
-    /// Send a message from an ExyteChat DraftMessage (may include media/audio attachments).
-    func sendMessage(draft: DraftMessage, using app: AppViewModel) async {
+    /// Send a message from a ChatDraft (may include image data/audio attachments).
+    func sendMessage(draft: ChatDraft, using app: AppViewModel) async {
         guard let convId = activeConversationId else { return }
         let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let hasMedia = !draft.medias.isEmpty
-        let hasAudio = draft.recording != nil
-        let hasAttachments = hasMedia || hasAudio
+        let hasImages = !draft.imageData.isEmpty
+        let hasAudio = draft.audioURL != nil
+        let hasAttachments = hasImages || hasAudio
 
         // Nothing to send
         guard !text.isEmpty || hasAttachments else { return }
@@ -139,8 +137,8 @@ final class ChatViewModel {
 
         // Collect resized images for display and upload
         var imageItems: [(UIImage, Data)] = []
-        for media in draft.medias {
-            if let data = await resizedImageData(from: media),
+        for rawData in draft.imageData {
+            if let data = resizedImageData(from: rawData),
                let image = UIImage(data: data) {
                 imageItems.append((image, data))
             }
@@ -157,7 +155,7 @@ final class ChatViewModel {
             ))
         }
         if hasAudio {
-            let duration = draft.recording?.duration ?? 0
+            let duration = draft.audioDuration ?? 0
             let durationText = duration > 0
                 ? String(format: "%d:%02d", Int(duration) / 60, Int(duration) % 60)
                 : nil
@@ -165,7 +163,7 @@ final class ChatViewModel {
                 id: UUID().uuidString,
                 isUser: true,
                 timestamp: Date(),
-                content: .audioAttachment(caption: durationText)
+                content: .audioAttachment(caption: durationText, localURL: draft.audioURL)
             ))
         }
         if !attachItemsForEntry.isEmpty {
@@ -187,10 +185,10 @@ final class ChatViewModel {
                 }
             }
 
-            if let recording = draft.recording, let url = recording.url {
+            if let audioURL = draft.audioURL {
                 do {
-                    let data = try Data(contentsOf: url)
-                    let ext = url.pathExtension.lowercased()
+                    let data = try Data(contentsOf: audioURL)
+                    let ext = audioURL.pathExtension.lowercased()
                     let mimeType = ext == "wav" ? "audio/wav" : "audio/aac"
                     let response = try await UploadClient.upload(
                         data: data, mimeType: mimeType, baseURL: baseURL, apiKey: apiKey
@@ -214,9 +212,8 @@ final class ChatViewModel {
         }
     }
 
-    /// Resize an ExyteMediaPicker Media to max 1024px and JPEG compress.
-    private func resizedImageData(from media: ExyteMediaPicker.Media) async -> Data? {
-        guard let data = await media.getData() else { return nil }
+    /// Resize raw image data to max 1024px and JPEG compress.
+    private func resizedImageData(from data: Data) -> Data? {
         guard let image = UIImage(data: data) else { return data }
 
         let maxDimension: CGFloat = 1024
@@ -273,25 +270,24 @@ final class ChatViewModel {
 
     func endStreaming(conversationId: String) {
         guard streamingTurn?.conversationId == conversationId else { return }
-        streamingTurn?.isActive = false
-        isStreaming = false
-        // Merge streaming content into historical entries
         if let turn = streamingTurn {
             mergeStreamingTurn(turn)
         }
+        streamingTurn?.isActive = false
+        isStreaming = false
         streamingTurn = nil
     }
 
-    func appendTextDelta(_ delta: String, contentIndex: Int) {
-        streamingTurn?.appendTextDelta(delta, contentIndex: contentIndex)
+    func appendTextDelta(_ delta: String) {
+        streamingTurn?.appendTextDelta(delta)
     }
 
-    func appendThinkingDelta(_ delta: String, contentIndex: Int) {
-        streamingTurn?.appendThinkingDelta(delta, contentIndex: contentIndex)
+    func appendThinkingDelta(_ delta: String) {
+        streamingTurn?.appendThinkingDelta(delta)
     }
 
-    func completeThinking(contentIndex: Int) {
-        streamingTurn?.completeThinking(contentIndex: contentIndex)
+    func completeThinking() {
+        streamingTurn?.completeThinking()
     }
 
     func addToolStart(toolCallId: String, toolName: String, args: AnyCodable) {
@@ -310,30 +306,31 @@ final class ChatViewModel {
 
     private func mergeStreamingTurn(_ turn: StreamingTurn) {
         var blocks: [AssistantContentBlock] = []
-        for block in turn.contentBlocks {
-            switch block {
+        var doneTools: [StreamingToolExecution] = []
+
+        for item in turn.items {
+            switch item {
             case .text(let text) where !text.isEmpty:
                 blocks.append(.text(text))
             case .thinking(let text, _) where !text.isEmpty:
                 blocks.append(.thinking(text))
+            case .tool(let tool):
+                blocks.append(.toolCall(id: tool.toolCallId, name: tool.toolName, arguments: tool.args))
+                if tool.isDone { doneTools.append(tool) }
             default:
                 break
             }
         }
-        for tool in turn.toolExecutions {
-            blocks.append(.toolCall(id: tool.toolCallId, name: tool.toolName, arguments: tool.args))
-        }
+
         if !blocks.isEmpty {
-            // Add assistant entry
             historicalEntries.append(SessionEntry(
                 id: UUID().uuidString,
                 entryType: "message",
-                message: .assistant(content: blocks),
+                message: .assistant(content: blocks, model: nil, provider: nil, usage: nil),
                 timestamp: ISO8601DateFormatter().string(from: Date()),
                 modelId: nil, summary: nil
             ))
-            // Add tool result entries so the toolResults map can pick them up
-            for tool in turn.toolExecutions where tool.isDone {
+            for tool in doneTools {
                 historicalEntries.append(SessionEntry(
                     id: UUID().uuidString,
                     entryType: "message",

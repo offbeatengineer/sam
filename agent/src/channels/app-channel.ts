@@ -542,7 +542,9 @@ export class AppChannel {
             }
             const transcript = await transcriber.transcribe(fileBuffer, att.mimeType);
             if (transcript) {
-              promptText = `[Audio transcript]: ${transcript}\n\n${promptText}`;
+              promptText = promptText
+                ? `[Audio transcript]: ${transcript}\n\n${promptText}`
+                : `[Audio transcript]: ${transcript}`;
             } else {
               this.sendTo(ws, { type: "error", conversationId, error: "Failed to transcribe audio" });
             }

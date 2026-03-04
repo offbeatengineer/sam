@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CCDD11223344556677889903 /* AudioPlayerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD112233445566778899F3 /* AudioPlayerManager.swift */; };
+		CCDD11223344556677889904 /* SessionStatsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD112233445566778899F4 /* SessionStatsSheet.swift */; };
 		0E3DD7425E8C1BD6277A77F6 /* RequestCorrelator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDA86C41F82968EA63D440C /* RequestCorrelator.swift */; };
 		12E339DC8057B6995AD15DE0 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02E9B8B6A5F9E03E9D6BE6E /* SettingsView.swift */; };
 		2184432BD21BCEE05C555F73 /* ArtifactCardCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D2DB82EA46C9603269FF691 /* ArtifactCardCell.swift */; };
@@ -51,7 +53,8 @@
 		EFA1F72F328ED317A0EC1B9D /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 465517D0817915C1DF40BAFF /* MainTabView.swift */; };
 		EFE0658179CFDCEC1D34C3AF /* SessionListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6DBC7049238F5CCF24A295 /* SessionListViewModel.swift */; };
 		F170ED23C659BB0655F01796 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F871EE83CDCA38C7B8BF60 /* ContentView.swift */; };
-		F407C82A894AC5E47254896D /* ExyteChat in Frameworks */ = {isa = PBXBuildFile; productRef = F4A85A8AA099C596A7CE85E6 /* ExyteChat */; };
+		CCDD11223344556677889901 /* ChatInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD112233445566778899F1 /* ChatInputBar.swift */; };
+		CCDD11223344556677889902 /* SlideToCancelText.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD112233445566778899F2 /* SlideToCancelText.swift */; };
 		F47D140F64198FF423F4D281 /* SamAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0EC4B990F3D001D75486569 /* SamAppTests.swift */; };
 		FC4C7F9236EC01BDC5729887 /* MemoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694B3899E4A9738F6DCF5482 /* MemoryListView.swift */; };
 /* End PBXBuildFile section */
@@ -79,6 +82,10 @@
 		04ABA8D1391526CFF358A227 /* WebSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketClient.swift; sourceTree = "<group>"; };
 		0AD9A2585FB83018E54BE403 /* ConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionManager.swift; sourceTree = "<group>"; };
 		0CA0818F69D10F42241B02A5 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
+		CCDD112233445566778899F3 /* AudioPlayerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerManager.swift; sourceTree = "<group>"; };
+		CCDD112233445566778899F1 /* ChatInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputBar.swift; sourceTree = "<group>"; };
+		CCDD112233445566778899F2 /* SlideToCancelText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlideToCancelText.swift; sourceTree = "<group>"; };
+		CCDD112233445566778899F4 /* SessionStatsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStatsSheet.swift; sourceTree = "<group>"; };
 		0D2DB82EA46C9603269FF691 /* ArtifactCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactCardCell.swift; sourceTree = "<group>"; };
 		13DB01D65DF7F247DD5205BA /* ToolCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCardCell.swift; sourceTree = "<group>"; };
 		1AEF0DA1E34E51A5FA3A393D /* ArtifactBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactBrowserView.swift; sourceTree = "<group>"; };
@@ -129,7 +136,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F407C82A894AC5E47254896D /* ExyteChat in Frameworks */,
 				622B0723A3950D4B1DA13A93 /* MarkdownUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -285,8 +291,12 @@
 			isa = PBXGroup;
 			children = (
 				0D2DB82EA46C9603269FF691 /* ArtifactCardCell.swift */,
+				CCDD112233445566778899F3 /* AudioPlayerManager.swift */,
 				7F1450D15AEE9188683EDB74 /* ChatContainerView.swift */,
+				CCDD112233445566778899F1 /* ChatInputBar.swift */,
 				2937D9B1AB07A036F2194DAD /* MarkdownMessageCell.swift */,
+				CCDD112233445566778899F2 /* SlideToCancelText.swift */,
+				CCDD112233445566778899F4 /* SessionStatsSheet.swift */,
 				DE1D1982D599B56CC8C807F8 /* SystemEventCell.swift */,
 				C3739D179DDB5867DA0BB46A /* ThinkingCell.swift */,
 				13DB01D65DF7F247DD5205BA /* ToolCardCell.swift */,
@@ -363,7 +373,6 @@
 			);
 			name = SamApp;
 			packageProductDependencies = (
-				F4A85A8AA099C596A7CE85E6 /* ExyteChat */,
 				6AB665CFC21326FC4E65D158 /* MarkdownUI */,
 			);
 			productName = SamApp;
@@ -395,7 +404,6 @@
 			mainGroup = 282564E69A3AD02A45CB1E66;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				8C7CBA63F3FABC65D61E4436 /* XCRemoteSwiftPackageReference "Chat" */,
 				88267B4A5C8324C8F17A3618 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 			);
 			projectDirPath = "";
@@ -439,8 +447,12 @@
 				2184432BD21BCEE05C555F73 /* ArtifactCardCell.swift in Sources */,
 				51D64DC6B732DC3483471BCB /* ArtifactPreviewView.swift in Sources */,
 				6036506F851C76DB9BE800E8 /* ArtifactViewModel.swift in Sources */,
+				CCDD11223344556677889903 /* AudioPlayerManager.swift in Sources */,
 				2E5E681DB74CDAEC1D81DF2C /* ChatBridge.swift in Sources */,
 				7C0012EEA95B03502EEBE529 /* ChatContainerView.swift in Sources */,
+				CCDD11223344556677889901 /* ChatInputBar.swift in Sources */,
+				CCDD11223344556677889902 /* SlideToCancelText.swift in Sources */,
+				CCDD11223344556677889904 /* SessionStatsSheet.swift in Sources */,
 				A8CDA92BCA1254D6B8F6932C /* ChatViewModel.swift in Sources */,
 				2846246AC5EA0003EC36CE58 /* ConnectionManager.swift in Sources */,
 				F170ED23C659BB0655F01796 /* ContentView.swift in Sources */,
@@ -776,14 +788,6 @@
 				minimumVersion = 2.3.0;
 			};
 		};
-		8C7CBA63F3FABC65D61E4436 /* XCRemoteSwiftPackageReference "Chat" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/exyte/Chat.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.7.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -791,11 +795,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 88267B4A5C8324C8F17A3618 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
-		};
-		F4A85A8AA099C596A7CE85E6 /* ExyteChat */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8C7CBA63F3FABC65D61E4436 /* XCRemoteSwiftPackageReference "Chat" */;
-			productName = ExyteChat;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,6 +1,5 @@
 import Foundation
 import UIKit
-import ExyteChat
 
 /// Bridges Sam's internal models to a flat list suitable for the Chat UI.
 /// Each item represents one renderable cell in the chat view.
@@ -19,7 +18,7 @@ struct ChatMessageItem: Identifiable {
         case systemEvent(String)
         case imageAttachment(UIImage, caption: String?)
         case remoteImageAttachment(remotePath: String, caption: String?)
-        case audioAttachment(caption: String?)
+        case audioAttachment(caption: String?, localURL: URL?)
         case remoteAudioAttachment(remotePath: String)
     }
 }
@@ -117,7 +116,7 @@ extension ChatMessageItem {
                     ))
                 }
 
-            case .assistant(let blocks):
+            case .assistant(let blocks, _, _, _):
                 for block in blocks {
                     switch block {
                     case .text(let text):
@@ -211,52 +210,50 @@ extension ChatMessageItem {
         return items
     }
 
-    /// Append streaming turn content to the items list.
+    /// Append streaming turn content to the items list, preserving stream order.
     static func fromStreamingTurn(_ turn: StreamingTurn) -> [ChatMessageItem] {
-        var items: [ChatMessageItem] = []
         let now = Date()
+        var result: [ChatMessageItem] = []
 
-        for (i, block) in turn.contentBlocks.enumerated() {
-            switch block {
+        for (i, item) in turn.items.enumerated() {
+            switch item {
             case .text(let text) where !text.isEmpty:
-                items.append(ChatMessageItem(
+                result.append(ChatMessageItem(
                     id: "streaming-text-\(i)",
                     isUser: false,
                     timestamp: now,
                     content: .markdown(text)
                 ))
             case .thinking(let text, let done) where !text.isEmpty:
-                items.append(ChatMessageItem(
+                result.append(ChatMessageItem(
                     id: "streaming-thinking-\(i)",
                     isUser: false,
                     timestamp: now,
                     content: .thinking(text, done: done)
                 ))
+            case .tool(let tool):
+                if tool.toolName == "report_artifact" {
+                    let title = (tool.args.value as? [String: Any])?["title"] as? String ?? "Artifact"
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .artifactCard(toolCallId: tool.toolCallId, toolName: tool.toolName, title: title)
+                    ))
+                } else {
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .toolExecution(tool)
+                    ))
+                }
             default:
                 break
             }
         }
 
-        for tool in turn.toolExecutions {
-            if tool.toolName == "report_artifact" {
-                let title = (tool.args.value as? [String: Any])?["title"] as? String ?? "Artifact"
-                items.append(ChatMessageItem(
-                    id: "streaming-tool-\(tool.toolCallId)",
-                    isUser: false,
-                    timestamp: now,
-                    content: .artifactCard(toolCallId: tool.toolCallId, toolName: tool.toolName, title: title)
-                ))
-            } else {
-                items.append(ChatMessageItem(
-                    id: "streaming-tool-\(tool.toolCallId)",
-                    isUser: false,
-                    timestamp: now,
-                    content: .toolExecution(tool)
-                ))
-            }
-        }
-
-        return items
+        return result
     }
 
     // MARK: - Helpers
@@ -267,35 +264,3 @@ extension ChatMessageItem {
     }
 }
 
-// MARK: - ExyteChat adapter
-
-extension ChatMessageItem {
-    /// Convert to an ExyteChat Message for use in ChatView.
-    func toExyteMessage() -> ExyteChat.Message {
-        let user = ExyteChat.User(
-            id: isUser ? "user" : "sam",
-            name: isUser ? "You" : "Sam",
-            avatarURL: nil,
-            isCurrentUser: isUser
-        )
-        let displayText: String
-        switch content {
-        case .text(let t): displayText = t
-        case .markdown(let t): displayText = t
-        case .thinking(_, _): displayText = "[Thinking...]"
-        case .toolExecution(let tool): displayText = "[Tool: \(tool.toolName)]"
-        case .artifactCard(_, _, let title): displayText = "[Artifact: \(title)]"
-        case .systemEvent(let t): displayText = t
-        case .imageAttachment(_, let caption): displayText = caption ?? "[Image]"
-        case .remoteImageAttachment(_, let caption): displayText = caption ?? "[Image]"
-        case .audioAttachment(let caption): displayText = caption ?? "[Audio]"
-        case .remoteAudioAttachment: displayText = "[Audio]"
-        }
-        return ExyteChat.Message(
-            id: id,
-            user: user,
-            createdAt: timestamp,
-            text: displayText
-        )
-    }
-}
