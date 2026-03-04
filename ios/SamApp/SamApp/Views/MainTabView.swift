@@ -32,6 +32,7 @@ struct MainTabView: View {
     @Environment(AppViewModel.self) private var appVM
     @State private var selectedSection: MenuSection = .chat
     @State private var isDrawerOpen = false
+    @State private var isInstancePickerExpanded = false
 
     private let drawerWidth: CGFloat = 280
 
@@ -118,12 +119,75 @@ struct MainTabView: View {
 
     private var drawerContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
-            Text("Sam")
-                .font(.title.bold())
+            // Instance switcher header
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isInstancePickerExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(appVM.settingsVM.activeInstance?.name ?? "Sam")
+                        .font(.title2.bold())
+                        .foregroundStyle(.primary)
+                    Image(systemName: isInstancePickerExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    connectionDot
+                }
                 .padding(.horizontal, 24)
                 .padding(.top, 20)
-                .padding(.bottom, 24)
+                .padding(.bottom, isInstancePickerExpanded ? 12 : 24)
+            }
+
+            if isInstancePickerExpanded {
+                VStack(spacing: 0) {
+                    ForEach(appVM.settingsVM.instances) { instance in
+                        Button {
+                            appVM.switchInstance(to: instance.id)
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isInstancePickerExpanded = false
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: appVM.settingsVM.activeInstanceId == instance.id
+                                      ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(appVM.settingsVM.activeInstanceId == instance.id
+                                                     ? .green : .secondary)
+                                    .font(.body)
+                                Text(instance.name)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 10)
+                            .background(appVM.settingsVM.activeInstanceId == instance.id
+                                        ? Color.green.opacity(0.08) : Color.clear)
+                        }
+                    }
+
+                    Button {
+                        selectedSection = .settings
+                        isInstancePickerExpanded = false
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            isDrawerOpen = false
+                        }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "server.rack")
+                                .font(.body)
+                            Text("Manage Instances…")
+                                .font(.subheadline)
+                            Spacer()
+                        }
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 10)
+                    }
+                }
+                .padding(.bottom, 8)
+            }
 
             Divider()
                 .padding(.bottom, 8)
@@ -160,6 +224,22 @@ struct MainTabView: View {
             }
 
             Spacer()
+        }
+    }
+
+    // MARK: - Connection indicator
+
+    @ViewBuilder
+    private var connectionDot: some View {
+        switch appVM.connectionManager.status {
+        case .connected:
+            Circle().fill(.green).frame(width: 8, height: 8)
+        case .connecting, .reconnecting:
+            Circle().fill(.orange).frame(width: 8, height: 8)
+        case .error:
+            Circle().fill(.red).frame(width: 8, height: 8)
+        case .disconnected:
+            Circle().fill(.gray).frame(width: 8, height: 8)
         }
     }
 }

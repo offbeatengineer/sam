@@ -35,6 +35,19 @@ final class AppViewModel {
         Task { await correlator.cancelAll() }
     }
 
+    /// Switch to a different backend instance: disconnect, set active, reconnect.
+    func switchInstance(to id: UUID) {
+        guard id != settingsVM.activeInstanceId else { return }
+        disconnect()
+        settingsVM.setActive(id)
+        // Clear stale data from previous instance
+        chatVM.clearAll()
+        sessionListVM.clearAll()
+        streamingConversations.removeAll()
+        connect()
+        // SessionListView observes connectionManager.status and reloads on .connected
+    }
+
     /// Send a request and wait for a correlated response.
     func request(_ clientRequest: ClientRequest, requestId: String) async throws -> ServerMessage {
         async let response = correlator.waitForResponse(requestId: requestId)

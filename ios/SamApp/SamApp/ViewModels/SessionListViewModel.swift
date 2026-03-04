@@ -35,6 +35,12 @@ final class SessionListViewModel {
         )
     }
 
+    func clearAll() {
+        sessions = []
+        isLoading = false
+        error = nil
+    }
+
     func loadSessions(using app: AppViewModel) async {
         let requestId = UUID().uuidString
         do {
