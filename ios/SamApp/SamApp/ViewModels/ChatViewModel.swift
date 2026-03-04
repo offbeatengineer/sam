@@ -3,7 +3,7 @@ import ExyteChat
 import ExyteMediaPicker
 import UIKit
 
-@Observable
+@MainActor @Observable
 final class ChatViewModel {
     var activeConversationId: String?
     var inputText: String = ""

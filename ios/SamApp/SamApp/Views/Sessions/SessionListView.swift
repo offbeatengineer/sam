@@ -85,10 +85,24 @@ struct SessionListView: View {
             await appVM.sessionListVM.loadSessions(using: appVM)
         }
         .task {
+            // Only load on appear if already connected; otherwise onConnected handles it
+            guard appVM.connectionManager.status == .connected else { return }
             await appVM.sessionListVM.loadSessions(using: appVM)
         }
         .overlay {
-            if appVM.sessionListVM.sessions.isEmpty && !appVM.sessionListVM.isLoading {
+            if appVM.sessionListVM.isLoading && appVM.sessionListVM.sessions.isEmpty {
+                ProgressView("Loading sessions…")
+            } else if let error = appVM.sessionListVM.error, appVM.sessionListVM.sessions.isEmpty {
+                ContentUnavailableView {
+                    Label("Connection Error", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Retry") {
+                        Task { await appVM.sessionListVM.loadSessions(using: appVM) }
+                    }
+                }
+            } else if appVM.sessionListVM.sessions.isEmpty {
                 ContentUnavailableView(
                     "No Sessions",
                     systemImage: "bubble.left.and.bubble.right",
