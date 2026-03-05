@@ -13,6 +13,18 @@ struct ChatContainerView: View {
     private var isNewChat: Bool { session == nil }
     private var isReadOnly: Bool { session?.isReadOnly ?? false }
 
+    private var hasArtifacts: Bool {
+        appVM.chatVM.historicalEntries.contains { entry in
+            if case .assistant(let blocks, _, _, _) = entry.message {
+                return blocks.contains { block in
+                    if case .toolCall(_, let name, _) = block, name == "report_artifact" { return true }
+                    return false
+                }
+            }
+            return false
+        }
+    }
+
     var body: some View {
         Group {
             if isReadOnly {
@@ -32,8 +44,10 @@ struct ChatContainerView: View {
                         Button { showStats = true } label: {
                             Label("Stats", systemImage: "chart.bar")
                         }
-                        Button { showSessionArtifacts = true } label: {
-                            Label("Artifacts", systemImage: "doc.on.doc")
+                        if hasArtifacts {
+                            Button { showSessionArtifacts = true } label: {
+                                Label("Artifacts", systemImage: "doc.on.doc")
+                            }
                         }
                         Button {
                             renameText = session?.name ?? ""
