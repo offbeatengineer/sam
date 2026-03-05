@@ -1,6 +1,6 @@
 ---
 name: coding-agent
-description: Delegate coding tasks to Pi Coding Agent via tmux. Use when a task requires focused code generation, refactoring, or file modifications in a specific directory.
+description: Delegate coding tasks to Pi Coding Agent via tmux. Use when a task requires focused code generation, refactoring, or file modifications in a specific directory. Also use this to implement, update, or refactor Kit functionality.
 ---
 
 # Coding Agent (Pi via tmux)

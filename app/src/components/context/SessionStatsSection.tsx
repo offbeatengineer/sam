@@ -94,6 +94,9 @@ export function SessionStatsSection() {
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="mt-2 space-y-1 text-xs">
+          {activeHeader?.id && (
+            <Row label="Session" value={activeHeader.id} />
+          )}
           {stats.date && (
             <Row label="Date" value={new Date(stats.date).toLocaleDateString()} />
           )}
