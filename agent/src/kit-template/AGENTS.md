@@ -17,7 +17,7 @@ You are working on a **kit** — a self-contained mini-app with a React frontend
 │   ├── main.tsx          # Entry point
 │   ├── index.css         # Tailwind + shadcn/ui theme variables
 │   ├── lib/utils.ts      # cn() helper
-│   ├── lib/kit.ts        # kit.fetch() API client
+│   ├── lib/kit.ts        # kit.fetch(), native bridge (setTitle, setMenu, etc.)
 │   └── components/ui/    # shadcn/ui components (added via CLI)
 ├── server/
 │   └── index.ts          # Hono backend (default export)
@@ -72,6 +72,32 @@ const data = await res.json();
 ```
 
 **IMPORTANT:** Never use `fetch()` directly for kit API calls. Always use `kit.fetch()` — it ensures the correct routing prefix is applied.
+
+### Native Bridge
+
+`kit` also exposes methods to control the native iOS nav bar. These are no-ops on desktop/browser:
+
+```tsx
+import { kit } from "@/lib/kit";
+
+// Set the nav bar title (overrides the default kit name)
+kit.setTitle("My Feed");
+
+// Add a dropdown menu to the nav bar (top-right)
+kit.setMenu([
+  { id: "refresh", label: "Refresh", systemImage: "arrow.clockwise" },
+  { id: "settings", label: "Settings", systemImage: "gear" },
+]);
+
+// Handle menu item taps
+kit.onMenuAction((actionId) => {
+  if (actionId === "refresh") loadData();
+});
+```
+
+- `systemImage` values are **SF Symbol** names (e.g. `"arrow.clockwise"`, `"gear"`, `"trash"`)
+- Call `setTitle` / `setMenu` early (e.g. in a `useEffect` on mount) so the nav bar updates before the user interacts
+- Call `onMenuAction` once to register a single callback — later calls replace the previous one
 
 ## Backend
 
