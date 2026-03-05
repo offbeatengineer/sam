@@ -2,7 +2,7 @@ import { useEffect, useRef, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SessionEntryRenderer } from "./SessionEntryRenderer";
 import { StreamingTurnView } from "./StreamingTurnView";
-import { useSessionStore, useActiveEntries, useActiveStreaming, useStreamingTurn, usePendingUserMessage } from "@/stores/sessionStore";
+import { useActiveEntries, useActiveStreaming, useStreamingTurn, usePendingUserMessage } from "@/stores/sessionStore";
 import { useUIStore } from "@/stores/uiStore";
 import type { SessionMessageEntry, ToolResultMessage } from "@/types/session";
 
@@ -11,7 +11,6 @@ export function MessageList({ isReadOnly }: { isReadOnly?: boolean }) {
   const isStreaming = useActiveStreaming();
   const streamingTurn = useStreamingTurn();
   const pendingUserMessage = usePendingUserMessage();
-  const activeSessionId = useSessionStore((state) => state.activeSessionId);
   const inputHeight = useUIStore((state) => state.inputHeight);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -30,12 +29,26 @@ export function MessageList({ isReadOnly }: { isReadOnly?: boolean }) {
     return map;
   }, [entries]);
 
-  // Auto-scroll to bottom when new entries arrive or session changes
+  // Instant-jump on initial load, smooth-scroll for subsequent updates.
+  // MessageList remounts on session switch (keyed by activeSessionId),
+  // so initialLoadRef resets naturally.
+  const initialLoadRef = useRef(true);
+
   useEffect(() => {
-    requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    });
-  }, [entries, isStreaming, streamingTurn, pendingUserMessage, activeSessionId]);
+    if (initialLoadRef.current) {
+      if (entries.length === 0) return;
+      initialLoadRef.current = false;
+      requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      });
+    } else {
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      });
+    }
+  }, [entries, isStreaming, streamingTurn, pendingUserMessage]);
 
   if (entries.length === 0 && !isStreaming) {
     return (

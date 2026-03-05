@@ -60,6 +60,7 @@ final class ChatViewModel {
 
     func selectSession(_ session: SessionInfo, using app: AppViewModel) async {
         activeConversationId = session.conversationId
+        historicalEntries = []
         streamingTurn = nil
         isStreaming = false
         localAttachmentsByEntryId = [:]

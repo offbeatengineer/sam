@@ -136,7 +136,7 @@ export function ChatContainer() {
   return (
     <div className="relative flex flex-col h-full overflow-hidden">
       <ChatHeader />
-      <MessageList isReadOnly={isReadOnly} />
+      <MessageList key={activeSessionId} isReadOnly={isReadOnly} />
       {!isReadOnly && <MessageInput />}
     </div>
   );
