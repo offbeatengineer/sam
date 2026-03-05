@@ -13,11 +13,19 @@ const Parameters = Type.Object({
 
 type Params = Static<typeof Parameters>;
 
+interface PageMeta {
+  description?: string;
+  siteName?: string;
+  image?: string;
+  favicon?: string;
+}
+
 interface FetchedPage {
   url: string;
   title: string;
   content: string;
   contentLength: number;
+  meta: PageMeta;
 }
 
 const CACHE_TTL_MS = 15 * 60 * 1000;
@@ -43,11 +51,18 @@ export function createWebFetchTool(): AgentTool {
 
       const cached = readCache(cache, url);
       if (cached) {
+        const truncated = cached.content.length > maxChars;
         const page = { ...cached, content: cached.content.slice(0, maxChars) };
         const wrapped = wrapExternalContent(JSON.stringify(page, null, 2), url);
         return {
           content: [{ type: "text", text: wrapped }],
-          details: undefined,
+          details: {
+            url,
+            title: cached.title,
+            ...cached.meta,
+            contentLength: cached.contentLength,
+            truncated,
+          },
         };
       }
 
@@ -70,6 +85,39 @@ export function createWebFetchTool(): AgentTool {
       }
 
       const html = await response.text();
+
+      // Extract OG/meta tags from a fresh parse (before Readability mutates the DOM)
+      let meta: PageMeta = {};
+      try {
+        const { document: metaDoc } = parseHTML(html);
+        const getMeta = (sel: string) =>
+          (metaDoc.querySelector(sel) as any)?.getAttribute?.("content") || undefined;
+        meta = {
+          description:
+            getMeta('meta[property="og:description"]') ??
+            getMeta('meta[name="description"]'),
+          image: getMeta('meta[property="og:image"]'),
+          siteName: getMeta('meta[property="og:site_name"]'),
+          favicon:
+            (metaDoc.querySelector('link[rel="icon"]') as any)?.getAttribute?.("href") ||
+            (metaDoc.querySelector('link[rel="shortcut icon"]') as any)?.getAttribute?.("href") ||
+            undefined,
+        };
+        // Resolve relative favicon to absolute
+        if (meta.favicon && !meta.favicon.startsWith("http")) {
+          try {
+            meta.favicon = new URL(meta.favicon, url).href;
+          } catch { /* leave as-is */ }
+        }
+        // Resolve relative image to absolute
+        if (meta.image && !meta.image.startsWith("http")) {
+          try {
+            meta.image = new URL(meta.image, url).href;
+          } catch { /* leave as-is */ }
+        }
+      } catch {
+        // meta extraction failed — not critical
+      }
 
       // Try Readability extraction
       let title = "";
@@ -104,19 +152,27 @@ export function createWebFetchTool(): AgentTool {
         title,
         content,
         contentLength: fullLength,
+        meta,
       };
 
       writeCache(cache, url, page, CACHE_TTL_MS);
 
+      const isTruncated = fullLength > maxChars;
       const truncatedPage = { ...page, content: content.slice(0, maxChars) };
-      if (fullLength > maxChars) {
+      if (isTruncated) {
         (truncatedPage as any).truncated = true;
       }
 
       const wrapped = wrapExternalContent(JSON.stringify(truncatedPage, null, 2), url);
       return {
         content: [{ type: "text", text: wrapped }],
-        details: undefined,
+        details: {
+          url,
+          title,
+          ...meta,
+          contentLength: fullLength,
+          truncated: isTruncated,
+        },
       };
     },
   };

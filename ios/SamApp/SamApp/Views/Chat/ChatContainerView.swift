@@ -162,6 +162,12 @@ struct ChatContainerView: View {
         case .artifactCard(_, _, let title, let path):
             ArtifactCardCell(title: title, artifactPath: path)
 
+        case .webSearchResults(let details):
+            WebSearchCardCell(details: details)
+
+        case .webFetchPage(let details):
+            WebFetchCardCell(details: details)
+
         case .streamingIndicator:
             StreamingDotsView()
 

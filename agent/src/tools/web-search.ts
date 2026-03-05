@@ -15,6 +15,10 @@ interface SearchResult {
   title: string;
   url: string;
   description: string;
+  favicon?: string;
+  thumbnail?: string;
+  age?: string;
+  siteName?: string;
 }
 
 export interface WebSearchConfig {
@@ -58,13 +62,27 @@ function createBraveProvider(apiKey: string): SearchProvider {
       }
 
       const data = (await response.json()) as {
-        web?: { results?: Array<{ title?: string; url?: string; description?: string }> };
+        web?: {
+          results?: Array<{
+            title?: string;
+            url?: string;
+            description?: string;
+            age?: string;
+            meta_url?: { favicon?: string; hostname?: string };
+            thumbnail?: { src?: string };
+            profile?: { name?: string };
+          }>;
+        };
       };
 
       return (data.web?.results ?? []).map((r) => ({
         title: r.title ?? "",
         url: r.url ?? "",
         description: r.description ?? "",
+        favicon: r.meta_url?.favicon,
+        thumbnail: r.thumbnail?.src,
+        age: r.age,
+        siteName: r.profile?.name || r.meta_url?.hostname,
       }));
     },
   };
@@ -95,13 +113,20 @@ function createSearxngProvider(baseUrl: string): SearchProvider {
       }
 
       const data = (await response.json()) as {
-        results?: Array<{ title?: string; url?: string; content?: string }>;
+        results?: Array<{
+          title?: string;
+          url?: string;
+          content?: string;
+          img_src?: string;
+          thumbnail_src?: string;
+        }>;
       };
 
       return (data.results ?? []).slice(0, count).map((r) => ({
         title: r.title ?? "",
         url: r.url ?? "",
         description: r.content ?? "",
+        thumbnail: r.img_src || r.thumbnail_src,
       }));
     },
   };
@@ -111,8 +136,13 @@ function createSearxngProvider(baseUrl: string): SearchProvider {
 // Factory
 // ---------------------------------------------------------------------------
 
+interface CachedSearch {
+  results: SearchResult[];
+  providerName: string;
+}
+
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
-const cache: Cache<SearchResult[]> = new Map();
+const cache: Cache<CachedSearch> = new Map();
 
 export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
   // Resolve provider once at tool creation time
@@ -153,13 +183,19 @@ export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
 
       const cached = readCache(cache, cacheKey);
       if (cached) {
-        return jsonResult({ results: cached, source: "cache" });
+        return {
+          content: [{ type: "text", text: wrapExternalContent(
+            JSON.stringify(cached.results, null, 2),
+            `${cached.providerName}: "${query}" (cached)`,
+          ) }],
+          details: { query, provider: cached.providerName, results: cached.results },
+        };
       }
 
       try {
         const results = await provider.search(query, count);
 
-        writeCache(cache, cacheKey, results, CACHE_TTL_MS);
+        writeCache(cache, cacheKey, { results, providerName: provider.name }, CACHE_TTL_MS);
 
         const wrapped = wrapExternalContent(
           JSON.stringify(results, null, 2),
@@ -168,7 +204,7 @@ export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
 
         return {
           content: [{ type: "text", text: wrapped }],
-          details: undefined,
+          details: { query, provider: provider.name, results },
         };
       } catch (err) {
         return errorResult(err instanceof Error ? err.message : String(err));

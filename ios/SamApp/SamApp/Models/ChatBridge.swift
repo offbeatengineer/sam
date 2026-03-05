@@ -15,6 +15,8 @@ struct ChatMessageItem: Identifiable {
         case thinking(String, done: Bool)
         case toolExecution(StreamingToolExecution)
         case artifactCard(toolCallId: String, toolName: String, title: String, artifactPath: String?)
+        case webSearchResults(WebSearchDetails)
+        case webFetchPage(WebFetchDetails)
         case systemEvent(String)
         case imageAttachment(UIImage, caption: String?)
         case remoteImageAttachment(remotePath: String, caption: String?)
@@ -33,6 +35,35 @@ struct ToolResultInfo {
     let content: String
     let isError: Bool
     let details: AnyCodable?
+}
+
+// MARK: - Web tool detail structs
+
+struct WebSearchResultItem {
+    let title: String
+    let url: String
+    let description: String
+    let favicon: String?
+    let thumbnail: String?
+    let age: String?
+    let siteName: String?
+}
+
+struct WebSearchDetails {
+    let query: String
+    let provider: String
+    let results: [WebSearchResultItem]
+}
+
+struct WebFetchDetails {
+    let url: String
+    let title: String
+    let description: String?
+    let siteName: String?
+    let image: String?
+    let favicon: String?
+    let contentLength: Int
+    let truncated: Bool
 }
 
 // MARK: - Building chat items from session entries
@@ -152,6 +183,22 @@ extension ChatMessageItem {
                                 timestamp: ts,
                                 content: .artifactCard(toolCallId: toolId, toolName: name, title: title, artifactPath: path)
                             ))
+                        } else if name == "web_search", let details = result?.details,
+                                  let parsed = Self.parseWebSearchDetails(details) {
+                            items.append(ChatMessageItem(
+                                id: "\(entry.id)-\(block.id)",
+                                isUser: false,
+                                timestamp: ts,
+                                content: .webSearchResults(parsed)
+                            ))
+                        } else if name == "web_fetch", let details = result?.details,
+                                  let parsed = Self.parseWebFetchDetails(details) {
+                            items.append(ChatMessageItem(
+                                id: "\(entry.id)-\(block.id)",
+                                isUser: false,
+                                timestamp: ts,
+                                content: .webFetchPage(parsed)
+                            ))
                         } else {
                             // Truncate long results for historical display
                             let resultText = result?.content ?? ""
@@ -245,6 +292,24 @@ extension ChatMessageItem {
                         timestamp: now,
                         content: .artifactCard(toolCallId: tool.toolCallId, toolName: tool.toolName, title: title, artifactPath: path)
                     ))
+                } else if tool.toolName == "web_search" && tool.isDone,
+                          let details = tool.details,
+                          let parsed = parseWebSearchDetails(details) {
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .webSearchResults(parsed)
+                    ))
+                } else if tool.toolName == "web_fetch" && tool.isDone,
+                          let details = tool.details,
+                          let parsed = parseWebFetchDetails(details) {
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .webFetchPage(parsed)
+                    ))
                 } else {
                     result.append(ChatMessageItem(
                         id: "streaming-tool-\(tool.toolCallId)",
@@ -259,6 +324,45 @@ extension ChatMessageItem {
         }
 
         return result
+    }
+
+    // MARK: - Web tool detail parsing
+
+    private static func parseWebSearchDetails(_ details: AnyCodable) -> WebSearchDetails? {
+        guard let dict = details.value as? [String: Any],
+              let query = dict["query"] as? String,
+              let provider = dict["provider"] as? String,
+              let rawResults = dict["results"] as? [[String: Any]] else { return nil }
+
+        let results = rawResults.map { r in
+            WebSearchResultItem(
+                title: r["title"] as? String ?? "",
+                url: r["url"] as? String ?? "",
+                description: r["description"] as? String ?? "",
+                favicon: r["favicon"] as? String,
+                thumbnail: r["thumbnail"] as? String,
+                age: r["age"] as? String,
+                siteName: r["siteName"] as? String
+            )
+        }
+        return WebSearchDetails(query: query, provider: provider, results: results)
+    }
+
+    private static func parseWebFetchDetails(_ details: AnyCodable) -> WebFetchDetails? {
+        guard let dict = details.value as? [String: Any],
+              let url = dict["url"] as? String,
+              let title = dict["title"] as? String else { return nil }
+
+        return WebFetchDetails(
+            url: url,
+            title: title,
+            description: dict["description"] as? String,
+            siteName: dict["siteName"] as? String,
+            image: dict["image"] as? String,
+            favicon: dict["favicon"] as? String,
+            contentLength: dict["contentLength"] as? Int ?? 0,
+            truncated: dict["truncated"] as? Bool ?? false
+        )
     }
 
     // MARK: - Helpers

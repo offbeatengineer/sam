@@ -3,6 +3,8 @@ import remarkGfm from "remark-gfm";
 import { ThinkingDisplay } from "./ThinkingDisplay";
 import { ToolCard } from "./ToolCard";
 import { ArtifactCard } from "./ArtifactCard";
+import { WebSearchCard } from "./WebSearchCard";
+import { WebFetchCard } from "./WebFetchCard";
 import type { StreamingTurn } from "@/stores/sessionStore";
 
 interface StreamingTurnViewProps {
@@ -44,6 +46,16 @@ export function StreamingTurnView({ turn }: StreamingTurnViewProps) {
           ) {
             const details = item.details as { path: string; title: string; description?: string; type: string };
             return <ArtifactCard key={item.id} details={details} />;
+          }
+
+          // Render WebSearchCard for completed web_search tool calls
+          if (item.name === "web_search" && item.status !== "running" && item.details) {
+            return <WebSearchCard key={item.id} details={item.details as any} />;
+          }
+
+          // Render WebFetchCard for completed web_fetch tool calls
+          if (item.name === "web_fetch" && item.status !== "running" && item.details) {
+            return <WebFetchCard key={item.id} details={item.details as any} />;
           }
 
           return (

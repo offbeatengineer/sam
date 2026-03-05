@@ -15,6 +15,8 @@ import type {
 import { ThinkingDisplay } from "./ThinkingDisplay";
 import { ToolCard } from "./ToolCard";
 import { ArtifactCard } from "./ArtifactCard";
+import { WebSearchCard } from "./WebSearchCard";
+import { WebFetchCard } from "./WebFetchCard";
 
 interface MessageEntryViewProps {
   entry: SessionMessageEntry;
@@ -115,6 +117,16 @@ function AssistantMessageView({
             if (details) {
               return <ArtifactCard key={`artifact-${tc.id}`} details={details} />;
             }
+          }
+
+          // Render WebSearchCard for web_search tool calls
+          if (tc.name === "web_search" && result?.details) {
+            return <WebSearchCard key={`websearch-${tc.id}`} details={result.details as any} />;
+          }
+
+          // Render WebFetchCard for web_fetch tool calls
+          if (tc.name === "web_fetch" && result?.details) {
+            return <WebFetchCard key={`webfetch-${tc.id}`} details={result.details as any} />;
           }
 
           const resultText = result
