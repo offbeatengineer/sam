@@ -2,35 +2,51 @@ import SwiftUI
 
 struct WebSearchCardCell: View {
     let details: WebSearchDetails
+    @State private var expanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(details.query)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .lineLimit(1)
-                Spacer()
-                Text(details.provider)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            // Header — tap to expand/collapse
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    expanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(details.query)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                    Spacer()
+                    Text(details.provider)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    Text("\(details.results.count) results")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.secondary.opacity(0.05))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.secondary.opacity(0.05))
+            .buttonStyle(.plain)
 
-            Divider()
+            // Results — collapsible
+            if expanded {
+                Divider()
 
-            // Results
-            ForEach(Array(details.results.enumerated()), id: \.offset) { _, result in
+                ForEach(Array(details.results.enumerated()), id: \.offset) { _, result in
                 Button {
                     if let url = URL(string: result.url) {
                         UIApplication.shared.open(url)
@@ -110,6 +126,7 @@ struct WebSearchCardCell: View {
 
                 if result.url != details.results.last?.url {
                     Divider().padding(.leading, 12)
+                }
                 }
             }
         }

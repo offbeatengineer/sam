@@ -1,4 +1,5 @@
-import { Search, Globe, ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { Search, Globe, ExternalLink, ChevronRight } from "lucide-react";
 
 interface SearchResultItem {
   title: string;
@@ -39,57 +40,70 @@ function FaviconImg({ src, alt }: { src?: string; alt: string }) {
 }
 
 export function WebSearchCard({ details }: WebSearchCardProps) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <div className="w-full rounded-lg border border-border bg-card overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b border-border">
-        <Search className="h-3.5 w-3.5 text-muted-foreground" />
+      {/* Header — tap to expand/collapse */}
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center gap-2 px-3 py-2 bg-muted/50 hover:bg-muted/80 transition-colors text-left"
+      >
+        <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="text-xs font-medium truncate flex-1">{details.query}</span>
         <span className="text-[10px] text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted">
           {details.provider}
         </span>
-      </div>
+        <span className="text-[10px] text-muted-foreground/50">
+          {details.results.length} results
+        </span>
+        <ChevronRight
+          className={`h-3.5 w-3.5 text-muted-foreground/50 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
+        />
+      </button>
 
-      {/* Results */}
-      <div className="divide-y divide-border">
-        {details.results.map((result, i) => (
-          <button
-            key={i}
-            onClick={() => openUrl(result.url)}
-            className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-accent/50 transition-colors text-left"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <FaviconImg src={result.favicon} alt={result.title} />
-                <span className="text-sm font-medium text-primary truncate">
-                  {result.title}
-                </span>
-                <ExternalLink className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+      {/* Results — collapsible */}
+      {expanded && (
+        <div className="divide-y divide-border border-t border-border">
+          {details.results.map((result, i) => (
+            <button
+              key={i}
+              onClick={() => openUrl(result.url)}
+              className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-accent/50 transition-colors text-left"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <FaviconImg src={result.favicon} alt={result.title} />
+                  <span className="text-sm font-medium text-primary truncate">
+                    {result.title}
+                  </span>
+                  <ExternalLink className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70 mb-0.5">
+                  {result.siteName && <span>{result.siteName}</span>}
+                  {result.siteName && result.age && <span>·</span>}
+                  {result.age && <span>{result.age}</span>}
+                </div>
+                {result.description && (
+                  <p className="text-xs text-muted-foreground line-clamp-2">
+                    {result.description}
+                  </p>
+                )}
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70 mb-0.5">
-                {result.siteName && <span>{result.siteName}</span>}
-                {result.siteName && result.age && <span>·</span>}
-                {result.age && <span>{result.age}</span>}
-              </div>
-              {result.description && (
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  {result.description}
-                </p>
+              {result.thumbnail && (
+                <img
+                  src={result.thumbnail}
+                  alt=""
+                  className="w-16 h-12 object-cover rounded shrink-0"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
               )}
-            </div>
-            {result.thumbnail && (
-              <img
-                src={result.thumbnail}
-                alt=""
-                className="w-16 h-12 object-cover rounded shrink-0"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
-            )}
-          </button>
-        ))}
-      </div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
