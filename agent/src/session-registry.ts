@@ -1,6 +1,7 @@
 import type { AgentSession } from "./agent-factory.js";
 import { createSession } from "./agent-factory.js";
 import type { SamConfig } from "./config.js";
+import type { KitsServer } from "./kits-server.js";
 import type { SessionKey } from "./types.js";
 import { sessionKeyToString } from "./types.js";
 
@@ -12,8 +13,13 @@ interface SessionEntry {
 export class SessionRegistry {
   private sessions = new Map<string, SessionEntry>();
   private creating = new Map<string, Promise<AgentSession>>();
+  private kitsServer?: KitsServer;
 
   constructor(private config: SamConfig) {}
+
+  setKitsServer(kitsServer: KitsServer): void {
+    this.kitsServer = kitsServer;
+  }
 
   async getOrCreate(key: SessionKey): Promise<AgentSession> {
     const id = sessionKeyToString(key);
@@ -30,7 +36,7 @@ export class SessionRegistry {
       return inflight;
     }
 
-    const promise = createSession(this.config, key).then((session) => {
+    const promise = createSession(this.config, key, this.kitsServer).then((session) => {
       this.sessions.set(id, { session, lastActivity: Date.now() });
       this.creating.delete(id);
       return session;

@@ -4,23 +4,19 @@
   "description": "A lightweight AI assistant built on pi-coding-agent",
   "type": "module",
   "bin": {
-    "sam": "dist/index.js"
+    "sam": "src/index.ts"
   },
   "files": [
-    "dist",
+    "src",
     "prompts",
     "skills",
     "config.yaml.example",
     "README.md"
   ],
-  "engines": {
-    "node": ">=20.0.0"
-  },
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx --watch --env-file=.env src/index.ts",
-    "prepublishOnly": "tsc"
+    "start": "bun src/index.ts",
+    "dev": "bun --watch --env-file=.env src/index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.55.3",
@@ -28,14 +24,12 @@
     "@mozilla/readability": "^0.6.0",
     "chokidar": "^4.0.0",
     "discord.js": "^14.25.1",
+    "hono": "^4.0.0",
     "linkedom": "^0.18.12",
-    "ws": "^8.18.0",
     "yaml": "^2.8.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/ws": "^8.5.0",
-    "tsx": "^4.21.0",
+    "@types/bun": "latest",
     "typescript": "^5.7.0"
   },
   "keywords": [
@@ -45,8 +39,5 @@
     "claude",
     "pi-coding-agent"
   ],
-  "license": "MIT",
-  "overrides": {
-    "undici": "^6.23.0"
-  }
+  "license": "MIT"
 }

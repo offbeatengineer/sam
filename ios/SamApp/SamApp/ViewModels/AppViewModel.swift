@@ -10,6 +10,7 @@ final class AppViewModel {
     let memoryVM = MemoryViewModel()
     let skillVM = SkillViewModel()
     let artifactVM = ArtifactViewModel()
+    let kitVM = KitViewModel()
     let settingsVM = SettingsViewModel()
 
     /// Tracks which conversations are currently streaming (for sidebar indicators).
@@ -28,6 +29,7 @@ final class AppViewModel {
         }
         if let artifactsURL = settingsVM.artifactsURL {
             artifactVM.artifactsBaseURL = artifactsURL
+            kitVM.baseURL = artifactsURL
         }
         print("[App] Connecting to \(url)...")
         Task {
@@ -70,6 +72,7 @@ final class AppViewModel {
             guard let url = settingsVM.serverURL else { return }
             if let artifactsURL = settingsVM.artifactsURL {
                 artifactVM.artifactsBaseURL = artifactsURL
+            kitVM.baseURL = artifactsURL
             }
             print("[App] Connecting to \(url)...")
             await connectionManager.connect(url: url, apiKey: settingsVM.apiKey) { [weak self] in
@@ -178,6 +181,10 @@ final class AppViewModel {
         // Artifacts
         case .artifactsChanged:
             Task { await artifactVM.loadArtifacts(using: self) }
+
+        // Kits
+        case .kitsChanged:
+            Task { await kitVM.loadKits() }
 
         // Request-response messages that weren't correlated (shouldn't happen normally)
         default:

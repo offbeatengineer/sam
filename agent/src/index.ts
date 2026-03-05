@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { loadConfig } from "./config.js";
 import { SessionRegistry } from "./session-registry.js";
 import { Dispatcher } from "./dispatcher.js";
@@ -8,6 +8,7 @@ import { AppChannel } from "./channels/app-channel.js";
 import { CliTranscriber } from "./transcriber.js";
 import { MemoryStore } from "./memory/store.js";
 import { ArtifactsServer } from "./artifacts-server.js";
+import { KitsServer } from "./kits-server.js";
 import { SAM_DIR } from "./config.js";
 import { resolve } from "node:path";
 
@@ -22,6 +23,7 @@ async function main() {
     app: config.app ? { ...config.app, apiKey: config.app.apiKey ? "***" : undefined } : undefined,
     transcription: config.transcription,
     pulse: config.pulse,
+    kits: config.kits,
   }, null, 2));
 
   // Eagerly download memory dependencies so they're ready before first use
@@ -42,6 +44,7 @@ async function main() {
   let discord: DiscordChannel | undefined;
   let appChannel: AppChannel | undefined;
   let artifactsServer: ArtifactsServer | undefined;
+  let kitsServer: KitsServer | undefined;
 
   // Start Discord channel if configured
   if (config.discord) {
@@ -75,6 +78,15 @@ async function main() {
     });
   }
 
+  // Start kits server if enabled
+  if (config.kits?.enabled !== false && config.app?.enabled) {
+    kitsServer = new KitsServer({
+      dir: config.kits?.dir ?? resolve(SAM_DIR, "kits"),
+    });
+    await kitsServer.init();
+    registry.setKitsServer(kitsServer);
+  }
+
   // Start App channel if configured
   if (config.app?.enabled) {
     const appHost = config.app.host ?? "127.0.0.1";
@@ -93,6 +105,7 @@ async function main() {
       sessionsDir: config.sessions,
       skillsDir: config.skills,
       artifactsServer,
+      kitsServer,
       transcriber,
     });
     await appChannel.start();

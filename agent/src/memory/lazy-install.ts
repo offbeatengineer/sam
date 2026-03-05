@@ -69,8 +69,12 @@ async function doImport<T>(packageName: string): Promise<T> {
   // but npm doesn't always hoist it. Install it alongside to be safe.
   const extras = packageName === "@lancedb/lancedb" ? " tslib" : "";
 
+  const installCmd = process.versions.bun
+    ? `bun add ${packageName}${extras}`
+    : `npm install ${packageName}${extras}`;
+
   try {
-    execSync(`npm install ${packageName}${extras}`, {
+    execSync(installCmd, {
       cwd: DEPS_DIR,
       stdio: "pipe",
       timeout: 120_000,

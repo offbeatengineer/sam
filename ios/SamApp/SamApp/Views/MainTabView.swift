@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Menu Section
 
 enum MenuSection: Int, CaseIterable, Identifiable {
-    case chat, memory, skills, artifacts, settings
+    case chat, memory, skills, artifacts, kits, settings
 
     var id: Int { rawValue }
 
@@ -13,6 +13,7 @@ enum MenuSection: Int, CaseIterable, Identifiable {
         case .memory: "Memory"
         case .skills: "Skills"
         case .artifacts: "Artifacts"
+        case .kits: "Kits"
         case .settings: "Settings"
         }
     }
@@ -23,6 +24,7 @@ enum MenuSection: Int, CaseIterable, Identifiable {
         case .memory: "brain"
         case .skills: "hammer"
         case .artifacts: "doc.on.doc"
+        case .kits: "shippingbox"
         case .settings: "gear"
         }
     }
@@ -112,6 +114,8 @@ struct MainTabView: View {
             SkillListView()
         case .artifacts:
             ArtifactListView()
+        case .kits:
+            KitListView()
         case .settings:
             SettingsView()
         }

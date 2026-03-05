@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type SettingsPage = "skills" | "memory" | "artifacts" | "settings" | null;
+export type SettingsPage = "skills" | "memory" | "artifacts" | "kits" | "settings" | null;
 
 interface UIStore {
   leftSidebarOpen: boolean;

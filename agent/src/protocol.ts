@@ -28,7 +28,13 @@ export type AppRequest =
   | { type: "list_skills"; requestId: string }
   | { type: "get_skill"; requestId: string; filename: string }
   | { type: "save_skill"; requestId: string; filename: string; content: string }
-  | { type: "delete_skill"; requestId: string; filename: string };
+  | { type: "delete_skill"; requestId: string; filename: string }
+  // Kit management
+  | { type: "list_kits"; requestId: string }
+  | { type: "enable_kit"; requestId: string; kitId: string }
+  | { type: "disable_kit"; requestId: string; kitId: string }
+  | { type: "reload_kit"; requestId: string; kitId: string }
+  | { type: "delete_kit"; requestId: string; kitId: string };
 
 /** Responses sent from sam to the app */
 export type AppResponse =
@@ -68,7 +74,11 @@ export type AppResponse =
   | { type: "skill_delete_result"; requestId: string; success: boolean }
   | { type: "skill_error"; requestId: string; error: string }
   // Artifacts
-  | { type: "artifacts_changed"; event: string; path: string };
+  | { type: "artifacts_changed"; event: string; path: string }
+  // Kit management responses
+  | { type: "kits_list_result"; requestId: string; kits: KitInfoDTO[] }
+  | { type: "kit_action_result"; requestId: string; success: boolean; error?: string }
+  | { type: "kits_changed"; event: string; kitId: string };
 
 /** Session metadata returned by list_sessions */
 export interface SessionInfoDTO {
@@ -89,6 +99,16 @@ export interface SkillInfoDTO {
   filename: string;
   modified: string;
   size: number;
+}
+
+/** Kit metadata returned by list_kits */
+export interface KitInfoDTO {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  version: string;
+  enabled: boolean;
 }
 
 /** Memory item returned in protocol responses */

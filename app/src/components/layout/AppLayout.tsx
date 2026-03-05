@@ -5,6 +5,7 @@ import { LeftSidebar } from "./LeftSidebar";
 import { MainPanel } from "./MainPanel";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { ArtifactsPage } from "./ArtifactsPage";
+import { KitsPage } from "./KitsPage";
 import { RightSidebar } from "./RightSidebar";
 import { SettingsPage } from "./SettingsPage";
 import { SkillEditor } from "@/components/skill/SkillEditor";
@@ -158,6 +159,8 @@ export function AppLayout() {
         <SettingsMemoryPage />
       ) : settingsPage === "artifacts" ? (
         <ArtifactsPage />
+      ) : settingsPage === "kits" ? (
+        <KitsPage />
       ) : settingsPage === "settings" ? (
         <SettingsPage />
       ) : (

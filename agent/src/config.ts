@@ -58,6 +58,10 @@ export interface SamConfig {
     port?: number;
     host?: string;
   };
+  kits?: {
+    enabled: boolean;
+    dir?: string;
+  };
   memory?: MemoryConfig;
   pulse?: {
     enabled: boolean;
@@ -156,6 +160,7 @@ export function ensureSamDir(): void {
   mkdirSync(resolve(SAM_DIR, "memory"), { recursive: true });
   mkdirSync(resolve(SAM_DIR, "models"), { recursive: true });
   mkdirSync(resolve(SAM_DIR, "artifacts"), { recursive: true });
+  mkdirSync(resolve(SAM_DIR, "kits"), { recursive: true });
 
   const configPath = resolve(SAM_DIR, "config.yaml");
   if (!existsSync(configPath)) {
@@ -255,6 +260,10 @@ export function loadConfig(): SamConfig {
       modelsPath: expandHome(yaml.memory?.modelsPath ?? resolve(SAM_DIR, "models")),
       embeddingModel: yaml.memory?.embeddingModel,
       embeddingDimensions: yaml.memory?.embeddingDimensions,
+    },
+    kits: {
+      enabled: yaml.kits?.enabled !== false,
+      dir: yaml.kits?.dir ? expandHome(yaml.kits.dir) : undefined,
     },
     pulse: yaml.pulse?.enabled ? yaml.pulse : undefined,
   };

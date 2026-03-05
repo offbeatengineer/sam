@@ -1,14 +1,14 @@
-import { WebSocketServer, type WebSocket } from "ws";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { ServerWebSocket } from "bun";
 import type { SessionRegistry } from "../session-registry.js";
 import type { AppRequest, AppResponse, ChatAttachment, SessionInfoDTO, SkillInfoDTO } from "../protocol.js";
 import type { SessionKey } from "../types.js";
 import { MemoryStore } from "../memory/store.js";
 import type { MemoryConfig } from "../memory/types.js";
 import type { ArtifactsServer } from "../artifacts-server.js";
+import type { KitsServer } from "../kits-server.js";
 import type { Transcriber } from "../transcriber.js";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
-import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync, createReadStream } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, basename, dirname, join, relative } from "node:path";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
@@ -22,16 +22,10 @@ interface AppChannelOptions {
   sessionsDir: string;
   skillsDir: string;
   artifactsServer?: ArtifactsServer;
+  kitsServer?: KitsServer;
   transcriber?: Transcriber;
 }
 
-/**
- * WebSocket server channel for the desktop app.
- *
- * Unlike Discord (which uses the text-only Dispatcher pattern), AppChannel
- * manages its own session interaction to forward rich streaming events
- * (thinking, tool calls, etc.) directly to the connected client.
- */
 // Rate limiting constants
 const MAX_CONNECTIONS_PER_MINUTE = 10;
 const MAX_MESSAGES_PER_MINUTE = 30;
@@ -54,172 +48,194 @@ const MAX_REQUEST_ID_LENGTH = 100;
 const MAX_TEXT_LENGTH = 100 * 1024; // 100KB
 const CONVERSATION_ID_PATTERN = /^[a-zA-Z0-9-]+$/;
 
+/** WebSocket data types for discriminated routing */
+type WsData =
+  | { type: "app" }
+  | { type: "live-reload" };
+
+type AppWebSocket = ServerWebSocket<WsData>;
+
 export class AppChannel {
-  private httpServer: Server | null = null;
-  private wss: WebSocketServer | null = null;
-  private clients = new Set<WebSocket>();
+  private server: ReturnType<typeof Bun.serve> | null = null;
+  private clients = new Set<AppWebSocket>();
   /** Maps conversationId → the WebSocket client that owns it */
-  private conversationOwners = new Map<string, WebSocket>();
+  private conversationOwners = new Map<string, AppWebSocket>();
   /** Maps conversationId → current requestId */
   private activeRequests = new Map<string, string>();
   /** Tracks which sessions already have subscriptions */
   private subscriptions = new Set<string>();
   /** Connection rate limiting: IP → timestamps */
   private connectionAttempts = new Map<string, number[]>();
-  /** Message rate limiting: WebSocket → { count, resetAt } */
-  private messageCounters = new WeakMap<WebSocket, { count: number; resetAt: number }>();
+  /** Message rate limiting per WebSocket */
+  private messageCounters = new WeakMap<AppWebSocket, { count: number; resetAt: number }>();
 
   constructor(private options: AppChannelOptions) {}
 
   async start(): Promise<void> {
-    const { port, host, apiKey, artifactsServer } = this.options;
+    const { port, host, apiKey, artifactsServer, kitsServer } = this.options;
     const listenHost = host ?? "127.0.0.1";
+    const self = this;
 
-    // HTTP server — handles /upload, /uploads/*, delegates to artifacts, or returns 426.
-    this.httpServer = createServer((req, res) => {
-      const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-      if (req.method === "POST" && url.pathname === "/upload") {
-        this.handleUpload(req, res).catch((err) => {
-          console.error("Upload error:", err);
-          if (!res.headersSent) {
-            res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Internal server error" }));
+    this.server = Bun.serve<WsData>({
+      port,
+      hostname: listenHost,
+
+      async fetch(req, server) {
+        const url = new URL(req.url);
+
+        // --- WebSocket upgrades ---
+
+        // Live-reload WebSocket for artifacts
+        if (url.pathname === "/__live" && artifactsServer) {
+          if (server.upgrade(req, { data: { type: "live-reload" as const } })) {
+            return undefined;
           }
-        });
-        return;
-      }
-      if (req.method === "GET" && url.pathname.startsWith("/uploads/")) {
-        this.handleServeUpload(req, res, url);
-        return;
-      }
-      if (artifactsServer) {
-        artifactsServer.handleRequest(req, res);
-      } else {
-        res.writeHead(426, { "Content-Type": "text/plain" });
-        res.end("WebSocket required");
-      }
-    });
-
-    this.wss = new WebSocketServer({ noServer: true });
-
-    this.httpServer.on("upgrade", (req, socket, head) => {
-      const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-
-      // Route /__live upgrades to the artifacts live reload WSS
-      if (pathname === "/__live" && artifactsServer) {
-        artifactsServer.handleLiveReloadUpgrade(req, socket, head);
-        return;
-      }
-
-      // Auth check
-      if (apiKey && !this.verifyApiKey(req, apiKey)) {
-        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-        socket.destroy();
-        return;
-      }
-
-      // Rate limit check
-      const ip = this.getClientIp(req);
-      if (!this.checkConnectionRateLimit(ip)) {
-        socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
-        socket.destroy();
-        return;
-      }
-
-      this.wss!.handleUpgrade(req, socket, head, (ws) => {
-        this.wss!.emit("connection", ws);
-      });
-    });
-
-    // Wire up connection handling on the WSS
-    this.wss.on("connection", (ws) => {
-      this.clients.add(ws);
-      console.log(`App client connected (${this.clients.size} total)`);
-
-      ws.on("message", (data) => {
-        // Message rate limiting
-        if (!this.checkMessageRateLimit(ws)) {
-          this.sendTo(ws, { type: "error", error: "Rate limit exceeded: too many messages" });
-          return;
+          return new Response("WebSocket upgrade failed", { status: 400 });
         }
 
-        try {
-          const request = JSON.parse(data.toString()) as AppRequest;
-          // Input validation
-          const validationError = this.validateRequest(request);
-          if (validationError) {
-            this.sendTo(ws, { type: "error", error: validationError });
+        // App WebSocket upgrade (any other WebSocket request)
+        if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+          // Auth check
+          if (apiKey && !self.verifyApiKey(req, apiKey)) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+
+          // Rate limit check
+          const ip = self.getClientIp(req, server);
+          if (!self.checkConnectionRateLimit(ip)) {
+            return new Response("Too Many Requests", { status: 429 });
+          }
+
+          if (server.upgrade(req, { data: { type: "app" as const } })) {
+            return undefined;
+          }
+          return new Response("WebSocket upgrade failed", { status: 400 });
+        }
+
+        // --- HTTP routes ---
+
+        if (req.method === "POST" && url.pathname === "/upload") {
+          try {
+            return await self.handleUpload(req);
+          } catch (err) {
+            console.error("Upload error:", err);
+            return Response.json({ error: "Internal server error" }, { status: 500 });
+          }
+        }
+
+        if (req.method === "GET" && url.pathname.startsWith("/uploads/")) {
+          return self.handleServeUpload(req, url);
+        }
+
+        // Kits routes
+        if (url.pathname.startsWith("/kits") && kitsServer) {
+          return kitsServer.handleRequest(req);
+        }
+
+        if (artifactsServer) {
+          return artifactsServer.handleRequest(req);
+        }
+
+        return new Response("WebSocket required", { status: 426 });
+      },
+
+      websocket: {
+        open(ws) {
+          if (ws.data.type === "live-reload") {
+            artifactsServer?.addLiveReloadClient(ws);
             return;
           }
-          this.handleRequest(ws, request);
-        } catch (err) {
-          this.sendTo(ws, { type: "error", error: `Invalid message: ${err}` });
-        }
-      });
 
-      ws.on("close", () => {
-        this.clients.delete(ws);
-        // Clean up conversation ownership for this client
-        for (const [convId, owner] of this.conversationOwners) {
-          if (owner === ws) {
-            this.conversationOwners.delete(convId);
-            this.activeRequests.delete(convId);
+          // App WebSocket
+          self.clients.add(ws);
+          console.log(`App client connected (${self.clients.size} total)`);
+        },
+
+        message(ws, msg) {
+          if (ws.data.type === "live-reload") return;
+
+          // Message rate limiting
+          if (!self.checkMessageRateLimit(ws)) {
+            self.sendTo(ws, { type: "error", error: "Rate limit exceeded: too many messages" });
+            return;
           }
-        }
-        console.log(`App client disconnected (${this.clients.size} remaining)`);
-      });
+
+          try {
+            const request = JSON.parse(typeof msg === "string" ? msg : new TextDecoder().decode(msg)) as AppRequest;
+            const validationError = self.validateRequest(request);
+            if (validationError) {
+              self.sendTo(ws, { type: "error", error: validationError });
+              return;
+            }
+            self.handleRequest(ws, request);
+          } catch (err) {
+            self.sendTo(ws, { type: "error", error: `Invalid message: ${err}` });
+          }
+        },
+
+        close(ws) {
+          if (ws.data.type === "live-reload") {
+            artifactsServer?.removeLiveReloadClient(ws);
+            return;
+          }
+
+          self.clients.delete(ws);
+          // Clean up conversation ownership for this client
+          for (const [convId, owner] of self.conversationOwners) {
+            if (owner === ws) {
+              self.conversationOwners.delete(convId);
+              self.activeRequests.delete(convId);
+            }
+          }
+          console.log(`App client disconnected (${self.clients.size} remaining)`);
+        },
+      },
     });
 
-    return new Promise((resolvePromise, reject) => {
-      this.httpServer!.listen(port, listenHost, () => {
-        console.log(`App channel listening on ${listenHost}:${port}`);
-        resolvePromise();
+    // Listen for kit changes from the kits server (e.g. when agent tool creates/builds a kit)
+    if (kitsServer) {
+      kitsServer.on("kitsChanged", (event: string, kitId: string) => {
+        this.broadcastKitsChanged(event, kitId);
       });
-      this.httpServer!.on("error", reject);
-    });
+    }
+
+    console.log(`App channel listening on ${listenHost}:${port}`);
   }
 
   async stop(): Promise<void> {
     for (const ws of this.clients) {
       ws.close();
     }
-    if (this.wss) {
-      this.wss.close();
-      this.wss = null;
+    if (this.server) {
+      this.server.stop();
+      this.server = null;
     }
-    return new Promise((resolveP) => {
-      if (!this.httpServer) return resolveP();
-      this.httpServer.close(() => {
-        this.httpServer = null;
-        resolveP();
-      });
-    });
   }
 
   // ---------------------------------------------------------------------------
   // Authentication & rate limiting
   // ---------------------------------------------------------------------------
 
-  private verifyApiKey(req: IncomingMessage, expectedKey: string): boolean {
+  private verifyApiKey(req: Request, expectedKey: string): boolean {
     // Check Authorization: Bearer <key> header
-    const authHeader = req.headers["authorization"];
+    const authHeader = req.headers.get("authorization");
     if (authHeader) {
       const [scheme, token] = authHeader.split(" ");
       if (scheme?.toLowerCase() === "bearer" && token === expectedKey) return true;
     }
     // Check ?apiKey= query param
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const url = new URL(req.url);
     const queryKey = url.searchParams.get("apiKey");
     if (queryKey === expectedKey) return true;
 
     return false;
   }
 
-  private getClientIp(req: IncomingMessage): string {
+  private getClientIp(req: Request, server: { requestIP(req: Request): { address: string } | null }): string {
     // Support Cloudflare Tunnel forwarded IP
-    const forwarded = req.headers["cf-connecting-ip"] ?? req.headers["x-forwarded-for"];
+    const forwarded = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for");
     if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
-    return req.socket.remoteAddress ?? "unknown";
+    return server.requestIP(req)?.address ?? "unknown";
   }
 
   private checkConnectionRateLimit(ip: string): boolean {
@@ -229,7 +245,6 @@ export class AppChannel {
       attempts = [];
       this.connectionAttempts.set(ip, attempts);
     }
-    // Remove entries outside the window
     const cutoff = now - RATE_LIMIT_WINDOW_MS;
     while (attempts.length > 0 && attempts[0] < cutoff) attempts.shift();
     if (attempts.length >= MAX_CONNECTIONS_PER_MINUTE) return false;
@@ -237,7 +252,7 @@ export class AppChannel {
     return true;
   }
 
-  private checkMessageRateLimit(ws: WebSocket): boolean {
+  private checkMessageRateLimit(ws: AppWebSocket): boolean {
     const now = Date.now();
     let counter = this.messageCounters.get(ws);
     if (!counter || now >= counter.resetAt) {
@@ -253,7 +268,6 @@ export class AppChannel {
   // ---------------------------------------------------------------------------
 
   private validateRequest(request: AppRequest): string | null {
-    // Validate conversationId where present
     if ("conversationId" in request && request.conversationId != null) {
       const cid = request.conversationId;
       if (typeof cid !== "string" || cid.length > MAX_CONVERSATION_ID_LENGTH) {
@@ -264,7 +278,6 @@ export class AppChannel {
       }
     }
 
-    // Validate requestId where present
     if ("requestId" in request && (request as any).requestId != null) {
       const rid = (request as any).requestId as string;
       if (typeof rid !== "string" || rid.length > MAX_REQUEST_ID_LENGTH) {
@@ -272,14 +285,12 @@ export class AppChannel {
       }
     }
 
-    // Validate text length for chat messages
     if (request.type === "chat") {
       if (typeof request.text !== "string" || request.text.length > MAX_TEXT_LENGTH) {
         return "text must be a string of max 100KB";
       }
     }
 
-    // Validate sessionPath — prevent path traversal
     if ("sessionPath" in request && (request as any).sessionPath != null) {
       const sp = (request as any).sessionPath as string;
       if (typeof sp !== "string" || sp.includes("..")) {
@@ -294,39 +305,29 @@ export class AppChannel {
   // File upload handling
   // ---------------------------------------------------------------------------
 
-  private async handleUpload(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    // Auth check
+  private async handleUpload(req: Request): Promise<Response> {
     const { apiKey } = this.options;
     if (apiKey && !this.verifyApiKey(req, apiKey)) {
-      res.writeHead(401, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Unauthorized" }));
-      return;
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const contentType = (req.headers["content-type"] ?? "").split(";")[0].trim();
+    const contentType = (req.headers.get("content-type") ?? "").split(";")[0].trim();
     if (!ALLOWED_UPLOAD_MIMES.has(contentType)) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: `Unsupported content type: ${contentType}. Allowed: ${[...ALLOWED_UPLOAD_MIMES].join(", ")}` }));
-      return;
+      return Response.json(
+        { error: `Unsupported content type: ${contentType}. Allowed: ${[...ALLOWED_UPLOAD_MIMES].join(", ")}` },
+        { status: 400 },
+      );
     }
 
-    // Read body with size limit
-    const chunks: Buffer[] = [];
-    let totalSize = 0;
-    for await (const chunk of req) {
-      totalSize += (chunk as Buffer).length;
-      if (totalSize > MAX_UPLOAD_SIZE) {
-        res.writeHead(413, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: `File too large. Max size: ${MAX_UPLOAD_SIZE / 1024 / 1024}MB` }));
-        return;
-      }
-      chunks.push(chunk as Buffer);
+    const body = await req.arrayBuffer();
+    if (body.byteLength === 0) {
+      return Response.json({ error: "Empty body" }, { status: 400 });
     }
-    const body = Buffer.concat(chunks);
-    if (body.length === 0) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Empty body" }));
-      return;
+    if (body.byteLength > MAX_UPLOAD_SIZE) {
+      return Response.json(
+        { error: `File too large. Max size: ${MAX_UPLOAD_SIZE / 1024 / 1024}MB` },
+        { status: 413 },
+      );
     }
 
     // Save to ~/.sam/uploads/YYYY-MM-DD/<uuid>.<ext>
@@ -338,26 +339,22 @@ export class AppChannel {
     const id = randomUUID();
     const ext = MIME_EXTENSIONS[contentType] ?? "bin";
     const filePath = join(uploadsDir, `${id}.${ext}`);
-    writeFileSync(filePath, body);
+    await Bun.write(filePath, body);
 
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ id, path: filePath, mimeType: contentType }));
+    return Response.json({ id, path: filePath, mimeType: contentType });
   }
 
   // ---------------------------------------------------------------------------
   // Serve uploaded files via HTTP GET /uploads/*
   // ---------------------------------------------------------------------------
 
-  private handleServeUpload(req: IncomingMessage, res: ServerResponse, url: URL): void {
-    // API key check
+  private handleServeUpload(req: Request, url: URL): Response {
     if (this.options.apiKey) {
-      const auth = req.headers.authorization;
+      const auth = req.headers.get("authorization");
       const qKey = url.searchParams.get("apiKey");
       const token = auth?.startsWith("Bearer ") ? auth.slice(7) : qKey;
       if (token !== this.options.apiKey) {
-        res.writeHead(401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Unauthorized" }));
-        return;
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
     }
 
@@ -367,15 +364,11 @@ export class AppChannel {
 
     // Path traversal protection
     if (!filePath.startsWith(uploadsDir)) {
-      res.writeHead(403, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Forbidden" }));
-      return;
+      return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (!existsSync(filePath)) {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Not found" }));
-      return;
+      return Response.json({ error: "Not found" }, { status: 404 });
     }
 
     // Determine MIME type from extension
@@ -386,11 +379,12 @@ export class AppChannel {
     };
     const contentType = mimeMap[ext] ?? "application/octet-stream";
 
-    res.writeHead(200, {
-      "Content-Type": contentType,
-      "Cache-Control": "public, max-age=31536000, immutable",
+    return new Response(Bun.file(filePath), {
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+      },
     });
-    createReadStream(filePath).pipe(res);
   }
 
   // ---------------------------------------------------------------------------
@@ -450,7 +444,7 @@ export class AppChannel {
   // Request handling
   // ---------------------------------------------------------------------------
 
-  private async handleRequest(ws: WebSocket, request: AppRequest): Promise<void> {
+  private async handleRequest(ws: AppWebSocket, request: AppRequest): Promise<void> {
     switch (request.type) {
       case "chat":
         return this.handleChat(ws, request);
@@ -475,13 +469,19 @@ export class AppChannel {
       case "save_skill":
       case "delete_skill":
         return this.handleSkillRequest(ws, request);
+      case "list_kits":
+      case "enable_kit":
+      case "disable_kit":
+      case "reload_kit":
+      case "delete_kit":
+        return this.handleKitRequest(ws, request);
       default:
         this.sendTo(ws, { type: "error", error: `Unknown request type: ${(request as any).type}` });
     }
   }
 
   private async handleChat(
-    ws: WebSocket,
+    ws: AppWebSocket,
     request: Extract<AppRequest, { type: "chat" }>,
   ): Promise<void> {
     const { conversationId, requestId, text, attachments } = request;
@@ -552,8 +552,7 @@ export class AppChannel {
         }
       }
 
-      // Persist audio attachment metadata as custom entries (before prompt so
-      // they appear adjacent to the user message in the JSONL timeline).
+      // Persist audio attachment metadata as custom entries
       for (const audio of audioMeta) {
         session.sessionManager.appendCustomEntry("audio_attachment", audio);
       }
@@ -587,7 +586,7 @@ export class AppChannel {
     }
   }
 
-  private async handleCloseSession(ws: WebSocket, conversationId: string): Promise<void> {
+  private async handleCloseSession(ws: AppWebSocket, conversationId: string): Promise<void> {
     const registry = this.options.registry;
     const sessionKey: SessionKey = { channelId: "app", conversationId };
 
@@ -604,7 +603,7 @@ export class AppChannel {
   // ---------------------------------------------------------------------------
 
   private async handleListSessions(
-    ws: WebSocket,
+    ws: AppWebSocket,
     request: Extract<AppRequest, { type: "list_sessions" }>,
   ): Promise<void> {
     const { requestId } = request;
@@ -613,7 +612,6 @@ export class AppChannel {
     try {
       const sessions: SessionInfoDTO[] = [];
 
-      // Walk {sessionsDir}/{channelId}/{conversationId}/ for .jsonl files
       let channelDirs: string[];
       try {
         channelDirs = readdirSync(sessionsDir).filter((name) => {
@@ -653,7 +651,6 @@ export class AppChannel {
 
           if (jsonlFiles.length === 0) continue;
 
-          // Find most recently modified .jsonl file
           let mostRecent = jsonlFiles[0];
           let mostRecentMtime = 0;
           for (const f of jsonlFiles) {
@@ -674,7 +671,6 @@ export class AppChannel {
             const header = sm.getHeader();
             const entries = sm.getEntries();
 
-            // Count message entries and find first user message
             let messageCount = 0;
             let firstMessage = "";
             for (const entry of entries) {
@@ -712,7 +708,6 @@ export class AppChannel {
         }
       }
 
-      // Sort by modified time descending
       sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 
       this.sendTo(ws, { type: "sessions_list", requestId, sessions });
@@ -723,7 +718,7 @@ export class AppChannel {
   }
 
   private async handleGetSessionEntries(
-    ws: WebSocket,
+    ws: AppWebSocket,
     request: Extract<AppRequest, { type: "get_session_entries" }>,
   ): Promise<void> {
     const { requestId, sessionPath } = request;
@@ -747,7 +742,7 @@ export class AppChannel {
   }
 
   private async handleRenameSession(
-    ws: WebSocket,
+    ws: AppWebSocket,
     request: Extract<AppRequest, { type: "rename_session" }>,
   ): Promise<void> {
     const { requestId, sessionPath, name } = request;
@@ -768,7 +763,7 @@ export class AppChannel {
   // ---------------------------------------------------------------------------
 
   private async handleMemoryRequest(
-    ws: WebSocket,
+    ws: AppWebSocket,
     request: Extract<AppRequest, { type: `memory_${string}` }>,
   ): Promise<void> {
     const requestId = (request as any).requestId as string;
@@ -837,7 +832,7 @@ export class AppChannel {
   // ---------------------------------------------------------------------------
 
   private async handleSkillRequest(
-    ws: WebSocket,
+    ws: AppWebSocket,
     request: Extract<AppRequest, { type: `${"list" | "get" | "save" | "delete"}_skill${"" | "s"}` }>,
   ): Promise<void> {
     const requestId = (request as any).requestId as string;
@@ -909,6 +904,69 @@ export class AppChannel {
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
       this.sendTo(ws, { type: "skill_error", requestId, error: errorText });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Kit request handling
+  // ---------------------------------------------------------------------------
+
+  private async handleKitRequest(
+    ws: AppWebSocket,
+    request: Extract<AppRequest, { type: `${"list" | "enable" | "disable" | "reload" | "delete"}_kit${"" | "s"}` }>,
+  ): Promise<void> {
+    const requestId = (request as any).requestId as string;
+    const kitsServer = this.options.kitsServer;
+
+    if (!kitsServer) {
+      this.sendTo(ws, { type: "kit_action_result", requestId, success: false, error: "Kits system is not enabled" });
+      return;
+    }
+
+    try {
+      switch (request.type) {
+        case "list_kits": {
+          const kits = kitsServer.getKits();
+          this.sendTo(ws, { type: "kits_list_result", requestId, kits });
+          break;
+        }
+
+        case "enable_kit": {
+          const kitId = (request as any).kitId as string;
+          await kitsServer.loadKit(kitId);
+          this.sendTo(ws, { type: "kit_action_result", requestId, success: true });
+          this.broadcastKitsChanged("enabled", kitId);
+          break;
+        }
+
+        case "disable_kit": {
+          const kitId = (request as any).kitId as string;
+          await kitsServer.unloadKit(kitId);
+          this.sendTo(ws, { type: "kit_action_result", requestId, success: true });
+          this.broadcastKitsChanged("disabled", kitId);
+          break;
+        }
+
+        case "reload_kit": {
+          const kitId = (request as any).kitId as string;
+          await kitsServer.reloadKit(kitId);
+          this.sendTo(ws, { type: "kit_action_result", requestId, success: true });
+          this.broadcastKitsChanged("reloaded", kitId);
+          break;
+        }
+
+        case "delete_kit": {
+          const kitId = (request as any).kitId as string;
+          await kitsServer.unloadKit(kitId);
+          // Note: actual file deletion is handled by the agent tool, not this WS message
+          this.sendTo(ws, { type: "kit_action_result", requestId, success: true });
+          this.broadcastKitsChanged("deleted", kitId);
+          break;
+        }
+      }
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "kit_action_result", requestId, success: false, error: errorText });
     }
   }
 
@@ -1035,13 +1093,18 @@ export class AppChannel {
     }
   }
 
+  broadcastKitsChanged(event: string, kitId: string): void {
+    const msg: AppResponse = { type: "kits_changed", event, kitId };
+    for (const ws of this.clients) {
+      this.sendTo(ws, msg);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
 
-  private sendTo(ws: WebSocket, response: AppResponse): void {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify(response));
-    }
+  private sendTo(ws: AppWebSocket, response: AppResponse): void {
+    ws.send(JSON.stringify(response));
   }
 }

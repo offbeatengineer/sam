@@ -4,6 +4,7 @@ import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import { useSessionStore, sessionIdFor } from "@/stores/sessionStore";
 import { useArtifactsStore } from "@/stores/artifactsStore";
+import { useKitsStore } from "@/stores/kitsStore";
 import { useTauriEvents } from "@/hooks/useTauriEvents";
 import { showTaskNotification } from "@/lib/notifications";
 import type { AppResponse } from "@/types/chat";
@@ -22,6 +23,12 @@ export function ChatContainer() {
     // Artifacts change events — no conversationId needed
     if (response.type === "artifacts_changed") {
       useArtifactsStore.getState().scheduleRefresh();
+      return;
+    }
+
+    // Kits change events — no conversationId needed
+    if (response.type === "kits_changed") {
+      useKitsStore.getState().scheduleRefresh();
       return;
     }
 

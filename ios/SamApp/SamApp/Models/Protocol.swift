@@ -157,6 +157,10 @@ enum ServerMessage: Decodable {
     case skillError(requestId: String, error: String)
     // Artifacts
     case artifactsChanged(event: String, path: String)
+    // Kits
+    case kitsChanged(event: String, kitId: String)
+    case kitsListResult(requestId: String, kits: [KitInfo])
+    case kitActionResult(requestId: String, success: Bool, error: String?)
 
     private enum CodingKeys: String, CodingKey {
         case type, conversationId, requestId, delta, contentIndex
@@ -166,6 +170,7 @@ enum ServerMessage: Decodable {
         case skills, filename, content
         case event, path
         case source
+        case kitId, kits
     }
 
     init(from decoder: Decoder) throws {
@@ -314,6 +319,22 @@ enum ServerMessage: Decodable {
             self = .artifactsChanged(
                 event: try container.decode(String.self, forKey: .event),
                 path: try container.decode(String.self, forKey: .path)
+            )
+        case "kits_changed":
+            self = .kitsChanged(
+                event: try container.decode(String.self, forKey: .event),
+                kitId: try container.decode(String.self, forKey: .kitId)
+            )
+        case "kits_list_result":
+            self = .kitsListResult(
+                requestId: try container.decode(String.self, forKey: .requestId),
+                kits: try container.decode([KitInfo].self, forKey: .kits)
+            )
+        case "kit_action_result":
+            self = .kitActionResult(
+                requestId: try container.decode(String.self, forKey: .requestId),
+                success: try container.decode(Bool.self, forKey: .success),
+                error: try container.decodeIfPresent(String.self, forKey: .error)
             )
         default:
             self = .error(conversationId: nil, error: "Unknown message type: \(type)")

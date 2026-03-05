@@ -37,6 +37,8 @@ export interface AppResponse {
   // artifacts
   event?: string;
   path?: string;
+  // kits
+  kitId?: string;
   // error
   error?: string;
   // session browsing fields

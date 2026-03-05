@@ -21,6 +21,8 @@ import { createWebSearchTool } from "./tools/web-search.js";
 import { createWebFetchTool } from "./tools/web-fetch.js";
 import { createMemorySaveTool, createMemoryRecallTool, createMemoryUpdateTool, createMemoryForgetTool } from "./tools/memory.js";
 import { createReportArtifactTool } from "./tools/report-artifact.js";
+import { createKitTool } from "./tools/kits.js";
+import type { KitsServer } from "./kits-server.js";
 import type { SessionKey } from "./types.js";
 import { resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -111,7 +113,7 @@ function createResourceLoader(cwd: string, systemPromptPath: string, agentsPromp
   };
 }
 
-export async function createSession(config: SamConfig, key: SessionKey) {
+export async function createSession(config: SamConfig, key: SessionKey, kitsServer?: KitsServer) {
   const cwd = config.workspace;
   const sessionDir = resolve(config.sessions, key.channelId, key.conversationId);
   mkdirSync(sessionDir, { recursive: true });
@@ -148,6 +150,12 @@ export async function createSession(config: SamConfig, key: SessionKey) {
       createMemoryUpdateTool(config.memory),
       createMemoryForgetTool(config.memory),
     );
+  }
+
+  // Add kit management tool if kits are enabled
+  if (kitsServer && config.kits?.enabled !== false) {
+    const kitsDir = config.kits?.dir ?? resolve(SAM_DIR, "kits");
+    customTools.push(createKitTool(kitsServer, kitsDir));
   }
 
   const sessionManager = SessionManager.continueRecent(cwd, sessionDir);

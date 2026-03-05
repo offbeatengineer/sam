@@ -1,9 +1,7 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { Duplex } from "node:stream";
 import { readFile, stat, readdir } from "node:fs/promises";
 import { resolve, extname, relative, normalize, join } from "node:path";
 import { watch } from "chokidar";
-import { WebSocketServer, type WebSocket } from "ws";
+import type { ServerWebSocket } from "bun";
 
 // ---------------------------------------------------------------------------
 // MIME types
@@ -59,84 +57,82 @@ export interface ArtifactsServerConfig {
 }
 
 export class ArtifactsServer {
-  private server: ReturnType<typeof createServer> | null = null;
-  private liveReloadWss: WebSocketServer | null = null;
+  private server: ReturnType<typeof Bun.serve> | null = null;
   private watcher: ReturnType<typeof watch> | null = null;
-  private wsClients = new Set<WebSocket>();
+  private liveReloadClients = new Set<ServerWebSocket<any>>();
   private wsOrigin: string;
 
   constructor(private config: ArtifactsServerConfig) {
     this.wsOrigin = `ws://${config.host}:${config.port}`;
   }
 
-  /** Standalone mode: creates its own HTTP server + live reload WSS. */
+  /** Standalone mode: creates its own Bun.serve() with live reload WebSocket. */
   async start(): Promise<void> {
     const { port, host, rootDir } = this.config;
+    const self = this;
 
-    // HTTP server
-    this.server = createServer((req, res) => this.handleRequest(req, res));
-
-    // WebSocket server on the same HTTP server
-    this.liveReloadWss = new WebSocketServer({ server: this.server, path: "/__live" });
-    this.liveReloadWss.on("connection", (ws) => {
-      this.wsClients.add(ws);
-      ws.on("close", () => this.wsClients.delete(ws));
+    this.server = Bun.serve({
+      port,
+      hostname: host,
+      fetch(req, server) {
+        const url = new URL(req.url);
+        if (url.pathname === "/__live") {
+          if (server.upgrade(req, { data: { type: "live-reload" as const } })) {
+            return undefined;
+          }
+          return new Response("WebSocket upgrade failed", { status: 400 });
+        }
+        return self.handleRequest(req);
+      },
+      websocket: {
+        open(ws) {
+          self.liveReloadClients.add(ws);
+        },
+        message() {},
+        close(ws) {
+          self.liveReloadClients.delete(ws);
+        },
+      },
     });
 
     this.startWatcher(rootDir);
-
-    return new Promise((resolve, reject) => {
-      this.server!.listen(port, host, () => {
-        console.log(`Artifacts server at http://${host}:${port}/ (root: ${rootDir})`);
-        resolve();
-      });
-      this.server!.on("error", reject);
-    });
+    console.log(`Artifacts server at http://${host}:${port}/ (root: ${rootDir})`);
   }
 
   /**
-   * Attached mode: creates a noServer live reload WSS and starts the file
-   * watcher, but does NOT create its own HTTP server. The caller (AppChannel)
-   * owns the HTTP server and delegates requests/upgrades here.
+   * Attached mode: no own server. The caller (AppChannel) owns the server
+   * and delegates requests here. Live-reload WebSocket clients are managed
+   * by the caller's websocket handler via addLiveReloadClient/removeLiveReloadClient.
    */
   startAttached(wsOrigin: string): void {
     this.wsOrigin = wsOrigin;
-    this.liveReloadWss = new WebSocketServer({ noServer: true });
-    this.liveReloadWss.on("connection", (ws) => {
-      this.wsClients.add(ws);
-      ws.on("close", () => this.wsClients.delete(ws));
-    });
     this.startWatcher(this.config.rootDir);
     console.log(`Artifacts attached (root: ${this.config.rootDir})`);
   }
 
-  /** Handle a WebSocket upgrade for the /__live path. */
-  handleLiveReloadUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
-    if (!this.liveReloadWss) return;
-    this.liveReloadWss.handleUpgrade(req, socket, head, (ws) => {
-      this.liveReloadWss!.emit("connection", ws, req);
-    });
+  /** Called by AppChannel when a /__live WebSocket connects. */
+  addLiveReloadClient(ws: ServerWebSocket<any>): void {
+    this.liveReloadClients.add(ws);
+  }
+
+  /** Called by AppChannel when a /__live WebSocket disconnects. */
+  removeLiveReloadClient(ws: ServerWebSocket<any>): void {
+    this.liveReloadClients.delete(ws);
   }
 
   async stop(): Promise<void> {
     this.watcher?.close();
     this.watcher = null;
 
-    for (const ws of this.wsClients) ws.close();
-    this.wsClients.clear();
-
-    if (this.liveReloadWss) {
-      this.liveReloadWss.close();
-      this.liveReloadWss = null;
+    for (const ws of this.liveReloadClients) {
+      ws.close();
     }
+    this.liveReloadClients.clear();
 
-    return new Promise((resolveP) => {
-      if (!this.server) return resolveP();
-      this.server.close(() => {
-        this.server = null;
-        resolveP();
-      });
-    });
+    if (this.server) {
+      this.server.stop();
+      this.server = null;
+    }
   }
 
   private startWatcher(rootDir: string): void {
@@ -147,19 +143,19 @@ export class ArtifactsServer {
     this.watcher.on("all", (event, changedPath) => {
       const rel = relative(rootDir, changedPath as string);
       const msg = JSON.stringify({ type: "reload", path: rel });
-      for (const ws of this.wsClients) {
-        if (ws.readyState === ws.OPEN) ws.send(msg);
+      for (const ws of this.liveReloadClients) {
+        ws.send(msg);
       }
       this.config.onChange?.(event, rel);
     });
   }
 
   // ---------------------------------------------------------------------------
-  // HTTP request handler
+  // HTTP request handler — returns a Response object
   // ---------------------------------------------------------------------------
 
-  async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
+  async handleRequest(req: Request): Promise<Response> {
+    const url = new URL(req.url);
     let pathname = decodeURIComponent(url.pathname);
 
     // /__files directory listing endpoint
@@ -167,29 +163,27 @@ export class ArtifactsServer {
       try {
         const entries = await this.walkDir(this.config.rootDir, "");
         entries.sort((a, b) => new Date(b.mtime).getTime() - new Date(a.mtime).getTime());
-        const body = JSON.stringify(entries);
-        res.writeHead(200, {
-          "Content-Type": "application/json; charset=utf-8",
-          "Access-Control-Allow-Origin": "*",
-          "Cache-Control": "no-store, no-cache",
+        return new Response(JSON.stringify(entries), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-store, no-cache",
+          },
         });
-        res.end(body);
       } catch {
-        res.writeHead(200, {
-          "Content-Type": "application/json; charset=utf-8",
-          "Access-Control-Allow-Origin": "*",
+        return new Response("[]", {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+          },
         });
-        res.end("[]");
       }
-      return;
     }
 
     // Resolve to filesystem path and guard against path traversal
     const filePath = resolve(this.config.rootDir, "." + normalize("/" + pathname));
     if (!filePath.startsWith(this.config.rootDir)) {
-      res.writeHead(403, { "Content-Type": "text/plain" });
-      res.end("Forbidden");
-      return;
+      return new Response("Forbidden", { status: 403 });
     }
 
     try {
@@ -204,29 +198,32 @@ export class ArtifactsServer {
 
       const ext = extname(servePath).toLowerCase();
       const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
-      let body = await readFile(servePath);
 
       // Inject live reload script into HTML
       if (ext === ".html") {
-        let html = body.toString("utf-8");
+        let html = await Bun.file(servePath).text();
         const script = liveReloadScript(this.wsOrigin);
         if (html.includes("</body>")) {
           html = html.replace("</body>", script + "</body>");
         } else {
           html += script;
         }
-        body = Buffer.from(html, "utf-8");
+        return new Response(html, {
+          headers: {
+            "Content-Type": contentType,
+            "Cache-Control": "no-store, no-cache",
+          },
+        });
       }
 
-      res.writeHead(200, {
-        "Content-Type": contentType,
-        "Content-Length": body.length,
-        "Cache-Control": "no-store, no-cache",
+      return new Response(Bun.file(servePath), {
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "no-store, no-cache",
+        },
       });
-      res.end(body);
     } catch {
-      res.writeHead(404, { "Content-Type": "text/plain" });
-      res.end("Not Found");
+      return new Response("Not Found", { status: 404 });
     }
   }
 
