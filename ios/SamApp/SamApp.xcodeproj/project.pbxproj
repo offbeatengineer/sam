@@ -48,6 +48,7 @@
 		A8CDA92BCA1254D6B8F6932C /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A9B229A3D639590CA5FE04B /* ChatViewModel.swift */; };
 		AC0B6AB0BC841060FFEF5ED0 /* SessionStatsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7661AC76850BC968068A17 /* SessionStatsSheet.swift */; };
 		ACCF6784DD9928D266EDAE5D /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 006693341E90777BD3F873A6 /* SettingsViewModel.swift */; };
+		AF410B669B4A05236AA99F29 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 253975F2A2DA7A195E01A43B /* Assets.xcassets */; };
 		B04D2A651772F0254A626AD2 /* SystemEventCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1D1982D599B56CC8C807F8 /* SystemEventCell.swift */; };
 		B3DCE3D20283921A7A0A62EE /* SkillEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E864546A4A6F56534BD1A09 /* SkillEditorView.swift */; };
 		B663E55EFC0974C172FDD45B /* BackendInstancesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35D480898DA2996C1062E7D0 /* BackendInstancesView.swift */; };
@@ -97,6 +98,7 @@
 		1AEF0DA1E34E51A5FA3A393D /* ArtifactBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactBrowserView.swift; sourceTree = "<group>"; };
 		1C0B414E2A5E091229833D45 /* Memory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Memory.swift; sourceTree = "<group>"; };
 		1C4A65D872592C610271D476 /* WebFetchCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebFetchCardCell.swift; sourceTree = "<group>"; };
+		253975F2A2DA7A195E01A43B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2937D9B1AB07A036F2194DAD /* MarkdownMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMessageCell.swift; sourceTree = "<group>"; };
 		2DFD64F68F144F21CCDDBFF7 /* StreamingDotsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingDotsView.swift; sourceTree = "<group>"; };
 		2E864546A4A6F56534BD1A09 /* SkillEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillEditorView.swift; sourceTree = "<group>"; };
@@ -205,6 +207,7 @@
 		488751627BD9932061C278A7 /* SamApp */ = {
 			isa = PBXGroup;
 			children = (
+				253975F2A2DA7A195E01A43B /* Assets.xcassets */,
 				A8F871EE83CDCA38C7B8BF60 /* ContentView.swift */,
 				AD97BDB6AFA8DCF6A5634E08 /* SamApp.swift */,
 				9005420744DA2804BB82CBF1 /* Models */,
@@ -400,6 +403,7 @@
 			buildConfigurationList = A58C62A9299FF4C300E5AEA6 /* Build configuration list for PBXNativeTarget "SamApp" */;
 			buildPhases = (
 				C9E9BA7B8FC2DF9EEDDCB5EF /* Sources */,
+				4DDC49CFAAB1332DD7D4A636 /* Resources */,
 				9C6088F312E8D4D2FA904AEA /* Frameworks */,
 			);
 			buildRules = (
@@ -450,6 +454,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4DDC49CFAAB1332DD7D4A636 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AF410B669B4A05236AA99F29 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		B4B6AF472F3E093AA3BDEBBC /* Sources */ = {
