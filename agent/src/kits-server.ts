@@ -122,6 +122,7 @@ Kits run in a desktop iframe AND an iOS WKWebView — always design mobile-first
 - Use \`gap-*\` and \`p-4\` (not \`p-1\` or \`p-2\`) for comfortable touch spacing
 - Prefer vertical scrolling over horizontal scrolling
 - Test that text is readable without zooming (minimum \`text-sm\` / 14px)
+- **Input font size:** All \`<input>\`, \`<textarea>\`, and \`<select>\` elements must have \`font-size: 16px\` or larger on mobile. iOS Safari auto-zooms the page when focusing inputs smaller than 16px. Use \`text-base\` (not \`text-sm\` or \`text-xs\`) on form elements.
 
 ### API Calls
 Use \`kit.fetch()\` from \`@/lib/kit\` for all backend calls. It handles routing automatically — **use the same paths as your Hono routes**:
@@ -419,12 +420,9 @@ export class KitsServer extends EventEmitter {
   // ---------------------------------------------------------------------------
 
   private ensureSharedLibrary(): void {
-    // Scaffold AGENTS.md for pi auto-discovery
+    // Always write AGENTS.md so it stays in sync with the codebase
     const agentsMdPath = resolve(this.kitsDir, "AGENTS.md");
-    if (!existsSync(agentsMdPath)) {
-      writeFileSync(agentsMdPath, AGENTS_MD);
-      console.log("[kits] Scaffolded AGENTS.md");
-    }
+    writeFileSync(agentsMdPath, AGENTS_MD);
   }
 
   // ---------------------------------------------------------------------------
