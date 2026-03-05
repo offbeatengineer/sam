@@ -23,7 +23,7 @@ Frontend ← Tauri Events ← Rust WS reader ← WebSocket ← Sam Agent
 ## Build Commands
 
 ```bash
-# From app/
+# From desktop/
 
 # Development (starts Vite + Tauri)
 npm run tauri dev
@@ -35,7 +35,7 @@ npm run build && npm run tauri build
 ## Project Structure
 
 ```
-app/
+desktop/
 ├── src/                   # React frontend
 │   ├── components/        # UI components (chat/, context/, layout/, sidebar/, skills/, memory/, ui/)
 │   ├── stores/            # Zustand stores (sessionStore, skillStore, settingsStore, etc.)
