@@ -13,7 +13,7 @@ struct KitDetailView: View {
         } else {
             ContentUnavailableView(
                 "Kit Disabled",
-                systemImage: "power",
+                systemImage: KitInfo.sfSymbol(for: kit.icon),
                 description: Text("\(kit.name) is currently disabled")
             )
             .navigationTitle(kit.name)

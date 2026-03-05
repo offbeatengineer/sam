@@ -68,6 +68,15 @@ tmux send-keys -t coding '/exit' Enter
 tmux kill-session -t coding
 ```
 
+## Kit development
+
+When delegating kit work to Pi:
+
+1. **Set the working directory to the kit**: `tmux new-session -d -s kit-<kitId> -c ~/.sam/kits/<kitId> 'pi'`
+   - Pi will auto-discover `~/.sam/kits/AGENTS.md` in the parent directory for UI/backend/database guidelines
+2. **After Pi finishes**, call `build` then `reload` via the `manage_kit` tool to make changes live
+3. The kit scaffold is pre-configured for **shadcn/ui** — Pi can add components via `bunx shadcn@latest add <component>`
+
 ## Rules
 
 1. **Always use `tmux`** — never run Pi directly, it will block your session.
