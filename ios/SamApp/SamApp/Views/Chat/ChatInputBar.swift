@@ -35,6 +35,7 @@ struct ChatInputBar: View {
     @State private var recorderStartTimeStamp: Date = .now
     @State private var disableBottomBar: Bool = false
     @State private var breatheScale: CGFloat = 1
+    @FocusState private var isFocused: Bool
 
     private var hasText: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -74,6 +75,7 @@ struct ChatInputBar: View {
                     }
 
                     TextField("Message", text: $text, axis: .vertical)
+                        .focused($isFocused)
                         .lineLimit(1...5)
                         .opacity(isRecordingGesture ? 0 : 1)
                         .overlay(alignment: .trailing) {
@@ -95,7 +97,16 @@ struct ChatInputBar: View {
                 }
                 .padding(.horizontal, 12)
                 .frame(minHeight: 48)
-                .background(.ultraThinMaterial, in: .capsule)
+                .background {
+                    if #available(iOS 26, *) {
+                        RoundedRectangle(cornerRadius: 22)
+                            .fill(.clear)
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22))
+                    } else {
+                        RoundedRectangle(cornerRadius: 22)
+                            .fill(Color.white.opacity(0.90))
+                    }
+                }
                 .mask {
                     Rectangle()
                         .padding(-50)
@@ -138,7 +149,8 @@ struct ChatInputBar: View {
                     )
             }
             .padding(.horizontal, 15)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+            .padding(.bottom, isFocused ? 8 : 0)
             .animation(.interpolatingSpring(duration: 0.4), value: isHolding)
             .animation(.interactiveSpring(duration: 0.3), value: recorderOffset == 0)
             .animation(.easeInOut(duration: 0.2), value: isStreaming)
@@ -172,7 +184,18 @@ struct ChatInputBar: View {
                 }
             }
         }
-        .background(.bar)
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask {
+                    LinearGradient(
+                        colors: [.clear, .black],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+                .ignoresSafeArea(edges: .bottom)
+        }
         .photosPicker(
             isPresented: $showPhotoPicker,
             selection: $selectedPhotos,
@@ -460,5 +483,26 @@ private struct AnimatedMenuButton: View {
         var scale: CGFloat = 1
         var offset: CGFloat = 0
         var rotation: CGFloat = 0
+    }
+}
+
+#Preview {
+    @Previewable @State var text = ""
+    ScrollView {
+        LazyVStack(spacing: 12) {
+            ForEach(0..<50) { i in
+                Text("Message \(i): Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: i.isMultiple(of: 2) ? .leading : .trailing)
+                    .background(i.isMultiple(of: 2) ? Color(.systemGray5) : Color.blue)
+                    .foregroundColor(i.isMultiple(of: 2) ? .primary : .white)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal, 16)
+            }
+        }
+    }
+    .safeAreaInset(edge: .bottom) {
+        ChatInputBar(text: $text, onSend: { _ in })
     }
 }
