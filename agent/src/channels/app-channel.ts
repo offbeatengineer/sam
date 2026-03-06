@@ -8,7 +8,7 @@ import type { ArtifactsServer } from "../artifacts-server.js";
 import type { KitsServer } from "../kits-server.js";
 import type { Transcriber } from "../transcriber.js";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
-import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { resolve, basename, dirname, join, relative } from "node:path";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
@@ -458,6 +458,12 @@ export class AppChannel {
         return this.handleGetSessionEntries(ws, request);
       case "rename_session":
         return this.handleRenameSession(ws, request);
+      case "archive_session":
+        return this.handleArchiveSession(ws, request);
+      case "unarchive_session":
+        return this.handleUnarchiveSession(ws, request);
+      case "list_archived_sessions":
+        return this.handleListArchivedSessions(ws, request);
       case "memory_list":
       case "memory_search":
       case "memory_save":
@@ -615,6 +621,7 @@ export class AppChannel {
       let channelDirs: string[];
       try {
         channelDirs = readdirSync(sessionsDir).filter((name) => {
+          if (name === "archived") return false;
           try {
             return statSync(resolve(sessionsDir, name)).isDirectory();
           } catch {
@@ -626,86 +633,7 @@ export class AppChannel {
       }
 
       for (const channelId of channelDirs) {
-        const channelPath = resolve(sessionsDir, channelId);
-        let convDirs: string[];
-        try {
-          convDirs = readdirSync(channelPath).filter((name) => {
-            try {
-              return statSync(resolve(channelPath, name)).isDirectory();
-            } catch {
-              return false;
-            }
-          });
-        } catch {
-          continue;
-        }
-
-        for (const conversationId of convDirs) {
-          const convPath = resolve(channelPath, conversationId);
-          let jsonlFiles: string[];
-          try {
-            jsonlFiles = readdirSync(convPath).filter((f) => f.endsWith(".jsonl"));
-          } catch {
-            continue;
-          }
-
-          if (jsonlFiles.length === 0) continue;
-
-          let mostRecent = jsonlFiles[0];
-          let mostRecentMtime = 0;
-          for (const f of jsonlFiles) {
-            try {
-              const st = statSync(resolve(convPath, f));
-              if (st.mtimeMs > mostRecentMtime) {
-                mostRecentMtime = st.mtimeMs;
-                mostRecent = f;
-              }
-            } catch {
-              // skip
-            }
-          }
-
-          const sessionPath = resolve(convPath, mostRecent);
-          try {
-            const sm = SessionManager.open(sessionPath, convPath);
-            const header = sm.getHeader();
-            const entries = sm.getEntries();
-
-            let messageCount = 0;
-            let firstMessage = "";
-            for (const entry of entries) {
-              if (entry.type === "message") {
-                messageCount++;
-                if (!firstMessage && (entry as any).message?.role === "user") {
-                  const msg = (entry as any).message;
-                  if (typeof msg.content === "string") {
-                    firstMessage = msg.content.substring(0, 200);
-                  } else if (Array.isArray(msg.content)) {
-                    const textPart = msg.content.find((c: any) => c.type === "text");
-                    if (textPart) firstMessage = textPart.text.substring(0, 200);
-                  }
-                }
-              }
-            }
-
-            const fileStat = statSync(sessionPath);
-
-            sessions.push({
-              path: sessionPath,
-              id: header?.id ?? basename(mostRecent, ".jsonl"),
-              channelId,
-              conversationId,
-              cwd: header?.cwd ?? "",
-              name: sm.getSessionName(),
-              created: header?.timestamp ?? fileStat.birthtime.toISOString(),
-              modified: fileStat.mtime.toISOString(),
-              messageCount,
-              firstMessage,
-            });
-          } catch (err) {
-            console.warn(`Failed to read session ${sessionPath}:`, err);
-          }
-        }
+        sessions.push(...this.scanChannelSessions(resolve(sessionsDir, channelId), channelId));
       }
 
       sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
@@ -755,6 +683,167 @@ export class AppChannel {
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
       this.sendTo(ws, { type: "error", error: `Failed to rename session: ${errorText}` });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Session scanning helper
+  // ---------------------------------------------------------------------------
+
+  private scanChannelSessions(channelPath: string, channelId: string): SessionInfoDTO[] {
+    const sessions: SessionInfoDTO[] = [];
+    let convDirs: string[];
+    try {
+      convDirs = readdirSync(channelPath).filter((name) => {
+        try {
+          return statSync(resolve(channelPath, name)).isDirectory();
+        } catch {
+          return false;
+        }
+      });
+    } catch {
+      return sessions;
+    }
+
+    for (const conversationId of convDirs) {
+      const convPath = resolve(channelPath, conversationId);
+      let jsonlFiles: string[];
+      try {
+        jsonlFiles = readdirSync(convPath).filter((f) => f.endsWith(".jsonl"));
+      } catch {
+        continue;
+      }
+
+      if (jsonlFiles.length === 0) continue;
+
+      let mostRecent = jsonlFiles[0];
+      let mostRecentMtime = 0;
+      for (const f of jsonlFiles) {
+        try {
+          const st = statSync(resolve(convPath, f));
+          if (st.mtimeMs > mostRecentMtime) {
+            mostRecentMtime = st.mtimeMs;
+            mostRecent = f;
+          }
+        } catch {
+          // skip
+        }
+      }
+
+      const sessionPath = resolve(convPath, mostRecent);
+      try {
+        const sm = SessionManager.open(sessionPath, convPath);
+        const header = sm.getHeader();
+        const entries = sm.getEntries();
+
+        let messageCount = 0;
+        let firstMessage = "";
+        for (const entry of entries) {
+          if (entry.type === "message") {
+            messageCount++;
+            if (!firstMessage && (entry as any).message?.role === "user") {
+              const msg = (entry as any).message;
+              if (typeof msg.content === "string") {
+                firstMessage = msg.content.substring(0, 200);
+              } else if (Array.isArray(msg.content)) {
+                const textPart = msg.content.find((c: any) => c.type === "text");
+                if (textPart) firstMessage = textPart.text.substring(0, 200);
+              }
+            }
+          }
+        }
+
+        const fileStat = statSync(sessionPath);
+
+        sessions.push({
+          path: sessionPath,
+          id: header?.id ?? basename(mostRecent, ".jsonl"),
+          channelId,
+          conversationId,
+          cwd: header?.cwd ?? "",
+          name: sm.getSessionName(),
+          created: header?.timestamp ?? fileStat.birthtime.toISOString(),
+          modified: fileStat.mtime.toISOString(),
+          messageCount,
+          firstMessage,
+        });
+      } catch (err) {
+        console.warn(`Failed to read session ${sessionPath}:`, err);
+      }
+    }
+
+    return sessions;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Session archiving
+  // ---------------------------------------------------------------------------
+
+  private async handleArchiveSession(
+    ws: AppWebSocket,
+    request: Extract<AppRequest, { type: "archive_session" }>,
+  ): Promise<void> {
+    const { requestId, sessionPath } = request;
+
+    try {
+      const conversationDir = dirname(sessionPath);
+      const conversationId = basename(conversationDir);
+      const archivedDir = resolve(this.options.sessionsDir, "archived");
+      const targetDir = resolve(archivedDir, conversationId);
+
+      // Close session if active in registry
+      const sessionKey: SessionKey = { channelId: "app", conversationId };
+      this.options.registry.dispose(sessionKey);
+      this.conversationOwners.delete(conversationId);
+      this.activeRequests.delete(conversationId);
+      this.subscriptions.delete(conversationId);
+
+      mkdirSync(archivedDir, { recursive: true });
+      renameSync(conversationDir, targetDir);
+
+      this.sendTo(ws, { type: "archive_session_result", requestId, success: true });
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "error", error: `Failed to archive session: ${errorText}` });
+    }
+  }
+
+  private async handleUnarchiveSession(
+    ws: AppWebSocket,
+    request: Extract<AppRequest, { type: "unarchive_session" }>,
+  ): Promise<void> {
+    const { requestId, sessionPath } = request;
+
+    try {
+      const conversationDir = dirname(sessionPath);
+      const conversationId = basename(conversationDir);
+      const appDir = resolve(this.options.sessionsDir, "app");
+      const targetDir = resolve(appDir, conversationId);
+
+      mkdirSync(appDir, { recursive: true });
+      renameSync(conversationDir, targetDir);
+
+      this.sendTo(ws, { type: "unarchive_session_result", requestId, success: true });
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "error", error: `Failed to unarchive session: ${errorText}` });
+    }
+  }
+
+  private async handleListArchivedSessions(
+    ws: AppWebSocket,
+    request: Extract<AppRequest, { type: "list_archived_sessions" }>,
+  ): Promise<void> {
+    const { requestId } = request;
+    const archivedDir = resolve(this.options.sessionsDir, "archived");
+
+    try {
+      const sessions = this.scanChannelSessions(archivedDir, "archived");
+      sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
+      this.sendTo(ws, { type: "archived_sessions_list", requestId, sessions });
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "error", error: `Failed to list archived sessions: ${errorText}` });
     }
   }
 

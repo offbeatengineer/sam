@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { MoreHorizontal, Pencil } from "lucide-react";
+import { MoreHorizontal, Pencil, Archive, ArchiveRestore } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SessionInfo } from "@/types/session";
 import {
@@ -31,7 +31,10 @@ export function SessionItem({ session, isActive, onClick }: SessionItemProps) {
     (state) => state.streamingSessionId === `${session.channelId}:${session.conversationId}`
   );
   const renameSession = useSessionStore((state) => state.renameSession);
+  const archiveSession = useSessionStore((state) => state.archiveSession);
+  const unarchiveSession = useSessionStore((state) => state.unarchiveSession);
   const isAppSession = session.channelId === "app";
+  const isArchived = session.channelId === "archived";
   const title = getSessionTitle(session);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -94,7 +97,7 @@ export function SessionItem({ session, isActive, onClick }: SessionItemProps) {
         )}
       </div>
 
-      {!isEditing && isAppSession && (
+      {!isEditing && (isAppSession || isArchived) && (
         <DropdownMenu>
           <DropdownMenuTrigger
             className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded"
@@ -103,10 +106,24 @@ export function SessionItem({ session, isActive, onClick }: SessionItemProps) {
             <MoreHorizontal className="h-4 w-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={startEditing}>
-              <Pencil className="h-4 w-4 mr-2" />
-              Rename
-            </DropdownMenuItem>
+            {isAppSession && (
+              <>
+                <DropdownMenuItem onClick={startEditing}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => archiveSession(session.path)}>
+                  <Archive className="h-4 w-4 mr-2" />
+                  Archive
+                </DropdownMenuItem>
+              </>
+            )}
+            {isArchived && (
+              <DropdownMenuItem onClick={() => unarchiveSession(session.path)}>
+                <ArchiveRestore className="h-4 w-4 mr-2" />
+                Unarchive
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}

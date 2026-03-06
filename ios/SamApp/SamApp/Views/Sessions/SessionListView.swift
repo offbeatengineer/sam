@@ -34,6 +34,17 @@ struct SessionListView: View {
                                 }
 
                                 Button {
+                                    Task {
+                                        _ = await appVM.sessionListVM.archiveSession(
+                                            sessionPath: session.path, using: appVM
+                                        )
+                                    }
+                                } label: {
+                                    Label("Archive", systemImage: "archivebox")
+                                }
+                                .tint(.indigo)
+
+                                Button {
                                     beginRename(session)
                                 } label: {
                                     Label("Rename", systemImage: "pencil")
@@ -49,6 +60,16 @@ struct SessionListView: View {
                                     Label("Rename", systemImage: "pencil")
                                 }
 
+                                Button {
+                                    Task {
+                                        _ = await appVM.sessionListVM.archiveSession(
+                                            sessionPath: session.path, using: appVM
+                                        )
+                                    }
+                                } label: {
+                                    Label("Archive", systemImage: "archivebox")
+                                }
+
                                 Button(role: .destructive) {
                                     deleteSession = session
                                     showDeleteConfirm = true
@@ -60,6 +81,69 @@ struct SessionListView: View {
                     }
                 } header: {
                     channelHeader(group.channelId, count: group.sessions.count)
+                }
+            }
+
+            // Archived sessions — lazy loaded on expand
+            Section(isExpanded: Binding(
+                get: { !appVM.sessionListVM.collapsedChannels.contains("archived") },
+                set: { expanded in
+                    if expanded {
+                        appVM.sessionListVM.collapsedChannels.remove("archived")
+                        if !appVM.sessionListVM.archivedLoaded {
+                            Task { await appVM.sessionListVM.loadArchivedSessions(using: appVM) }
+                        }
+                    } else {
+                        appVM.sessionListVM.collapsedChannels.insert("archived")
+                    }
+                }
+            )) {
+                if appVM.sessionListVM.archivedSessions.isEmpty {
+                    if appVM.sessionListVM.archivedLoaded {
+                        Text("No archived sessions")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    } else {
+                        ProgressView()
+                    }
+                } else {
+                    ForEach(appVM.sessionListVM.archivedSessions) { session in
+                        NavigationLink(value: session) {
+                            SessionRowView(
+                                session: session,
+                                isStreaming: false
+                            )
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button {
+                                Task {
+                                    _ = await appVM.sessionListVM.unarchiveSession(
+                                        sessionPath: session.path, using: appVM
+                                    )
+                                }
+                            } label: {
+                                Label("Unarchive", systemImage: "tray.and.arrow.up")
+                            }
+                            .tint(.blue)
+                        }
+                        .contextMenu {
+                            Button {
+                                Task {
+                                    _ = await appVM.sessionListVM.unarchiveSession(
+                                        sessionPath: session.path, using: appVM
+                                    )
+                                }
+                            } label: {
+                                Label("Unarchive", systemImage: "tray.and.arrow.up")
+                            }
+                        }
+                    }
+                }
+            } header: {
+                HStack {
+                    Image(systemName: "archivebox")
+                        .font(.caption)
+                    Text("Archived")
                 }
             }
         }

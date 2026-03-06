@@ -6,8 +6,12 @@ final class SessionListViewModel {
     var isLoading = false
     var error: String?
 
+    /// Archived sessions (lazy loaded on expand).
+    var archivedSessions: [SessionInfo] = []
+    var archivedLoaded = false
+
     /// Tracks which channel sections are collapsed.
-    var collapsedChannels: Set<String> = ["pulse"]
+    var collapsedChannels: Set<String> = ["pulse", "archived"]
 
     /// Sessions grouped by channelId.
     var groupedSessions: [(channelId: String, sessions: [SessionInfo])] {
@@ -37,6 +41,8 @@ final class SessionListViewModel {
 
     func clearAll() {
         sessions = []
+        archivedSessions = []
+        archivedLoaded = false
         isLoading = false
         error = nil
     }
@@ -91,6 +97,60 @@ final class SessionListViewModel {
                     await loadSessions(using: app)
                 }
                 return success
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+        return false
+    }
+
+    // MARK: - Archiving
+
+    func loadArchivedSessions(using app: AppViewModel) async {
+        let requestId = UUID().uuidString
+        do {
+            let response = try await app.request(
+                .listArchivedSessions(requestId: requestId),
+                requestId: requestId
+            )
+            if case .archivedSessionsList(_, let list) = response {
+                self.archivedSessions = list
+                self.archivedLoaded = true
+            }
+        } catch {
+            print("[Sessions] Failed to load archived sessions: \(error)")
+        }
+    }
+
+    func archiveSession(sessionPath: String, using app: AppViewModel) async -> Bool {
+        let requestId = UUID().uuidString
+        do {
+            let response = try await app.request(
+                .archiveSession(requestId: requestId, sessionPath: sessionPath),
+                requestId: requestId
+            )
+            if case .archiveSessionResult(_, let success) = response, success {
+                sessions.removeAll { $0.path == sessionPath }
+                archivedLoaded = false
+                return true
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+        return false
+    }
+
+    func unarchiveSession(sessionPath: String, using app: AppViewModel) async -> Bool {
+        let requestId = UUID().uuidString
+        do {
+            let response = try await app.request(
+                .unarchiveSession(requestId: requestId, sessionPath: sessionPath),
+                requestId: requestId
+            )
+            if case .unarchiveSessionResult(_, let success) = response, success {
+                archivedSessions.removeAll { $0.path == sessionPath }
+                await loadSessions(using: app)
+                return true
             }
         } catch {
             self.error = error.localizedDescription

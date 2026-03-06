@@ -18,6 +18,10 @@ export type AppRequest =
   | { type: "list_sessions"; requestId: string }
   | { type: "get_session_entries"; requestId: string; sessionPath: string }
   | { type: "rename_session"; requestId: string; sessionPath: string; name: string }
+  // Session archiving
+  | { type: "archive_session"; requestId: string; sessionPath: string }
+  | { type: "unarchive_session"; requestId: string; sessionPath: string }
+  | { type: "list_archived_sessions"; requestId: string }
   // Memory management
   | { type: "memory_list"; requestId: string; limit?: number; offset?: number }
   | { type: "memory_search"; requestId: string; query: string; limit?: number; tags?: string[] }
@@ -67,6 +71,9 @@ export type AppResponse =
   | { type: "memory_error"; requestId: string; error: string }
   // Session mutation
   | { type: "rename_session_result"; requestId: string; success: boolean }
+  | { type: "archive_session_result"; requestId: string; success: boolean }
+  | { type: "unarchive_session_result"; requestId: string; success: boolean }
+  | { type: "archived_sessions_list"; requestId: string; sessions: SessionInfoDTO[] }
   // Skill management responses
   | { type: "skills_list_result"; requestId: string; skills: SkillInfoDTO[] }
   | { type: "skill_content_result"; requestId: string; filename: string; content: string }

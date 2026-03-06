@@ -17,6 +17,10 @@ enum ClientRequest: Encodable {
     case listSessions(requestId: String)
     case getSessionEntries(requestId: String, sessionPath: String)
     case renameSession(requestId: String, sessionPath: String, name: String)
+    // Archiving
+    case archiveSession(requestId: String, sessionPath: String)
+    case unarchiveSession(requestId: String, sessionPath: String)
+    case listArchivedSessions(requestId: String)
     // Memory
     case memoryList(requestId: String, limit: Int?, offset: Int?)
     case memorySearch(requestId: String, query: String, limit: Int?, tags: [String]?)
@@ -62,6 +66,20 @@ enum ClientRequest: Encodable {
             try container.encode(requestId, forKey: .key("requestId"))
             try container.encode(sessionPath, forKey: .key("sessionPath"))
             try container.encode(name, forKey: .key("name"))
+
+        case .archiveSession(let requestId, let sessionPath):
+            try container.encode("archive_session", forKey: .key("type"))
+            try container.encode(requestId, forKey: .key("requestId"))
+            try container.encode(sessionPath, forKey: .key("sessionPath"))
+
+        case .unarchiveSession(let requestId, let sessionPath):
+            try container.encode("unarchive_session", forKey: .key("type"))
+            try container.encode(requestId, forKey: .key("requestId"))
+            try container.encode(sessionPath, forKey: .key("sessionPath"))
+
+        case .listArchivedSessions(let requestId):
+            try container.encode("list_archived_sessions", forKey: .key("type"))
+            try container.encode(requestId, forKey: .key("requestId"))
 
         case .memoryList(let requestId, let limit, let offset):
             try container.encode("memory_list", forKey: .key("type"))
@@ -149,6 +167,9 @@ enum ServerMessage: Decodable {
     case memoryError(requestId: String, error: String)
     // Session mutation
     case renameSessionResult(requestId: String, success: Bool)
+    case archiveSessionResult(requestId: String, success: Bool)
+    case unarchiveSessionResult(requestId: String, success: Bool)
+    case archivedSessionsList(requestId: String, sessions: [SessionInfo])
     // Skills
     case skillsListResult(requestId: String, skills: [SkillInfo])
     case skillContentResult(requestId: String, filename: String, content: String)
@@ -288,6 +309,21 @@ enum ServerMessage: Decodable {
             self = .renameSessionResult(
                 requestId: try container.decode(String.self, forKey: .requestId),
                 success: try container.decode(Bool.self, forKey: .success)
+            )
+        case "archive_session_result":
+            self = .archiveSessionResult(
+                requestId: try container.decode(String.self, forKey: .requestId),
+                success: try container.decode(Bool.self, forKey: .success)
+            )
+        case "unarchive_session_result":
+            self = .unarchiveSessionResult(
+                requestId: try container.decode(String.self, forKey: .requestId),
+                success: try container.decode(Bool.self, forKey: .success)
+            )
+        case "archived_sessions_list":
+            self = .archivedSessionsList(
+                requestId: try container.decode(String.self, forKey: .requestId),
+                sessions: try container.decode([SessionInfo].self, forKey: .sessions)
             )
         case "skills_list_result":
             self = .skillsListResult(

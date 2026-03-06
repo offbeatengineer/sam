@@ -75,6 +75,10 @@ interface SessionState {
   sessions: SessionInfo[];
   isLoaded: boolean;
 
+  // Archived sessions (lazy loaded)
+  archivedSessions: SessionInfo[];
+  archivedLoaded: boolean;
+
   // Active session
   activeSessionId: string | null; // "channelId:conversationId"
   activeSessionPath: string | null;
@@ -95,6 +99,9 @@ interface SessionState {
   createNewSession: () => string;
   refreshActiveSession: () => Promise<void>;
   renameSession: (sessionPath: string, name: string) => Promise<void>;
+  loadArchivedSessions: () => Promise<void>;
+  archiveSession: (sessionPath: string) => Promise<void>;
+  unarchiveSession: (sessionPath: string) => Promise<void>;
 
   // Streaming
   setPendingUserMessage: (text: string) => void;
@@ -126,6 +133,8 @@ export const useSessionStore = create<SessionState>()(
   subscribeWithSelector((set, get) => ({
     sessions: [],
     isLoaded: false,
+    archivedSessions: [],
+    archivedLoaded: false,
     activeSessionId: null,
     activeSessionPath: null,
     activeEntries: [],
@@ -148,10 +157,11 @@ export const useSessionStore = create<SessionState>()(
     },
 
     selectSession: (id: string) => {
-      const { sessions, activeSessionId } = get();
+      const { sessions, archivedSessions, activeSessionId } = get();
       if (id === activeSessionId) return;
 
-      const session = sessions.find((s) => sessionIdFromInfo(s) === id);
+      const session = sessions.find((s) => sessionIdFromInfo(s) === id)
+        ?? archivedSessions.find((s) => sessionIdFromInfo(s) === id);
       if (!session) return;
 
       set({
@@ -228,6 +238,58 @@ export const useSessionStore = create<SessionState>()(
             s.path === sessionPath ? { ...s, name } : s,
           ),
         }));
+      }
+    },
+
+    loadArchivedSessions: async () => {
+      const response = await requestResponse({ type: "list_archived_sessions" });
+      if (response.sessions) {
+        const archivedSessions = (response.sessions as SessionInfoDTO[]).map(parseInfo);
+        set({ archivedSessions, archivedLoaded: true });
+      }
+    },
+
+    archiveSession: async (sessionPath: string) => {
+      const response = await requestResponse({
+        type: "archive_session",
+        sessionPath,
+      });
+      if (response.success) {
+        const { sessions, activeSessionPath } = get();
+        set({
+          sessions: sessions.filter((s) => s.path !== sessionPath),
+          archivedLoaded: false,
+        });
+        if (activeSessionPath === sessionPath) {
+          set({
+            activeSessionId: null,
+            activeSessionPath: null,
+            activeEntries: [],
+            activeHeader: null,
+          });
+        }
+      }
+    },
+
+    unarchiveSession: async (sessionPath: string) => {
+      const response = await requestResponse({
+        type: "unarchive_session",
+        sessionPath,
+      });
+      if (response.success) {
+        const { archivedSessions, activeSessionPath } = get();
+        set({
+          archivedSessions: archivedSessions.filter((s) => s.path !== sessionPath),
+        });
+        if (activeSessionPath === sessionPath) {
+          set({
+            activeSessionId: null,
+            activeSessionPath: null,
+            activeEntries: [],
+            activeHeader: null,
+          });
+        }
+        get().loadSessions();
       }
     },
 
@@ -350,6 +412,8 @@ export const useSessionStore = create<SessionState>()(
       set({
         sessions: [],
         isLoaded: false,
+        archivedSessions: [],
+        archivedLoaded: false,
         activeSessionId: null,
         activeSessionPath: null,
         activeEntries: [],
@@ -361,9 +425,10 @@ export const useSessionStore = create<SessionState>()(
     },
 
     getActiveSession: () => {
-      const { sessions, activeSessionId } = get();
+      const { sessions, archivedSessions, activeSessionId } = get();
       if (!activeSessionId) return undefined;
-      return sessions.find((s) => sessionIdFromInfo(s) === activeSessionId);
+      return sessions.find((s) => sessionIdFromInfo(s) === activeSessionId)
+        ?? archivedSessions.find((s) => sessionIdFromInfo(s) === activeSessionId);
     },
   }))
 );

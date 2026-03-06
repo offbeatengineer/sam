@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Archive } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SessionItem } from "./SessionItem";
 import { useSessionStore, sessionIdFor } from "@/stores/sessionStore";
@@ -37,6 +37,9 @@ export function SessionList() {
   const sessions = useSessionStore((state) => state.sessions);
   const activeSessionId = useSessionStore((state) => state.activeSessionId);
   const selectSession = useSessionStore((state) => state.selectSession);
+  const archivedSessions = useSessionStore((state) => state.archivedSessions);
+  const archivedLoaded = useSessionStore((state) => state.archivedLoaded);
+  const loadArchivedSessions = useSessionStore((state) => state.loadArchivedSessions);
   const expandedChannels = useUIStore((state) => state.expandedChannels);
   const toggleChannel = useUIStore((state) => state.toggleChannel);
 
@@ -103,6 +106,48 @@ export function SessionList() {
           </div>
         );
       })}
+
+      {/* Archived sessions — lazy loaded */}
+      <div>
+        <button
+          className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          onClick={() => {
+            const wasExpanded = !!expandedChannels.archived;
+            toggleChannel("archived");
+            if (!wasExpanded && !archivedLoaded) {
+              loadArchivedSessions();
+            }
+          }}
+        >
+          <ChevronRight
+            className={cn(
+              "h-3 w-3 transition-transform",
+              expandedChannels.archived && "rotate-90"
+            )}
+          />
+          <Archive className="h-3 w-3 opacity-60" />
+          <span>Archived</span>
+        </button>
+        {expandedChannels.archived && (
+          archivedSessions.length > 0 ? (
+            archivedSessions.map((session) => {
+              const id = sessionIdFor(session.channelId, session.conversationId);
+              return (
+                <SessionItem
+                  key={id}
+                  session={session}
+                  isActive={id === activeSessionId}
+                  onClick={() => selectSession(id)}
+                />
+              );
+            })
+          ) : (
+            <div className="px-4 py-2 text-xs text-muted-foreground">
+              {archivedLoaded ? "No archived sessions" : "Loading..."}
+            </div>
+          )
+        )}
+      </div>
     </div>
   );
 }
