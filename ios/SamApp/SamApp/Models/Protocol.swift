@@ -32,6 +32,8 @@ enum ClientRequest: Encodable {
     case getSkill(requestId: String, filename: String)
     case saveSkill(requestId: String, filename: String, content: String)
     case deleteSkill(requestId: String, filename: String)
+    // Session search
+    case sessionSearch(requestId: String, query: String, limit: Int?)
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: DynamicCodingKey.self)
@@ -132,6 +134,12 @@ enum ClientRequest: Encodable {
             try container.encode("delete_skill", forKey: .key("type"))
             try container.encode(requestId, forKey: .key("requestId"))
             try container.encode(filename, forKey: .key("filename"))
+
+        case .sessionSearch(let requestId, let query, let limit):
+            try container.encode("session_search", forKey: .key("type"))
+            try container.encode(requestId, forKey: .key("requestId"))
+            try container.encode(query, forKey: .key("query"))
+            try container.encodeIfPresent(limit, forKey: .key("limit"))
         }
     }
 }
@@ -182,6 +190,8 @@ enum ServerMessage: Decodable {
     case kitsChanged(event: String, kitId: String)
     case kitsListResult(requestId: String, kits: [KitInfo])
     case kitActionResult(requestId: String, success: Bool, error: String?)
+    // Session search
+    case sessionSearchResult(requestId: String, results: [SessionSearchResultItem], count: Int)
 
     private enum CodingKeys: String, CodingKey {
         case type, conversationId, requestId, delta, contentIndex
@@ -192,6 +202,7 @@ enum ServerMessage: Decodable {
         case event, path
         case source
         case kitId, kits
+        case results
     }
 
     init(from decoder: Decoder) throws {
@@ -372,6 +383,12 @@ enum ServerMessage: Decodable {
                 success: try container.decode(Bool.self, forKey: .success),
                 error: try container.decodeIfPresent(String.self, forKey: .error)
             )
+        case "session_search_result":
+            self = .sessionSearchResult(
+                requestId: try container.decode(String.self, forKey: .requestId),
+                results: try container.decode([SessionSearchResultItem].self, forKey: .results),
+                count: try container.decode(Int.self, forKey: .count)
+            )
         default:
             self = .error(conversationId: nil, error: "Unknown message type: \(type)")
         }
@@ -390,4 +407,20 @@ struct DynamicCodingKey: CodingKey {
     static func key(_ name: String) -> DynamicCodingKey {
         DynamicCodingKey(stringValue: name)!
     }
+}
+
+// MARK: - Session Search Result
+
+struct SessionSearchResultItem: Codable, Identifiable, Hashable {
+    let text: String
+    let role: String
+    let score: Double
+    let session_name: String
+    let conversation_id: String
+    let channel_id: String
+    let timestamp: Double
+
+    var id: String { "\(conversation_id):\(timestamp)" }
+
+    var date: Date { Date(timeIntervalSince1970: timestamp / 1000) }
 }

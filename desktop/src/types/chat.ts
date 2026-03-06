@@ -53,6 +53,18 @@ export interface AppResponse {
   id?: string;
   text?: string;
   tags?: string[];
+  // session search fields
+  results?: SessionSearchResultDTO[];
+}
+
+export interface SessionSearchResultDTO {
+  text: string;
+  role: string;
+  score: number;
+  session_name: string;
+  conversation_id: string;
+  channel_id: string;
+  timestamp: number;
 }
 
 export interface MemoryItem {

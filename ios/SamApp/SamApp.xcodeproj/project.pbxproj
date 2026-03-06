@@ -67,6 +67,7 @@
 		F47D140F64198FF423F4D281 /* SamAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0EC4B990F3D001D75486569 /* SamAppTests.swift */; };
 		F7B4CC6800E822C5C1A6E4E5 /* Kit.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD2A6886BB4BA3D1164FC74A /* Kit.swift */; };
 		FC4C7F9236EC01BDC5729887 /* MemoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694B3899E4A9738F6DCF5482 /* MemoryListView.swift */; };
+		AA1111111111111111111111 /* SessionSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2222222222222222222222 /* SessionSearchViewModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -149,6 +150,7 @@
 		F34F379C15D257C4F54BAA5C /* ArtifactListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactListView.swift; sourceTree = "<group>"; };
 		F96D7B84757BE5AAEAE195B7 /* MemoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryDetailView.swift; sourceTree = "<group>"; };
 		FD2A6886BB4BA3D1164FC74A /* Kit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kit.swift; sourceTree = "<group>"; };
+		AA2222222222222222222222 /* SessionSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSearchViewModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -228,6 +230,7 @@
 				EDD9D77CD2BFB9BD91B8B686 /* KitViewModel.swift */,
 				4CB9B3DF17A5DBA76A765EED /* MemoryViewModel.swift */,
 				AB6DBC7049238F5CCF24A295 /* SessionListViewModel.swift */,
+				AA2222222222222222222222 /* SessionSearchViewModel.swift */,
 				006693341E90777BD3F873A6 /* SettingsViewModel.swift */,
 				47C89F9D33B98D3B3E8B9EC2 /* SkillViewModel.swift */,
 			);
@@ -517,6 +520,7 @@
 				FC4C7F9236EC01BDC5729887 /* MemoryListView.swift in Sources */,
 				DDF28A4A4AD6E7DE16874C91 /* MemoryViewModel.swift in Sources */,
 				916E2FC6A3A031D0A9CC5501 /* NewMemoryView.swift in Sources */,
+				AA1111111111111111111111 /* SessionSearchViewModel.swift in Sources */,
 				566354BAAE9A7A993124513D /* Protocol.swift in Sources */,
 				0E3DD7425E8C1BD6277A77F6 /* RequestCorrelator.swift in Sources */,
 				2E7C906667B5C3A93FCE5671 /* SamApp.swift in Sources */,

@@ -18,6 +18,7 @@ import { useUIStore } from "@/stores/uiStore";
 import { useSkillStore } from "@/stores/skillStore";
 import { useMemoryStore } from "@/stores/memoryStore";
 import { useMemoryResponses } from "@/hooks/useMemoryResponses";
+import { useSessionSearchResponses } from "@/hooks/useSessionSearchResponses";
 import { listMemories, searchMemories } from "@/lib/memoryApi";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -147,8 +148,9 @@ function SettingsMemoryPage() {
 export function AppLayout() {
   const settingsPage = useUIStore((s) => s.settingsPage);
 
-  // Always active — routes memory responses to the store
+  // Always active — routes responses to stores
   useMemoryResponses();
+  useSessionSearchResponses();
 
   return (
     <div className="flex h-screen bg-sidebar overflow-hidden">

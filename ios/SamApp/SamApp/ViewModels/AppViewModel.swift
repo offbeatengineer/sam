@@ -11,6 +11,7 @@ final class AppViewModel {
     let skillVM = SkillViewModel()
     let artifactVM = ArtifactViewModel()
     let kitVM = KitViewModel()
+    let sessionSearchVM = SessionSearchViewModel()
     let settingsVM = SettingsViewModel()
 
     /// Tracks which conversations are currently streaming (for sidebar indicators).

@@ -55,9 +55,21 @@ struct SplitMainView: View {
 
     // MARK: - Sidebar
 
+    /// Sessions filtered by search results when a search is active.
+    private var filteredGroupedSessions: [(channelId: String, sessions: [SessionInfo])] {
+        guard let matchingIds = appVM.sessionSearchVM.matchingIds else {
+            return appVM.sessionListVM.groupedSessions
+        }
+        return appVM.sessionListVM.groupedSessions.compactMap { group in
+            let filtered = group.sessions.filter { matchingIds.contains($0.conversationId) }
+            guard !filtered.isEmpty else { return nil }
+            return (channelId: group.channelId, sessions: filtered)
+        }
+    }
+
     private var sidebar: some View {
         List(selection: $selectedSession) {
-            ForEach(appVM.sessionListVM.groupedSessions, id: \.channelId) { group in
+            ForEach(filteredGroupedSessions, id: \.channelId) { group in
                 Section(isExpanded: appVM.sessionListVM.bindingForChannel(group.channelId)) {
                     ForEach(group.sessions) { session in
                         SessionRowView(
@@ -84,6 +96,15 @@ struct SplitMainView: View {
             }
         }
         .listStyle(.sidebar)
+        .searchable(text: Bindable(appVM.sessionSearchVM).searchQuery, prompt: "Search sessions")
+        .onSubmit(of: .search) {
+            Task { await appVM.sessionSearchVM.search(using: appVM) }
+        }
+        .onChange(of: appVM.sessionSearchVM.searchQuery) { _, newValue in
+            if newValue.isEmpty {
+                appVM.sessionSearchVM.clear()
+            }
+        }
         .navigationTitle("Sam")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {

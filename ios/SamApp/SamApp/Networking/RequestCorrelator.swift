@@ -41,7 +41,8 @@ actor RequestCorrelator {
              .skillContentResult(let rid, _, _),
              .skillSaveResult(let rid, _),
              .skillDeleteResult(let rid, _),
-             .skillError(let rid, _):
+             .skillError(let rid, _),
+             .sessionSearchResult(let rid, _, _):
             requestId = rid
         default:
             requestId = nil

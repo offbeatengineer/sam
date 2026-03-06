@@ -33,8 +33,18 @@ function groupByChannel(sessions: SessionInfo[]): Map<string, SessionInfo[]> {
   return groups;
 }
 
-export function SessionList() {
-  const sessions = useSessionStore((state) => state.sessions);
+interface SessionListProps {
+  /** When non-null, only sessions with these conversation IDs are shown. */
+  filterIds?: Set<string> | null;
+  isSearching?: boolean;
+}
+
+export function SessionList({ filterIds, isSearching }: SessionListProps) {
+  const allSessions = useSessionStore((state) => state.sessions);
+  const sessions = useMemo(() => {
+    if (!filterIds) return allSessions;
+    return allSessions.filter((s) => filterIds.has(s.conversationId));
+  }, [allSessions, filterIds]);
   const activeSessionId = useSessionStore((state) => state.activeSessionId);
   const selectSession = useSessionStore((state) => state.selectSession);
   const archivedSessions = useSessionStore((state) => state.archivedSessions);
@@ -52,10 +62,18 @@ export function SessionList() {
     return [...known, ...unknown];
   }, [grouped]);
 
+  if (isSearching) {
+    return (
+      <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+        Searching...
+      </div>
+    );
+  }
+
   if (sessions.length === 0) {
     return (
       <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-        No sessions yet. Start a conversation below.
+        {filterIds ? "No matching sessions." : "No sessions yet. Start a conversation below."}
       </div>
     );
   }

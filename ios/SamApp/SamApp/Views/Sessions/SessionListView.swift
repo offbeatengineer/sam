@@ -8,9 +8,23 @@ struct SessionListView: View {
     @State private var showDeleteConfirm = false
     @State private var showNewChat = false
 
+    /// Sessions filtered by search results when a search is active.
+    private var filteredGroupedSessions: [(channelId: String, sessions: [SessionInfo])] {
+        guard let matchingIds = appVM.sessionSearchVM.matchingIds else {
+            return appVM.sessionListVM.groupedSessions
+        }
+        return appVM.sessionListVM.groupedSessions.compactMap { group in
+            let filtered = group.sessions.filter { matchingIds.contains($0.conversationId) }
+            guard !filtered.isEmpty else { return nil }
+            return (channelId: group.channelId, sessions: filtered)
+        }
+    }
+
     var body: some View {
+        @Bindable var searchVM = appVM.sessionSearchVM
+
         List {
-            ForEach(appVM.sessionListVM.groupedSessions, id: \.channelId) { group in
+            ForEach(filteredGroupedSessions, id: \.channelId) { group in
                 Section(isExpanded: appVM.sessionListVM.bindingForChannel(group.channelId)) {
                     ForEach(group.sessions) { session in
                         NavigationLink(value: session) {
@@ -148,6 +162,15 @@ struct SessionListView: View {
             }
         }
         .listStyle(.sidebar)
+        .searchable(text: $searchVM.searchQuery, prompt: "Search sessions")
+        .onSubmit(of: .search) {
+            Task { await appVM.sessionSearchVM.search(using: appVM) }
+        }
+        .onChange(of: appVM.sessionSearchVM.searchQuery) { _, newValue in
+            if newValue.isEmpty {
+                appVM.sessionSearchVM.clear()
+            }
+        }
         .navigationTitle("Sessions")
         .navigationDestination(for: SessionInfo.self) { session in
             ChatContainerView(session: session)
