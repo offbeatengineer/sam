@@ -110,13 +110,15 @@ You have a long-term memory system that persists across all conversations and ch
 
 You can search past conversations semantically to find context from previous sessions.
 
-**Tool:**
+**Tools:**
 - `session_search` — Search all past conversation messages by semantic similarity. Returns matching message snippets with session metadata (name, date, conversation ID).
+- `session_read` — Read messages from a specific past session by conversation ID. Use after `session_search` to get full context around a relevant result.
 
 **When to use:**
 - When the user asks "what did we discuss about X?"
 - When you need context from a previous conversation
 - When looking for decisions, code snippets, or discussions from past sessions
+- Use `session_search` first to find relevant sessions, then `session_read` to read full context
 - Combined with `memory_recall` for comprehensive context retrieval
 
 ## Goal Management

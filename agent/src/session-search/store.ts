@@ -165,4 +165,24 @@ export class SessionSearchStore {
   async embedBatch(texts: string[]): Promise<number[][]> {
     return this.embedder.embedBatch(texts);
   }
+
+  async getSessionPath(conversationId: string): Promise<string | null> {
+    const rows = await this.table
+      .query()
+      .select(["session_path"])
+      .where(`conversation_id = '${conversationId}'`)
+      .limit(1)
+      .toArray();
+    return rows.length > 0 ? rows[0].session_path : null;
+  }
+
+  async getSessionName(conversationId: string): Promise<string> {
+    const rows = await this.table
+      .query()
+      .select(["session_name"])
+      .where(`conversation_id = '${conversationId}'`)
+      .limit(1)
+      .toArray();
+    return rows.length > 0 ? (rows[0].session_name || "") : "";
+  }
 }
