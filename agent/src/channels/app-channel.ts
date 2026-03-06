@@ -7,6 +7,8 @@ import type { MemoryConfig } from "../memory/types.js";
 import type { ArtifactsServer } from "../artifacts-server.js";
 import type { KitsServer } from "../kits-server.js";
 import type { Transcriber } from "../transcriber.js";
+import type { SessionIndexer } from "../session-search/indexer.js";
+import { SessionSearchStore } from "../session-search/store.js";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { resolve, basename, dirname, join, relative } from "node:path";
@@ -24,6 +26,7 @@ interface AppChannelOptions {
   artifactsServer?: ArtifactsServer;
   kitsServer?: KitsServer;
   transcriber?: Transcriber;
+  sessionIndexer?: SessionIndexer;
 }
 
 // Rate limiting constants
@@ -481,6 +484,8 @@ export class AppChannel {
       case "reload_kit":
       case "delete_kit":
         return this.handleKitRequest(ws, request);
+      case "session_search":
+        return this.handleSessionSearch(ws, request);
       default:
         this.sendTo(ws, { type: "error", error: `Unknown request type: ${(request as any).type}` });
     }
@@ -570,6 +575,32 @@ export class AppChannel {
       await session.prompt(promptText, promptOptions);
 
       this.sendTo(ws, { type: "turn_end", conversationId, requestId });
+
+      // Incremental session search indexing (fire-and-forget)
+      if (this.options.sessionIndexer) {
+        const sessionDir = resolve(this.options.sessionsDir, "app", conversationId);
+        try {
+          const files = readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"));
+          if (files.length > 0) {
+            // Pick the most recently modified .jsonl
+            let latestFile = files[0];
+            let latestMtime = 0;
+            for (const f of files) {
+              const st = statSync(resolve(sessionDir, f));
+              if (st.mtimeMs > latestMtime) {
+                latestMtime = st.mtimeMs;
+                latestFile = f;
+              }
+            }
+            const sessionPath = resolve(sessionDir, latestFile);
+            this.options.sessionIndexer.indexLatest(sessionPath, conversationId, "app").catch((err) => {
+              console.warn("[session-search] Incremental indexing failed:", err);
+            });
+          }
+        } catch {
+          // Session dir may not exist yet for first message
+        }
+      }
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
       console.error(`App channel error [${conversationId}]:`, errorText);
@@ -913,6 +944,45 @@ export class AppChannel {
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
       this.sendTo(ws, { type: "memory_error", requestId, error: errorText });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Session search
+  // ---------------------------------------------------------------------------
+
+  private async handleSessionSearch(
+    ws: AppWebSocket,
+    request: Extract<AppRequest, { type: "session_search" }>,
+  ): Promise<void> {
+    const { requestId, query, limit } = request;
+    const memoryConfig = this.options.memoryConfig;
+
+    if (!memoryConfig?.enabled) {
+      this.sendTo(ws, { type: "error", error: "Session search requires memory to be enabled" });
+      return;
+    }
+
+    try {
+      const store = await SessionSearchStore.getInstance(memoryConfig);
+      const results = await store.search(query, limit);
+      this.sendTo(ws, {
+        type: "session_search_result",
+        requestId,
+        results: results.map((r) => ({
+          text: r.text,
+          role: r.role,
+          score: r.score,
+          session_name: r.session_name,
+          conversation_id: r.conversation_id,
+          channel_id: r.channel_id,
+          timestamp: r.timestamp,
+        })),
+        count: results.length,
+      });
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      this.sendTo(ws, { type: "error", error: `Session search failed: ${errorText}` });
     }
   }
 

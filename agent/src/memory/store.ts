@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { lazyImport } from "./lazy-install.js";
-import { LocalEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
+import { getSharedEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
 import type { MemoryConfig } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -64,7 +64,7 @@ export class MemoryStore {
 
   private static async init(config: MemoryConfig): Promise<MemoryStore> {
     const lancedb = await lazyImport<any>("@lancedb/lancedb", AGENT_DIR);
-    const embedder = await LocalEmbeddingProvider.create(config);
+    const embedder = await getSharedEmbeddingProvider(config);
 
     console.log(`[memory] Opening database at ${config.storagePath}`);
     const db = await lancedb.connect(config.storagePath);

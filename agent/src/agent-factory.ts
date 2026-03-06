@@ -20,6 +20,7 @@ import { SAM_DIR, type SamConfig } from "./config.js";
 import { createWebSearchTool } from "./tools/web-search.js";
 import { createWebFetchTool } from "./tools/web-fetch.js";
 import { createMemorySaveTool, createMemoryRecallTool, createMemoryUpdateTool, createMemoryForgetTool } from "./tools/memory.js";
+import { createSessionSearchTool } from "./tools/session-search.js";
 import { createReportArtifactTool } from "./tools/report-artifact.js";
 import { createKitTool } from "./tools/kits.js";
 import type { KitsServer } from "./kits-server.js";
@@ -149,6 +150,7 @@ export async function createSession(config: SamConfig, key: SessionKey, kitsServ
       createMemoryRecallTool(config.memory),
       createMemoryUpdateTool(config.memory),
       createMemoryForgetTool(config.memory),
+      createSessionSearchTool(config.memory),
     );
   }
 

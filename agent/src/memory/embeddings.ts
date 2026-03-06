@@ -12,6 +12,18 @@ export interface EmbeddingProvider {
   embedBatch(texts: string[]): Promise<number[][]>;
 }
 
+let sharedProvider: Promise<EmbeddingProvider> | null = null;
+
+export async function getSharedEmbeddingProvider(config: MemoryConfig): Promise<EmbeddingProvider> {
+  if (!sharedProvider) {
+    sharedProvider = LocalEmbeddingProvider.create(config).catch((err) => {
+      sharedProvider = null;
+      throw err;
+    });
+  }
+  return sharedProvider;
+}
+
 export class LocalEmbeddingProvider implements EmbeddingProvider {
   readonly dimensions = 384;
   private extractor: any;

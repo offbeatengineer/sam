@@ -38,7 +38,9 @@ export type AppRequest =
   | { type: "enable_kit"; requestId: string; kitId: string }
   | { type: "disable_kit"; requestId: string; kitId: string }
   | { type: "reload_kit"; requestId: string; kitId: string }
-  | { type: "delete_kit"; requestId: string; kitId: string };
+  | { type: "delete_kit"; requestId: string; kitId: string }
+  // Session search
+  | { type: "session_search"; requestId: string; query: string; limit?: number };
 
 /** Responses sent from sam to the app */
 export type AppResponse =
@@ -85,7 +87,9 @@ export type AppResponse =
   // Kit management responses
   | { type: "kits_list_result"; requestId: string; kits: KitInfoDTO[] }
   | { type: "kit_action_result"; requestId: string; success: boolean; error?: string }
-  | { type: "kits_changed"; event: string; kitId: string };
+  | { type: "kits_changed"; event: string; kitId: string }
+  // Session search
+  | { type: "session_search_result"; requestId: string; results: SessionSearchResultDTO[]; count: number };
 
 /** Session metadata returned by list_sessions */
 export interface SessionInfoDTO {
@@ -116,6 +120,17 @@ export interface KitInfoDTO {
   icon: string;
   version: string;
   enabled: boolean;
+}
+
+/** Session search result returned in protocol responses */
+export interface SessionSearchResultDTO {
+  text: string;
+  role: string;
+  score: number;
+  session_name: string;
+  conversation_id: string;
+  channel_id: string;
+  timestamp: number;
 }
 
 /** Memory item returned in protocol responses */

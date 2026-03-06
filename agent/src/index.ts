@@ -7,6 +7,8 @@ import { PulseChannel } from "./channels/pulse-channel.js";
 import { AppChannel } from "./channels/app-channel.js";
 import { CliTranscriber } from "./transcriber.js";
 import { MemoryStore } from "./memory/store.js";
+import { SessionSearchStore } from "./session-search/store.js";
+import { SessionIndexer } from "./session-search/indexer.js";
 import { ArtifactsServer } from "./artifacts-server.js";
 import { KitsServer } from "./kits-server.js";
 import { SAM_DIR } from "./config.js";
@@ -30,6 +32,18 @@ async function main() {
   if (config.memory?.enabled) {
     MemoryStore.getInstance(config.memory).catch((err) => {
       console.error("[memory] Failed to pre-initialize memory store:", err);
+    });
+  }
+
+  // Start background session search indexing
+  let sessionIndexer: SessionIndexer | undefined;
+  if (config.memory?.enabled) {
+    SessionSearchStore.getInstance(config.memory).catch((err) => {
+      console.error("[session-search] Failed to pre-initialize session search store:", err);
+    });
+    sessionIndexer = new SessionIndexer(config.memory, config.sessions);
+    sessionIndexer.indexAll().catch((err) => {
+      console.error("[session-search] Indexing failed:", err);
     });
   }
 
@@ -107,6 +121,7 @@ async function main() {
       artifactsServer,
       kitsServer,
       transcriber,
+      sessionIndexer,
     });
     await appChannel.start();
   } else if (artifactsServer) {
