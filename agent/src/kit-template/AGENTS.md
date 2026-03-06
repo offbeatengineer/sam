@@ -73,30 +73,33 @@ const data = await res.json();
 
 **IMPORTANT:** Never use `fetch()` directly for kit API calls. Always use `kit.fetch()` — it ensures the correct routing prefix is applied.
 
-### Native Bridge
+### Host Bridge
 
-`kit` also exposes methods to control the native iOS nav bar. These are no-ops on desktop/browser:
+`kit` exposes methods to control the host app's header bar. Works on both iOS (native nav bar) and desktop (kit header).
 
 ```tsx
 import { kit } from "@/lib/kit";
 
-// Set the nav bar title (overrides the default kit name)
+// Set the header title (overrides the default kit name)
 kit.setTitle("My Feed");
 
-// Add a dropdown menu to the nav bar (top-right)
+// Add menu items to the header bar
+// Single item → rendered as a direct icon button
+// Multiple items → rendered as a dropdown menu
 kit.setMenu([
-  { id: "refresh", label: "Refresh", systemImage: "arrow.clockwise" },
-  { id: "settings", label: "Settings", systemImage: "gear" },
+  { id: "refresh", label: "Refresh", systemImage: "arrow.clockwise", icon: "clock" },
+  { id: "settings", label: "Settings", systemImage: "gear", icon: "wrench" },
 ]);
 
-// Handle menu item taps
+// Handle menu item activation
 kit.onMenuAction((actionId) => {
   if (actionId === "refresh") loadData();
 });
 ```
 
-- `systemImage` values are **SF Symbol** names (e.g. `"arrow.clockwise"`, `"gear"`, `"trash"`)
-- Call `setTitle` / `setMenu` early (e.g. in a `useEffect` on mount) so the nav bar updates before the user interacts
+- `systemImage` — **SF Symbol** name, used on iOS (e.g. `"arrow.clockwise"`, `"gear"`)
+- `icon` — kit icon name from the icon set, used on desktop (e.g. `"clock"`, `"wrench"`)
+- Call `setTitle` / `setMenu` early (e.g. in a `useEffect` on mount) so the header updates before the user interacts
 - Call `onMenuAction` once to register a single callback — later calls replace the previous one
 
 ## Backend

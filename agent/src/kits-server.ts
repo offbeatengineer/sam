@@ -65,7 +65,9 @@ const MIME_TYPES: Record<string, string> = {
 // AGENTS.md — read from the kit-template directory
 // ---------------------------------------------------------------------------
 
-const AGENTS_MD_PATH = resolve(import.meta.dir, "kit-template", "AGENTS.md");
+const KIT_TEMPLATE_DIR = resolve(import.meta.dir, "kit-template");
+const AGENTS_MD_PATH = resolve(KIT_TEMPLATE_DIR, "AGENTS.md");
+const KIT_LIB_PATH = resolve(KIT_TEMPLATE_DIR, "src", "lib", "kit.ts");
 
 // ---------------------------------------------------------------------------
 // KitsServer
@@ -210,6 +212,9 @@ export class KitsServer extends EventEmitter {
       }
     }
 
+    // Sync shared kit library before building
+    this.syncKitLib(kitDir);
+
     console.log(`[kits] Building frontend for kit "${kitId}"...`);
     const buildProc = Bun.spawnSync(["bunx", "vite", "build"], { cwd: kitDir });
     if (buildProc.exitCode !== 0) {
@@ -313,6 +318,13 @@ export class KitsServer extends EventEmitter {
   private ensureSharedLibrary(): void {
     // Always write AGENTS.md so it stays in sync with the codebase
     writeFileSync(resolve(this.kitsDir, "AGENTS.md"), readFileSync(AGENTS_MD_PATH, "utf-8"));
+  }
+
+  /** Copy the latest kit bridge library into a kit's source tree. */
+  private syncKitLib(kitDir: string): void {
+    const dest = resolve(kitDir, "src", "lib", "kit.ts");
+    mkdirSync(resolve(kitDir, "src", "lib"), { recursive: true });
+    writeFileSync(dest, readFileSync(KIT_LIB_PATH, "utf-8"));
   }
 
   // ---------------------------------------------------------------------------

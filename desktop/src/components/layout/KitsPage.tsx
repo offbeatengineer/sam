@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Package, ExternalLink, Power, PowerOff, Sparkles, Calculator, Calendar, Camera,
+  Package, ExternalLink, Power, PowerOff, Sparkles, Calculator, Calendar, Camera, MoreHorizontal,
   BarChart3, LineChart, PieChart, ListChecks, Clock, Cloud, Code, Coins, Compass,
   Database, FileText, Folder, Gamepad2, Globe, GraduationCap, Heart, Home, Image,
   Inbox, Key, Layers, Lightbulb, Link, List, Mail, Map, Megaphone, MessageCircle,
@@ -11,6 +11,18 @@ import {
 import { useKitsStore, type KitInfo } from "@/stores/kitsStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+
+interface KitMenuItem {
+  id: string;
+  label: string;
+  icon?: string;
+}
 
 const ICON_MAP: Record<string, LucideIcon> = {
   box: Package, sparkles: Sparkles, calculator: Calculator, calendar: Calendar,
@@ -118,14 +130,83 @@ function KitDetail({ kit }: { kit: KitInfo }) {
   const baseUrl = artifactsUrl.replace(/\/__files$/, "").replace(/\/$/, "");
   const kitUrl = `${baseUrl}/kits/${kit.id}/`;
 
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [bridgeTitle, setBridgeTitle] = useState<string | null>(null);
+  const [menuItems, setMenuItems] = useState<KitMenuItem[]>([]);
+
+  const triggerMenuAction = useCallback((actionId: string) => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { source: "sam-kit-host", type: "menuAction", actionId },
+      "*",
+    );
+  }, []);
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (event.data?.source !== "sam-kit" || event.source !== iframeRef.current?.contentWindow) return;
+      switch (event.data.type) {
+        case "setTitle":
+          setBridgeTitle(event.data.title ?? null);
+          break;
+        case "setMenu":
+          if (Array.isArray(event.data.items)) {
+            setMenuItems(
+              event.data.items
+                .filter((i: any) => i.id && i.label)
+                .map((i: any) => ({ id: i.id, label: i.label, icon: i.icon })),
+            );
+          }
+          break;
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  // Reset bridge state when switching kits
+  useEffect(() => {
+    setBridgeTitle(null);
+    setMenuItems([]);
+  }, [kit.id]);
+
   return (
     <div className="flex flex-col flex-1 min-w-0">
       {/* Header */}
       <div data-tauri-drag-region className="h-12 border-b border-border shrink-0 flex items-center px-4 gap-3">
         {getKitIcon(kit.icon)}
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium truncate">{kit.name}</h3>
+          <h3 className="text-sm font-medium truncate">{bridgeTitle ?? kit.name}</h3>
         </div>
+
+        {/* Bridge menu items */}
+        {menuItems.length === 1 && (
+          <button
+            onClick={() => triggerMenuAction(menuItems[0].id)}
+            className={cn(
+              "flex items-center justify-center rounded-md hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors",
+              menuItems[0].icon ? "h-7 w-7" : "h-7 px-2 text-xs font-medium",
+            )}
+            title={menuItems[0].label}
+          >
+            {menuItems[0].icon ? getKitIcon(menuItems[0].icon) : menuItems[0].label}
+          </button>
+        )}
+        {menuItems.length > 1 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors">
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {menuItems.map((item) => (
+                <DropdownMenuItem key={item.id} onClick={() => triggerMenuAction(item.id)}>
+                  {item.icon && <span className="mr-2">{getKitIcon(item.icon)}</span>}
+                  {item.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         <span className="text-xs text-muted-foreground">v{kit.version}</span>
         <a
           href={kitUrl}
@@ -141,6 +222,7 @@ function KitDetail({ kit }: { kit: KitInfo }) {
       {/* Kit iframe */}
       {kit.enabled ? (
         <iframe
+          ref={iframeRef}
           src={kitUrl}
           className="flex-1 w-full border-0"
           title={kit.name}

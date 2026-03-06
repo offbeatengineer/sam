@@ -31,7 +31,20 @@ struct KitDetailView: View {
                 .navigationTitle(bridge.navTitle ?? kit.name)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    if !bridge.menuItems.isEmpty {
+                    if bridge.menuItems.count == 1, let item = bridge.menuItems.first {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                bridge.triggerMenuAction(item.id)
+                            } label: {
+                                if let systemImage = item.systemImage {
+                                    Image(systemName: systemImage)
+                                } else {
+                                    Text(item.label)
+                                }
+                            }
+                            .accessibilityLabel(item.label)
+                        }
+                    } else if bridge.menuItems.count > 1 {
                         ToolbarItem(placement: .topBarTrailing) {
                             Menu {
                                 ForEach(bridge.menuItems) { item in
