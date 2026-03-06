@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "start": "bun src/index.ts",
-    "dev": "bun --watch --env-file=.env src/index.ts",
+    "dev": "watchexec -w src -w prompts -r -- bun --env-file=.env src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
