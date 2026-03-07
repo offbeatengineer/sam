@@ -2,7 +2,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ToolExecution } from "@/types/chat";
 
-const PREVIEW_LINES = 12;
+const PREVIEW_LINES = 2;
 
 interface ToolCardProps {
   tool: ToolExecution;
@@ -94,13 +94,14 @@ export function ToolCard({ tool }: ToolCardProps) {
             ? "bg-muted/10"
             : "bg-emerald-950/10"
       )}
-      onClick={() => isLong && setExpanded(!expanded)}
+      onClick={() => setExpanded(!expanded)}
     >
       <pre
         className={cn(
-          "px-3 py-2 whitespace-pre-wrap break-words leading-relaxed",
+          "px-3 pt-2 whitespace-pre-wrap break-words leading-relaxed overflow-hidden",
+          !expanded ? "pb-0 line-clamp-2" : "pb-2",
           isRunning && "animate-pulse",
-          isError ? "text-foreground" : "text-muted-foreground"
+          isError ? "text-foreground" : "text-muted-foreground",
         )}
       >
         {/* Bold first line */}
