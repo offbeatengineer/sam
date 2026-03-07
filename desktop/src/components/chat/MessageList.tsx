@@ -2,8 +2,9 @@ import { useEffect, useRef, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SessionEntryRenderer } from "./SessionEntryRenderer";
 import { StreamingTurnView } from "./StreamingTurnView";
-import { useActiveEntries, useActiveStreaming, useStreamingTurn, usePendingUserMessage } from "@/stores/sessionStore";
+import { useActiveEntries, useActiveStreaming, useStreamingTurn, usePendingUserMessage, usePendingUserImages, usePendingUserAudio } from "@/stores/sessionStore";
 import { useUIStore } from "@/stores/uiStore";
+import { Mic } from "lucide-react";
 import type { SessionMessageEntry, ToolResultMessage } from "@/types/session";
 
 export function MessageList({ isReadOnly }: { isReadOnly?: boolean }) {
@@ -11,6 +12,8 @@ export function MessageList({ isReadOnly }: { isReadOnly?: boolean }) {
   const isStreaming = useActiveStreaming();
   const streamingTurn = useStreamingTurn();
   const pendingUserMessage = usePendingUserMessage();
+  const pendingUserImages = usePendingUserImages();
+  const pendingUserAudio = usePendingUserAudio();
   const inputHeight = useUIStore((state) => state.inputHeight);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -70,11 +73,31 @@ export function MessageList({ isReadOnly }: { isReadOnly?: boolean }) {
             <SessionEntryRenderer key={entry.id} entry={entry} toolResults={toolResultsMap} />
           ))}
 
-          {pendingUserMessage && (
-            <div className="flex justify-end">
-              <div className="max-w-[80%] rounded-2xl px-4 py-2 bg-primary text-primary-foreground">
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{pendingUserMessage}</p>
-              </div>
+          {pendingUserMessage !== null && (
+            <div className="flex flex-col items-end gap-1.5">
+              {pendingUserImages.length > 0 && (
+                <div className="flex gap-1.5 flex-wrap justify-end max-w-[80%] opacity-70">
+                  {pendingUserImages.map((img) => (
+                    <img
+                      key={img.id}
+                      src={img.dataUrl}
+                      alt=""
+                      className="h-[60px] w-[60px] rounded-lg object-cover"
+                    />
+                  ))}
+                </div>
+              )}
+              {pendingUserAudio && (
+                <div className="flex items-center gap-1.5 bg-muted rounded-full px-3 py-1.5 text-xs opacity-70">
+                  <Mic className="h-3 w-3" />
+                  <span>{formatDuration(pendingUserAudio.duration)}</span>
+                </div>
+              )}
+              {pendingUserMessage && (
+                <div className="max-w-[80%] rounded-2xl px-4 py-2 bg-primary text-primary-foreground">
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{pendingUserMessage}</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -102,4 +125,10 @@ export function MessageList({ isReadOnly }: { isReadOnly?: boolean }) {
       </ScrollArea>
     </div>
   );
+}
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }

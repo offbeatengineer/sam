@@ -1,5 +1,7 @@
 import type { SessionEntry, ToolResultMessage } from "@/types/session";
 import { MessageEntryView } from "./MessageEntryView";
+import { AudioPlayer } from "./AudioPlayer";
+import { buildUploadUrl } from "@/lib/uploadUrl";
 
 interface SessionEntryRendererProps {
   entry: SessionEntry;
@@ -70,8 +72,21 @@ export function SessionEntryRenderer({ entry, toolResults }: SessionEntryRendere
         </div>
       );
 
+    case "custom": {
+      if (entry.customType === "audio_attachment" && entry.data) {
+        const data = entry.data as { url?: string };
+        if (data.url) {
+          return (
+            <div className="flex justify-end">
+              <AudioPlayer src={buildUploadUrl(data.url)} />
+            </div>
+          );
+        }
+      }
+      return null;
+    }
+
     // Internal metadata entries — don't render
-    case "custom":
     case "label":
     case "session_info":
       return null;

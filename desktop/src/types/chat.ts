@@ -1,3 +1,9 @@
+export interface ChatAttachment {
+  type: "image" | "audio";
+  path: string;
+  mimeType: string;
+}
+
 export type ToolStatus = "pending" | "running" | "success" | "warning" | "error";
 
 export interface ToolExecution {

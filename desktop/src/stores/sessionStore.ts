@@ -89,6 +89,8 @@ interface SessionState {
   streamingSessionId: string | null;
   streamingTurn: StreamingTurn | null;
   pendingUserMessage: string | null;
+  pendingUserImages: Array<{ id: string; dataUrl: string }>;
+  pendingUserAudio: { duration: number } | null;
 
   // Actions
   loadSessions: () => Promise<void>;
@@ -104,7 +106,11 @@ interface SessionState {
   unarchiveSession: (sessionPath: string) => Promise<void>;
 
   // Streaming
-  setPendingUserMessage: (text: string) => void;
+  setPendingUserMessage: (
+    text: string,
+    images?: Array<{ id: string; dataUrl: string }>,
+    audio?: { duration: number } | null,
+  ) => void;
   beginStreaming: (sessionId: string) => void;
   appendTextDelta: (delta: string) => void;
   appendThinkingDelta: (delta: string) => void;
@@ -142,6 +148,8 @@ export const useSessionStore = create<SessionState>()(
     streamingSessionId: null,
     streamingTurn: null,
     pendingUserMessage: null,
+    pendingUserImages: [],
+    pendingUserAudio: null,
 
     loadSessions: async () => {
       const response = await requestResponse({ type: "list_sessions" });
@@ -294,8 +302,16 @@ export const useSessionStore = create<SessionState>()(
     },
 
     // Streaming
-    setPendingUserMessage: (text: string) => {
-      set({ pendingUserMessage: text });
+    setPendingUserMessage: (
+      text: string,
+      images?: Array<{ id: string; dataUrl: string }>,
+      audio?: { duration: number } | null,
+    ) => {
+      set({
+        pendingUserMessage: text,
+        pendingUserImages: images ?? [],
+        pendingUserAudio: audio ?? null,
+      });
     },
 
     beginStreaming: (sessionId: string) => {
@@ -403,6 +419,8 @@ export const useSessionStore = create<SessionState>()(
         streamingSessionId: null,
         streamingTurn: null,
         pendingUserMessage: null,
+        pendingUserImages: [],
+        pendingUserAudio: null,
       });
       // Refresh entries from JSONL
       get().refreshActiveSession();
@@ -421,6 +439,8 @@ export const useSessionStore = create<SessionState>()(
         streamingSessionId: null,
         streamingTurn: null,
         pendingUserMessage: null,
+        pendingUserImages: [],
+        pendingUserAudio: null,
       });
     },
 
@@ -436,6 +456,7 @@ export const useSessionStore = create<SessionState>()(
 // ======================== Derived Hooks ========================
 
 const EMPTY_ENTRIES: SessionEntry[] = [];
+const EMPTY_IMAGES: Array<{ id: string; dataUrl: string }> = [];
 
 export function useActiveEntries() {
   return useSessionStore((state) => state.activeEntries ?? EMPTY_ENTRIES);
@@ -456,6 +477,18 @@ export function useStreamingTurn() {
 export function usePendingUserMessage() {
   return useSessionStore((state) =>
     state.streamingSessionId === state.activeSessionId ? state.pendingUserMessage : null,
+  );
+}
+
+export function usePendingUserImages() {
+  return useSessionStore((state) =>
+    state.streamingSessionId === state.activeSessionId ? state.pendingUserImages : EMPTY_IMAGES,
+  );
+}
+
+export function usePendingUserAudio() {
+  return useSessionStore((state) =>
+    state.streamingSessionId === state.activeSessionId ? state.pendingUserAudio : null,
   );
 }
 

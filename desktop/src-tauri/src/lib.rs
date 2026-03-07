@@ -1,6 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -8,6 +9,15 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 // ---------------------------------------------------------------------------
 // Protocol types (mirrors agent/src/protocol.ts)
 // ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChatAttachment {
+    #[serde(rename = "type")]
+    attachment_type: String, // "image" or "audio"
+    path: String,
+    #[serde(rename = "mimeType")]
+    mime_type: String,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
@@ -19,6 +29,8 @@ pub enum AppRequest {
         #[serde(rename = "conversationId")]
         conversation_id: String,
         text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attachments: Option<Vec<ChatAttachment>>,
     },
     #[serde(rename = "abort")]
     Abort {
@@ -30,6 +42,23 @@ pub enum AppRequest {
         #[serde(rename = "conversationId")]
         conversation_id: String,
     },
+}
+
+// ---------------------------------------------------------------------------
+// Audio recording types
+// ---------------------------------------------------------------------------
+
+struct RecordingHandle {
+    stop_tx: std::sync::mpsc::Sender<()>,
+    join_handle: std::thread::JoinHandle<Result<RecordingResult, String>>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct RecordingResult {
+    path: String,
+    duration: f64,
+    #[serde(rename = "mimeType")]
+    mime_type: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +78,7 @@ pub struct AppState {
     sam_url: Mutex<Option<String>>,
     auto_reconnect: Mutex<bool>,
     connect_lock: Mutex<()>,
+    recording: StdMutex<Option<RecordingHandle>>,
 }
 
 impl Default for AppState {
@@ -59,6 +89,7 @@ impl Default for AppState {
             sam_url: Mutex::new(None),
             auto_reconnect: Mutex::new(false),
             connect_lock: Mutex::new(()),
+            recording: StdMutex::new(None),
         }
     }
 }
@@ -244,12 +275,14 @@ async fn send_chat(
     conversation_id: String,
     message: String,
     request_id: String,
+    attachments: Option<Vec<ChatAttachment>>,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let request = AppRequest::Chat {
         request_id,
         conversation_id,
         text: message,
+        attachments,
     };
     send_request(&state, &request).await
 }
@@ -291,6 +324,198 @@ async fn send_raw(
     } else {
         Err("Not connected to sam".into())
     }
+}
+
+// ---------------------------------------------------------------------------
+// Audio recording commands
+// ---------------------------------------------------------------------------
+
+fn recording_thread(stop_rx: std::sync::mpsc::Receiver<()>) -> Result<RecordingResult, String> {
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+    use cpal::SampleFormat;
+
+    let host = cpal::default_host();
+    let device = host
+        .default_input_device()
+        .ok_or("No audio input device found")?;
+    let supported_config = device
+        .default_input_config()
+        .map_err(|e| format!("No input config: {e}"))?;
+
+    let sample_rate = supported_config.sample_rate().0;
+    let channels = supported_config.channels() as u16;
+    let config: cpal::StreamConfig = supported_config.clone().into();
+
+    let samples: Arc<StdMutex<Vec<f32>>> = Arc::new(StdMutex::new(Vec::new()));
+    let samples_ref = samples.clone();
+
+    fn err_fn(err: cpal::StreamError) {
+        eprintln!("[tauri] Recording stream error: {err}");
+    }
+
+    let stream = match supported_config.sample_format() {
+        SampleFormat::F32 => {
+            let s = samples_ref;
+            device.build_input_stream(
+                &config,
+                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    s.lock().unwrap().extend_from_slice(data);
+                },
+                err_fn,
+                None,
+            )
+        }
+        SampleFormat::I16 => {
+            let s = samples_ref;
+            device.build_input_stream(
+                &config,
+                move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                    let floats: Vec<f32> =
+                        data.iter().map(|&v| v as f32 / i16::MAX as f32).collect();
+                    s.lock().unwrap().extend_from_slice(&floats);
+                },
+                err_fn,
+                None,
+            )
+        }
+        other => return Err(format!("Unsupported sample format: {other:?}")),
+    }
+    .map_err(|e| format!("Failed to build input stream: {e}"))?;
+
+    stream
+        .play()
+        .map_err(|e| format!("Failed to start recording: {e}"))?;
+
+    // Block until stop signal
+    let _ = stop_rx.recv();
+    drop(stream);
+
+    let samples = samples.lock().unwrap();
+    let duration = samples.len() as f64 / (sample_rate as f64 * channels as f64);
+
+    // Write WAV to temp file
+    let filename = format!(
+        "sam_rec_{}.wav",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    );
+    let path = std::env::temp_dir().join(filename);
+
+    let spec = hound::WavSpec {
+        channels,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer =
+        hound::WavWriter::create(&path, spec).map_err(|e| format!("Failed to create WAV: {e}"))?;
+
+    for &sample in samples.iter() {
+        let clamped = sample.clamp(-1.0, 1.0);
+        writer
+            .write_sample((clamped * i16::MAX as f32) as i16)
+            .map_err(|e| format!("WAV write error: {e}"))?;
+    }
+    writer
+        .finalize()
+        .map_err(|e| format!("WAV finalize error: {e}"))?;
+
+    Ok(RecordingResult {
+        path: path.to_string_lossy().to_string(),
+        duration,
+        mime_type: "audio/wav".to_string(),
+    })
+}
+
+#[tauri::command]
+fn start_recording(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    let mut recording = state.recording.lock().map_err(|e| e.to_string())?;
+    if recording.is_some() {
+        return Err("Already recording".into());
+    }
+
+    let (stop_tx, stop_rx) = std::sync::mpsc::channel();
+    let join_handle = std::thread::spawn(move || recording_thread(stop_rx));
+
+    *recording = Some(RecordingHandle {
+        stop_tx,
+        join_handle,
+    });
+    println!("[tauri] Recording started");
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_recording(state: State<'_, Arc<AppState>>) -> Result<RecordingResult, String> {
+    let handle = {
+        let mut recording = state.recording.lock().map_err(|e| e.to_string())?;
+        recording.take().ok_or("Not recording")?
+    };
+
+    let _ = handle.stop_tx.send(());
+    let result = handle
+        .join_handle
+        .join()
+        .map_err(|_| "Recording thread panicked".to_string())?;
+    println!("[tauri] Recording stopped");
+    result
+}
+
+// ---------------------------------------------------------------------------
+// File upload (from Rust to bypass CORS)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize)]
+struct UploadResult {
+    id: String,
+    path: String,
+    #[serde(rename = "mimeType")]
+    mime_type: String,
+}
+
+#[tauri::command]
+async fn upload_file(
+    file_path: String,
+    upload_url: String,
+    api_key: Option<String>,
+    mime_type: String,
+) -> Result<UploadResult, String> {
+    let file_data = tokio::fs::read(&file_path)
+        .await
+        .map_err(|e| format!("Failed to read file: {e}"))?;
+
+    let client = reqwest::Client::new();
+    let mut request = client
+        .post(&upload_url)
+        .header("Content-Type", &mime_type)
+        .body(file_data);
+
+    if let Some(key) = api_key {
+        request = request.bearer_auth(key);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Upload failed: {e}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Upload failed: {status} {body}"));
+    }
+
+    let result: UploadResult = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse upload response: {e}"))?;
+
+    // Clean up temp file
+    let _ = tokio::fs::remove_file(&file_path).await;
+
+    Ok(result)
 }
 
 // ---------------------------------------------------------------------------
@@ -340,6 +565,9 @@ pub fn run() {
             close_session,
             abort_turn,
             send_raw,
+            start_recording,
+            stop_recording,
+            upload_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

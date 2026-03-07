@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AppResponse } from "@/types/chat";
+import type { AppResponse, ChatAttachment } from "@/types/chat";
 
 // Request ID counter for correlation
 let requestCounter = 0;
@@ -42,9 +42,15 @@ export async function isConnected(): Promise<boolean> {
 export async function sendChat(
   conversationId: string,
   message: string,
+  attachments?: ChatAttachment[],
 ): Promise<string> {
   const requestId = generateRequestId();
-  await invoke("send_chat", { conversationId, message, requestId });
+  await invoke("send_chat", {
+    conversationId,
+    message,
+    requestId,
+    attachments: attachments && attachments.length > 0 ? attachments : null,
+  });
   return requestId;
 }
 

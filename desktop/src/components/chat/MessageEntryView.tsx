@@ -11,7 +11,11 @@ import type {
   UserMessage,
   BashExecutionMessage,
   CustomMessage,
+  ImageContent,
+  AudioRefContent,
 } from "@/types/session";
+import { buildUploadUrl } from "@/lib/uploadUrl";
+import { AudioPlayer } from "./AudioPlayer";
 import { ThinkingDisplay } from "./ThinkingDisplay";
 import { ToolCard } from "./ToolCard";
 import { ArtifactCard } from "./ArtifactCard";
@@ -62,19 +66,52 @@ export function MessageEntryView({ entry, toolResults }: MessageEntryViewProps) 
 }
 
 function UserMessageView({ message }: { message: UserMessage }) {
-  const text =
-    typeof message.content === "string"
-      ? message.content
-      : message.content
-          .filter((c): c is TextContent => c.type === "text")
-          .map((c) => c.text)
-          .join("\n");
+  if (typeof message.content === "string") {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[80%] rounded-2xl px-4 py-2 bg-primary text-primary-foreground">
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const images = message.content.filter((c): c is ImageContent => c.type === "image");
+  const audioRefs = message.content.filter((c): c is AudioRefContent => c.type === "audio_ref");
+  const text = message.content
+    .filter((c): c is TextContent => c.type === "text")
+    .map((c) => c.text)
+    .join("\n");
 
   return (
-    <div className="flex justify-end">
-      <div className="max-w-[80%] rounded-2xl px-4 py-2 bg-primary text-primary-foreground">
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
-      </div>
+    <div className="flex flex-col items-end gap-1.5">
+      {images.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap justify-end max-w-[80%]">
+          {images.map((img, i) => {
+            const src = img.url
+              ? buildUploadUrl(img.url)
+              : img.data
+                ? `data:${img.mimeType};base64,${img.data}`
+                : undefined;
+            return src ? (
+              <img
+                key={i}
+                src={src}
+                alt=""
+                className="rounded-lg max-w-[220px] max-h-[220px] object-cover"
+              />
+            ) : null;
+          })}
+        </div>
+      )}
+      {audioRefs.map((a, i) => (
+        <AudioPlayer key={`audio-${i}`} src={buildUploadUrl(a.url)} />
+      ))}
+      {text && (
+        <div className="max-w-[80%] rounded-2xl px-4 py-2 bg-primary text-primary-foreground">
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
+        </div>
+      )}
     </div>
   );
 }

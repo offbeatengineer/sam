@@ -66,8 +66,14 @@ export interface ThinkingContent {
 
 export interface ImageContent {
   type: "image";
-  data: string;
+  data?: string;
   mimeType: string;
+  url?: string;
+}
+
+export interface AudioRefContent {
+  type: "audio_ref";
+  url: string;
 }
 
 export interface ToolCall {
@@ -99,7 +105,7 @@ export interface Usage {
 
 export interface UserMessage {
   role: "user";
-  content: string | (TextContent | ImageContent)[];
+  content: string | (TextContent | ImageContent | AudioRefContent)[];
   timestamp: number;
 }
 
