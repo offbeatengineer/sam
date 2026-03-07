@@ -17,6 +17,11 @@ struct ChatMessageItem: Identifiable {
         case artifactCard(toolCallId: String, toolName: String, title: String, artifactPath: String?)
         case webSearchResults(WebSearchDetails)
         case webFetchPage(WebFetchDetails)
+        case memoryCard(MemoryCardDetails)
+        case memoryRecall(MemoryRecallDetails)
+        case sessionSearchCard(SessionSearchDetails2)
+        case sessionReadCard(SessionReadDetails)
+        case kitCreateCard(KitCreateDetails)
         case systemEvent(String)
         case imageAttachment(UIImage, caption: String?)
         case remoteImageAttachment(remotePath: String, caption: String?)
@@ -64,6 +69,69 @@ struct WebFetchDetails {
     let favicon: String?
     let contentLength: Int
     let truncated: Bool
+}
+
+// MARK: - Memory tool detail structs
+
+struct MemoryCardDetails {
+    let id: String
+    let text: String?
+    let tags: [String]
+    let action: String  // "saved", "updated", "forgotten"
+}
+
+struct MemoryRecallDetails {
+    let query: String
+    let results: [MemoryRecallItem]
+}
+
+struct MemoryRecallItem {
+    let id: String
+    let text: String
+    let tags: [String]
+    let source: String?
+    let score: Double?
+}
+
+// MARK: - Session tool detail structs
+
+struct SessionSearchDetails2 {
+    let query: String
+    let results: [SessionSearchItem]
+}
+
+struct SessionSearchItem {
+    let text: String
+    let role: String
+    let score: Double
+    let sessionName: String
+    let conversationId: String
+    let channelId: String
+    let timestamp: Double
+}
+
+struct SessionReadDetails {
+    let sessionName: String
+    let conversationId: String
+    let messages: [SessionReadMessage]
+    let totalMessages: Int
+}
+
+struct SessionReadMessage {
+    let role: String
+    let text: String
+    let timestamp: Double
+}
+
+// MARK: - Kit tool detail structs
+
+struct KitCreateDetails {
+    let kitId: String
+    let name: String
+    let description: String
+    let icon: String
+    let version: String
+    let enabled: Bool
 }
 
 // MARK: - Building chat items from session entries
@@ -199,6 +267,51 @@ extension ChatMessageItem {
                                 timestamp: ts,
                                 content: .webFetchPage(parsed)
                             ))
+                        } else if (name == "memory_save" || name == "memory_update" || name == "memory_forget"),
+                                  let details = result?.details,
+                                  let parsed = Self.parseMemoryCardDetails(details) {
+                            items.append(ChatMessageItem(
+                                id: "\(entry.id)-\(block.id)",
+                                isUser: false,
+                                timestamp: ts,
+                                content: .memoryCard(parsed)
+                            ))
+                        } else if name == "manage_kit",
+                                  let details = result?.details,
+                                  let parsed = Self.parseKitCreateDetails(details) {
+                            items.append(ChatMessageItem(
+                                id: "\(entry.id)-\(block.id)",
+                                isUser: false,
+                                timestamp: ts,
+                                content: .kitCreateCard(parsed)
+                            ))
+                        } else if name == "memory_recall",
+                                  let resultText = result?.content,
+                                  let parsed = Self.parseMemoryRecallResult(resultText, args: arguments) {
+                            items.append(ChatMessageItem(
+                                id: "\(entry.id)-\(block.id)",
+                                isUser: false,
+                                timestamp: ts,
+                                content: .memoryRecall(parsed)
+                            ))
+                        } else if name == "session_search",
+                                  let resultText = result?.content,
+                                  let parsed = Self.parseSessionSearchResult(resultText, args: arguments) {
+                            items.append(ChatMessageItem(
+                                id: "\(entry.id)-\(block.id)",
+                                isUser: false,
+                                timestamp: ts,
+                                content: .sessionSearchCard(parsed)
+                            ))
+                        } else if name == "session_read",
+                                  let resultText = result?.content,
+                                  let parsed = Self.parseSessionReadResult(resultText) {
+                            items.append(ChatMessageItem(
+                                id: "\(entry.id)-\(block.id)",
+                                isUser: false,
+                                timestamp: ts,
+                                content: .sessionReadCard(parsed)
+                            ))
                         } else {
                             // Truncate long results for historical display
                             let resultText = result?.content ?? ""
@@ -310,6 +423,48 @@ extension ChatMessageItem {
                         timestamp: now,
                         content: .webFetchPage(parsed)
                     ))
+                } else if (tool.toolName == "memory_save" || tool.toolName == "memory_update" || tool.toolName == "memory_forget") && tool.isDone,
+                          let details = tool.details,
+                          let parsed = parseMemoryCardDetails(details) {
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .memoryCard(parsed)
+                    ))
+                } else if tool.toolName == "manage_kit" && tool.isDone,
+                          let details = tool.details,
+                          let parsed = parseKitCreateDetails(details) {
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .kitCreateCard(parsed)
+                    ))
+                } else if tool.toolName == "memory_recall" && tool.isDone,
+                          let parsed = parseMemoryRecallResult(tool.result, args: tool.args) {
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .memoryRecall(parsed)
+                    ))
+                } else if tool.toolName == "session_search" && tool.isDone,
+                          let parsed = parseSessionSearchResult(tool.result, args: tool.args) {
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .sessionSearchCard(parsed)
+                    ))
+                } else if tool.toolName == "session_read" && tool.isDone,
+                          let parsed = parseSessionReadResult(tool.result) {
+                    result.append(ChatMessageItem(
+                        id: "streaming-tool-\(tool.toolCallId)",
+                        isUser: false,
+                        timestamp: now,
+                        content: .sessionReadCard(parsed)
+                    ))
                 } else {
                     result.append(ChatMessageItem(
                         id: "streaming-tool-\(tool.toolCallId)",
@@ -362,6 +517,103 @@ extension ChatMessageItem {
             favicon: dict["favicon"] as? String,
             contentLength: dict["contentLength"] as? Int ?? 0,
             truncated: dict["truncated"] as? Bool ?? false
+        )
+    }
+
+    // MARK: - Memory tool detail parsing
+
+    private static func parseMemoryCardDetails(_ details: AnyCodable) -> MemoryCardDetails? {
+        guard let dict = details.value as? [String: Any],
+              let action = dict["action"] as? String,
+              let id = dict["id"] as? String else { return nil }
+
+        return MemoryCardDetails(
+            id: id,
+            text: dict["text"] as? String,
+            tags: dict["tags"] as? [String] ?? [],
+            action: action
+        )
+    }
+
+    private static func parseMemoryRecallResult(_ resultText: String, args: AnyCodable) -> MemoryRecallDetails? {
+        guard !resultText.isEmpty,
+              let data = resultText.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawResults = json["results"] as? [[String: Any]] else { return nil }
+
+        let query = (args.value as? [String: Any])?["query"] as? String ?? ""
+        let results = rawResults.map { r in
+            MemoryRecallItem(
+                id: r["id"] as? String ?? "",
+                text: r["text"] as? String ?? "",
+                tags: r["tags"] as? [String] ?? [],
+                source: r["source"] as? String,
+                score: r["score"] as? Double
+            )
+        }
+        return MemoryRecallDetails(query: query, results: results)
+    }
+
+    // MARK: - Session tool detail parsing
+
+    private static func parseSessionSearchResult(_ resultText: String, args: AnyCodable) -> SessionSearchDetails2? {
+        guard !resultText.isEmpty,
+              let data = resultText.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawResults = json["results"] as? [[String: Any]] else { return nil }
+
+        let query = (args.value as? [String: Any])?["query"] as? String ?? ""
+        let results = rawResults.map { r in
+            SessionSearchItem(
+                text: r["text"] as? String ?? "",
+                role: r["role"] as? String ?? "",
+                score: r["score"] as? Double ?? 0,
+                sessionName: r["session_name"] as? String ?? r["sessionName"] as? String ?? "",
+                conversationId: r["conversation_id"] as? String ?? r["conversationId"] as? String ?? "",
+                channelId: r["channel_id"] as? String ?? r["channelId"] as? String ?? "",
+                timestamp: r["timestamp"] as? Double ?? 0
+            )
+        }
+        return SessionSearchDetails2(query: query, results: results)
+    }
+
+    private static func parseSessionReadResult(_ resultText: String) -> SessionReadDetails? {
+        guard !resultText.isEmpty,
+              let data = resultText.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+
+        let rawMessages = json["messages"] as? [[String: Any]] ?? []
+        let messages = rawMessages.map { m in
+            SessionReadMessage(
+                role: m["role"] as? String ?? "",
+                text: m["text"] as? String ?? "",
+                timestamp: m["timestamp"] as? Double ?? 0
+            )
+        }
+        return SessionReadDetails(
+            sessionName: json["session_name"] as? String ?? json["sessionName"] as? String ?? "",
+            conversationId: json["conversation_id"] as? String ?? json["conversationId"] as? String ?? "",
+            messages: messages,
+            totalMessages: json["total_messages"] as? Int ?? json["totalMessages"] as? Int ?? messages.count
+        )
+    }
+
+    // MARK: - Kit tool detail parsing
+
+    private static func parseKitCreateDetails(_ details: AnyCodable) -> KitCreateDetails? {
+        guard let dict = details.value as? [String: Any],
+              let action = dict["action"] as? String, action == "created",
+              let manifest = dict["manifest"] as? [String: Any],
+              let kitId = manifest["id"] as? String,
+              let name = manifest["name"] as? String else { return nil }
+
+        return KitCreateDetails(
+            kitId: kitId,
+            name: name,
+            description: manifest["description"] as? String ?? "",
+            icon: manifest["icon"] as? String ?? "sparkles",
+            version: manifest["version"] as? String ?? "1.0.0",
+            enabled: manifest["enabled"] as? Bool ?? true
         )
     }
 

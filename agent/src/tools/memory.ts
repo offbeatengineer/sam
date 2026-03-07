@@ -34,12 +34,10 @@ export function createMemorySaveTool(config?: MemoryConfig): AgentTool {
       try {
         const store = await MemoryStore.getInstance(config);
         const id = await store.save(params.text, params.tags, params.source);
-        return jsonResult({
-          saved: true,
-          id,
-          text: params.text,
-          tags: params.tags ?? [],
-        });
+        return {
+          content: [{ type: "text", text: `Successfully saved to memory (${params.text.length} chars).` }],
+          details: { action: "saved", id, text: params.text, tags: params.tags ?? [] },
+        };
       } catch (err) {
         return errorResult(
           `Failed to save memory: ${err instanceof Error ? err.message : String(err)}`,
@@ -124,7 +122,10 @@ export function createMemoryUpdateTool(config?: MemoryConfig): AgentTool {
         const store = await MemoryStore.getInstance(config);
         const updated = await store.update(params.id, params.text, params.tags);
         if (updated) {
-          return jsonResult({ updated: true, id: params.id, text: params.text, tags: params.tags ?? [] });
+          return {
+            content: [{ type: "text", text: `Successfully updated memory ${params.id}.` }],
+            details: { action: "updated", id: params.id, text: params.text, tags: params.tags ?? [] },
+          };
         } else {
           return errorResult(`Memory with id '${params.id}' not found.`);
         }
@@ -161,7 +162,10 @@ export function createMemoryForgetTool(config?: MemoryConfig): AgentTool {
         const store = await MemoryStore.getInstance(config);
         const forgotten = await store.forget(params.id);
         if (forgotten) {
-          return jsonResult({ forgotten: true, id: params.id });
+          return {
+            content: [{ type: "text", text: `Successfully forgot memory ${params.id}.` }],
+            details: { action: "forgotten", id: params.id },
+          };
         } else {
           return errorResult(`Memory with id '${params.id}' not found.`);
         }

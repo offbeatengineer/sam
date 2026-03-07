@@ -45,7 +45,7 @@ export function createKitTool(kitsServer: KitsServer, kitsDir: string): AgentToo
       "trophy, users, wallet, wrench, zap.",
     parameters: Parameters,
 
-    async execute(_toolCallId: string, raw: unknown): Promise<AgentToolResult<undefined>> {
+    async execute(_toolCallId: string, raw: unknown): Promise<AgentToolResult<any>> {
       const params = raw as Params;
 
       switch (params.action) {
@@ -87,7 +87,10 @@ export function createKitTool(kitsServer: KitsServer, kitsDir: string): AgentToo
           };
           scaffoldFromTemplate(templateDir, kitDir, vars);
 
-          return ok(`Kit "${params.kitId}" scaffolded at ${kitDir}. Now use the coding-agent skill with cwd=${kitDir} to implement the kit's functionality. After coding is done, call 'build' then 'reload' to make it live.`);
+          return {
+            content: [{ type: "text", text: `Kit "${params.kitId}" scaffolded at ${kitDir}. Now use the coding-agent skill with cwd=${kitDir} to implement the kit's functionality. After coding is done, call 'build' then 'reload' to make it live.` }],
+            details: { action: "created", manifest },
+          };
         }
 
         case "build": {
@@ -135,7 +138,7 @@ async function toggleKit(
   kitsServer: KitsServer,
   kitId: string,
   enabled: boolean,
-): Promise<AgentToolResult<undefined>> {
+): Promise<AgentToolResult<any>> {
   const manifestPath = resolve(kitsDir, kitId, "kit.json");
   if (!existsSync(manifestPath)) {
     return err(`Kit "${kitId}" does not exist`);
@@ -154,11 +157,11 @@ async function toggleKit(
   return ok(`Kit "${kitId}" ${enabled ? "enabled" : "disabled"}.`);
 }
 
-function ok(text: string): AgentToolResult<undefined> {
+function ok(text: string): AgentToolResult<any> {
   return { content: [{ type: "text", text }], details: undefined };
 }
 
-function err(text: string): AgentToolResult<undefined> {
+function err(text: string): AgentToolResult<any> {
   return { content: [{ type: "text", text: `Error: ${text}` }], details: undefined };
 }
 

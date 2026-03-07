@@ -68,6 +68,12 @@
 		F7B4CC6800E822C5C1A6E4E5 /* Kit.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD2A6886BB4BA3D1164FC74A /* Kit.swift */; };
 		FC4C7F9236EC01BDC5729887 /* MemoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694B3899E4A9738F6DCF5482 /* MemoryListView.swift */; };
 		AA1111111111111111111111 /* SessionSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2222222222222222222222 /* SessionSearchViewModel.swift */; };
+		BB3333333333333333333301 /* MemoryCardCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4444444444444444444401 /* MemoryCardCell.swift */; };
+		BB3333333333333333333302 /* MemoryRecallCardCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4444444444444444444402 /* MemoryRecallCardCell.swift */; };
+		BB3333333333333333333303 /* SessionSearchCardCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4444444444444444444403 /* SessionSearchCardCell.swift */; };
+		BB3333333333333333333304 /* SessionReadCardCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4444444444444444444404 /* SessionReadCardCell.swift */; };
+		BB3333333333333333333305 /* KitCreateCardCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4444444444444444444405 /* KitCreateCardCell.swift */; };
+		BB3333333333333333333306 /* SessionPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4444444444444444444406 /* SessionPreviewSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -151,6 +157,12 @@
 		F96D7B84757BE5AAEAE195B7 /* MemoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryDetailView.swift; sourceTree = "<group>"; };
 		FD2A6886BB4BA3D1164FC74A /* Kit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kit.swift; sourceTree = "<group>"; };
 		AA2222222222222222222222 /* SessionSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSearchViewModel.swift; sourceTree = "<group>"; };
+		BB4444444444444444444401 /* MemoryCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryCardCell.swift; sourceTree = "<group>"; };
+		BB4444444444444444444402 /* MemoryRecallCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryRecallCardCell.swift; sourceTree = "<group>"; };
+		BB4444444444444444444403 /* SessionSearchCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSearchCardCell.swift; sourceTree = "<group>"; };
+		BB4444444444444444444404 /* SessionReadCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionReadCardCell.swift; sourceTree = "<group>"; };
+		BB4444444444444444444405 /* KitCreateCardCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitCreateCardCell.swift; sourceTree = "<group>"; };
+		BB4444444444444444444406 /* SessionPreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPreviewSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -330,8 +342,14 @@
 				6027452D7B2464F82D678BF6 /* AudioPlayerManager.swift */,
 				7F1450D15AEE9188683EDB74 /* ChatContainerView.swift */,
 				E059E5A0B07F4934A509FF6A /* ChatInputBar.swift */,
+				BB4444444444444444444405 /* KitCreateCardCell.swift */,
 				2937D9B1AB07A036F2194DAD /* MarkdownMessageCell.swift */,
+				BB4444444444444444444401 /* MemoryCardCell.swift */,
+				BB4444444444444444444402 /* MemoryRecallCardCell.swift */,
 				69E3E183983A1ED2009B662D /* SessionArtifactsView.swift */,
+				BB4444444444444444444404 /* SessionReadCardCell.swift */,
+				BB4444444444444444444403 /* SessionSearchCardCell.swift */,
+				BB4444444444444444444406 /* SessionPreviewSheet.swift */,
 				0B7661AC76850BC968068A17 /* SessionStatsSheet.swift */,
 				3A4C55329C55EC71C34652F7 /* SlideToCancelText.swift */,
 				2DFD64F68F144F21CCDDBFF7 /* StreamingDotsView.swift */,
@@ -510,14 +528,17 @@
 				F170ED23C659BB0655F01796 /* ContentView.swift in Sources */,
 				369C73CAC1246ED0DC3A32E7 /* KeychainHelper.swift in Sources */,
 				F7B4CC6800E822C5C1A6E4E5 /* Kit.swift in Sources */,
+				BB3333333333333333333305 /* KitCreateCardCell.swift in Sources */,
 				571ECFB8AEA186A6E0358423 /* KitDetailView.swift in Sources */,
 				27E25095F1F7732F7615D882 /* KitListView.swift in Sources */,
 				17691089F867463F6E3070EE /* KitViewModel.swift in Sources */,
 				EFA1F72F328ED317A0EC1B9D /* MainTabView.swift in Sources */,
 				88BF22CA3F42A40485BD4783 /* MarkdownMessageCell.swift in Sources */,
 				CFF247FEBB7B5BBC99EE0BB0 /* Memory.swift in Sources */,
+				BB3333333333333333333301 /* MemoryCardCell.swift in Sources */,
 				4FC4AC3C39F813F749FC797B /* MemoryDetailView.swift in Sources */,
 				FC4C7F9236EC01BDC5729887 /* MemoryListView.swift in Sources */,
+				BB3333333333333333333302 /* MemoryRecallCardCell.swift in Sources */,
 				DDF28A4A4AD6E7DE16874C91 /* MemoryViewModel.swift in Sources */,
 				916E2FC6A3A031D0A9CC5501 /* NewMemoryView.swift in Sources */,
 				AA1111111111111111111111 /* SessionSearchViewModel.swift in Sources */,
@@ -528,7 +549,10 @@
 				7F81ABECDB27D5E52EE20E8C /* SessionArtifactsView.swift in Sources */,
 				8D1D72E40623F74FE2A8DF89 /* SessionListView.swift in Sources */,
 				EFE0658179CFDCEC1D34C3AF /* SessionListViewModel.swift in Sources */,
+				BB3333333333333333333304 /* SessionReadCardCell.swift in Sources */,
 				EB74F381C1C4FA1782E8F4AA /* SessionRowView.swift in Sources */,
+				BB3333333333333333333303 /* SessionSearchCardCell.swift in Sources */,
+				BB3333333333333333333306 /* SessionPreviewSheet.swift in Sources */,
 				AC0B6AB0BC841060FFEF5ED0 /* SessionStatsSheet.swift in Sources */,
 				12E339DC8057B6995AD15DE0 /* SettingsView.swift in Sources */,
 				ACCF6784DD9928D266EDAE5D /* SettingsViewModel.swift in Sources */,

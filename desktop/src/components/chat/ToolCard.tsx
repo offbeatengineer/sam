@@ -48,6 +48,12 @@ function buildContent(tool: ToolExecution): string {
       if (path) parts.push(`edit ${shortenPath(path)}`);
       break;
     }
+    case "manage_kit": {
+      const action = (args?.action as string) ?? "manage";
+      const kitId = (args?.kitId as string) ?? "";
+      parts.push(`kit ${action} ${kitId}`);
+      break;
+    }
     default: {
       parts.push(tool.name);
       if (args && Object.keys(args).length > 0) {

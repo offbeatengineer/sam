@@ -8,6 +8,8 @@ struct ChatContainerView: View {
     @State private var showRename = false
     @State private var renameText = ""
     @State private var showSessionArtifacts = false
+    @State private var navigateToSession: SessionInfo?
+    @State private var highlightTimestamp: Double?
     let session: SessionInfo?
 
     private var isNewChat: Bool { session == nil }
@@ -84,6 +86,14 @@ struct ChatContainerView: View {
                     await appVM.sessionListVM.loadSessions(using: appVM)
                 }
             }
+        }
+        .sheet(item: $navigateToSession) { targetSession in
+            SessionPreviewSheet(
+                session: targetSession,
+                highlightTimestamp: highlightTimestamp,
+                onDismiss: { navigateToSession = nil }
+            )
+            .environment(appVM)
         }
         .task {
             if let session {
@@ -181,6 +191,21 @@ struct ChatContainerView: View {
 
         case .webFetchPage(let details):
             WebFetchCardCell(details: details)
+
+        case .memoryCard(let details):
+            MemoryCardCell(details: details)
+
+        case .memoryRecall(let details):
+            MemoryRecallCardCell(details: details)
+
+        case .sessionSearchCard(let details):
+            SessionSearchCardCell(details: details, onNavigate: handleSessionNavigate)
+
+        case .sessionReadCard(let details):
+            SessionReadCardCell(details: details, onNavigate: handleSessionNavigate)
+
+        case .kitCreateCard(let details):
+            KitCreateCardCell(details: details)
 
         case .streamingIndicator:
             StreamingDotsView()
@@ -367,6 +392,14 @@ struct ChatContainerView: View {
         return components.url
     }
 
+
+    // MARK: - Session navigation
+
+    private func handleSessionNavigate(_ conversationId: String, _ timestamp: Double) {
+        guard let match = appVM.sessionListVM.sessions.first(where: { $0.conversationId == conversationId }) else { return }
+        navigateToSession = match
+        highlightTimestamp = timestamp
+    }
 
     // MARK: - Read-only banner
 

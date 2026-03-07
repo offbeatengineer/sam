@@ -17,6 +17,11 @@ import { ToolCard } from "./ToolCard";
 import { ArtifactCard } from "./ArtifactCard";
 import { WebSearchCard } from "./WebSearchCard";
 import { WebFetchCard } from "./WebFetchCard";
+import { MemoryCard } from "./MemoryCard";
+import { MemoryRecallCard } from "./MemoryRecallCard";
+import { SessionSearchCard } from "./SessionSearchCard";
+import { SessionReadCard } from "./SessionReadCard";
+import { KitCreateCard } from "./KitCreateCard";
 
 interface MessageEntryViewProps {
   entry: SessionMessageEntry;
@@ -127,6 +132,31 @@ function AssistantMessageView({
           // Render WebFetchCard for web_fetch tool calls
           if (tc.name === "web_fetch" && result?.details) {
             return <WebFetchCard key={`webfetch-${tc.id}`} details={result.details as any} />;
+          }
+
+          // Render MemoryCard for memory_save/update/forget
+          if ((tc.name === "memory_save" || tc.name === "memory_update" || tc.name === "memory_forget") && result?.details) {
+            return <MemoryCard key={`memory-${tc.id}`} details={result.details as any} />;
+          }
+
+          // Render MemoryRecallCard for memory_recall
+          if (tc.name === "memory_recall" && result) {
+            return <MemoryRecallCard key={`memrecall-${tc.id}`} result={result as any} args={tc.arguments as Record<string, unknown>} />;
+          }
+
+          // Render SessionSearchCard for session_search
+          if (tc.name === "session_search" && result) {
+            return <SessionSearchCard key={`sessearch-${tc.id}`} result={result as any} args={tc.arguments as Record<string, unknown>} />;
+          }
+
+          // Render SessionReadCard for session_read
+          if (tc.name === "session_read" && result) {
+            return <SessionReadCard key={`sesread-${tc.id}`} result={result as any} />;
+          }
+
+          // Render KitCreateCard for manage_kit create
+          if (tc.name === "manage_kit" && result?.details) {
+            return <KitCreateCard key={`kit-${tc.id}`} details={result.details as any} />;
           }
 
           const resultText = result

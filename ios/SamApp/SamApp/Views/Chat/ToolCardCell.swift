@@ -116,6 +116,11 @@ struct ToolCardCell: View {
             let desc = args?["description"] as? String ?? "subagent"
             parts.append("agent: \(desc)")
 
+        case "manage_kit":
+            let action = args?["action"] as? String ?? "manage"
+            let kitId = args?["kitId"] as? String ?? ""
+            parts.append("kit \(action) \(kitId)")
+
         default:
             parts.append(tool.toolName)
             if let args, !args.isEmpty {
