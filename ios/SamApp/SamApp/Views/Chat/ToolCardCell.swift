@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let collapsedLineCount = 3
+private let collapsedLineCount = 2
 
 struct ToolCardCell: View {
     let tool: StreamingToolExecution
@@ -29,6 +29,7 @@ struct ToolCardCell: View {
                     Text(displayLines.dropFirst().joined(separator: "\n"))
                         .font(.caption.monospaced())
                         .foregroundStyle(tool.isError ? (isExpanded ? .red : Color.red.opacity(0.6)) : (isExpanded ? .primary : .secondary))
+                        .lineLimit(isExpanded ? nil : 1)
                 }
 
                 if isLong && !isExpanded {
