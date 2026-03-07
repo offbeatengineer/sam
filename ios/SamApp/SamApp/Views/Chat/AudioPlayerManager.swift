@@ -76,9 +76,10 @@ final class AudioPlayerManager: NSObject, AVAudioPlayerDelegate {
         Task {
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
+                let ext = url.pathExtension.isEmpty ? "aac" : url.pathExtension
                 let tempURL = FileManager.default.temporaryDirectory
                     .appendingPathComponent("audio-\(id.hashValue)")
-                    .appendingPathExtension("aac")
+                    .appendingPathExtension(ext)
                 try data.write(to: tempURL)
                 await MainActor.run {
                     self.play(id: id, url: tempURL)
