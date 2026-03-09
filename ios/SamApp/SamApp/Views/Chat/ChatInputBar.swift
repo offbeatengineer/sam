@@ -299,6 +299,7 @@ struct ChatInputBar: View {
         )
         guard !draft.text.isEmpty || !draft.imageData.isEmpty || draft.audioURL != nil else { return }
 
+        isFocused = false
         text = ""
         loadedImages = []
         selectedPhotos = []
