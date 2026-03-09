@@ -37,9 +37,8 @@ struct ArtifactBrowserView: View {
             }
         }
         .sheet(item: $artifactVM.selectedArtifact) { artifact in
-            NavigationStack {
-                ArtifactPreviewView(artifact: artifact)
-            }
+            ArtifactPreviewView(artifact: artifact)
+                .presentationDragIndicator(.visible)
         }
         .task {
             await appVM.artifactVM.loadArtifacts(using: appVM)

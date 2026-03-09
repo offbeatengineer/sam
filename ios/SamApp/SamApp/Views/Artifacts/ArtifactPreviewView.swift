@@ -33,6 +33,7 @@ struct ArtifactPreviewView: View {
                 ContentUnavailableView("No URL available", systemImage: "exclamationmark.triangle")
             }
         }
+        .ignoresSafeArea(edges: .bottom)
         .navigationTitle(artifact.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

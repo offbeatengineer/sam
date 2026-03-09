@@ -32,14 +32,13 @@ struct ArtifactCardCell: View {
             .buttonStyle(.plain)
             .sheet(isPresented: $showPreview) {
                 if let artifactPath {
-                    NavigationStack {
-                        ArtifactPreviewView(artifact: ArtifactFileEntry(
-                            name: (artifactPath as NSString).lastPathComponent,
-                            path: artifactPath,
-                            size: nil,
-                            isDirectory: false
-                        ))
-                    }
+                    ArtifactPreviewView(artifact: ArtifactFileEntry(
+                        name: (artifactPath as NSString).lastPathComponent,
+                        path: artifactPath,
+                        size: nil,
+                        isDirectory: false
+                    ))
+                    .presentationDragIndicator(.visible)
                 }
             }
             .sheet(isPresented: $showBrowser) {
