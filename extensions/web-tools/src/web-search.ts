@@ -1,6 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { jsonResult, errorResult, readCache, writeCache, wrapExternalContent, type Cache } from "./util.js";
+import { errorResult, readCache, writeCache, wrapExternalContent, type Cache } from "./util.js";
 
 const Parameters = Type.Object({
   query: Type.String({ description: "The search query" }),

@@ -1,0 +1,20 @@
+{
+  "name": "pi-web-tools",
+  "version": "0.1.0",
+  "description": "Web search and fetch tools for pi-coding-agent",
+  "type": "module",
+  "private": true,
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.12"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  }
+}

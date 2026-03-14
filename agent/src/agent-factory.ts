@@ -17,8 +17,7 @@ import {
 import { readFileSync, existsSync } from "node:fs";
 import { getSystemPrompt } from "./system-prompt.js";
 import { SAM_DIR, type SamConfig } from "./config.js";
-import { createWebSearchTool } from "./tools/web-search.js";
-import { createWebFetchTool } from "./tools/web-fetch.js";
+import { createWebSearchTool, createWebFetchTool } from "../../extensions/web-tools/src/index.js";
 import { createMemorySaveTool, createMemoryRecallTool, createMemoryUpdateTool, createMemoryForgetTool } from "./tools/memory.js";
 import { createSessionSearchTool } from "./tools/session-search.js";
 import { createSessionReadTool } from "./tools/session-read.js";

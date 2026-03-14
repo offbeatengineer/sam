@@ -5,12 +5,11 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
-    "rootDir": "src",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["bun-types"]
   },
-  "include": ["src"],
+  "include": ["src", "../extensions"],
   "exclude": ["src/kit-template"]
 }
