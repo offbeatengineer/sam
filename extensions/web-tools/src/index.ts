@@ -20,6 +20,12 @@ export default function webToolsExtension(pi: ExtensionAPI) {
 
   pi.registerTool({
     ...searchTool,
+    promptSnippet: "Search the web for current information, recent events, or topics you lack knowledge about.",
+    promptGuidelines: [
+      "Use web_search when you need up-to-date information beyond your training data.",
+      "Prefer specific, targeted queries over broad ones for better results.",
+      "Follow up with web_fetch to read the full content of promising search results.",
+    ],
     execute: async (toolCallId, params, signal, onUpdate, _ctx) =>
       searchTool.execute(toolCallId, params, signal, onUpdate),
 
@@ -64,6 +70,12 @@ export default function webToolsExtension(pi: ExtensionAPI) {
 
   pi.registerTool({
     ...fetchTool,
+    promptSnippet: "Fetch and extract readable text content from a web page URL.",
+    promptGuidelines: [
+      "Use web_fetch to read articles, documentation, or any web page found via web_search.",
+      "The default limit is 20,000 characters. Use the maxChars parameter to request more or less content.",
+      "Content is extracted using Readability — it works best on article-style pages.",
+    ],
     execute: async (toolCallId, params, signal, onUpdate, _ctx) =>
       fetchTool.execute(toolCallId, params, signal, onUpdate),
 
