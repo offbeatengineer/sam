@@ -71,7 +71,7 @@ export default function webToolsExtension(pi: ExtensionAPI) {
       if (isPartial) return new Text(theme.fg("muted", "Fetching…"), 0, 0);
 
       const details = result.details as
-        | { url: string; title: string; contentLength: number; truncated: boolean }
+        | { url: string; title: string; description?: string; contentLength: number; truncated: boolean }
         | undefined;
 
       if (!details) {
@@ -89,6 +89,10 @@ export default function webToolsExtension(pi: ExtensionAPI) {
           const styledTitle = theme.bold(title);
           const linkedTitle = `\x1b]8;;${details.url}\x1b\\${styledTitle}\x1b]8;;\x1b\\`;
           lines.push(truncateToWidth(`  ${linkedTitle}`, width));
+
+          if (details.description) {
+            lines.push(truncateToWidth(`  ${theme.fg("dim", details.description)}`, width));
+          }
 
           const meta: string[] = [];
           meta.push(`${details.contentLength} chars`);
