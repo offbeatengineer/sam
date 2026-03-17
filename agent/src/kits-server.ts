@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { Hono } from "hono";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { resolve, extname, normalize, relative } from "node:path";
 import { readFile, stat, readdir } from "node:fs/promises";
 
@@ -318,6 +318,12 @@ export class KitsServer extends EventEmitter {
   private ensureSharedLibrary(): void {
     // Always write AGENTS.md so it stays in sync with the codebase
     writeFileSync(resolve(this.kitsDir, "AGENTS.md"), readFileSync(AGENTS_MD_PATH, "utf-8"));
+
+    // Symlink CLAUDE.md -> AGENTS.md so Claude Code picks up kit guidelines
+    const claudeMdPath = resolve(this.kitsDir, "CLAUDE.md");
+    if (!existsSync(claudeMdPath)) {
+      symlinkSync("AGENTS.md", claudeMdPath);
+    }
   }
 
   /** Copy the latest kit bridge library into a kit's source tree. */

@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { KitsServer } from "../kits-server.js";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync, statSync, symlinkSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
 const Parameters = Type.Object({
@@ -86,6 +86,9 @@ export function createKitTool(kitsServer: KitsServer, kitsDir: string): AgentToo
             description: params.description ?? "A new kit",
           };
           scaffoldFromTemplate(templateDir, kitDir, vars);
+
+          // Symlink CLAUDE.md -> AGENTS.md so Claude Code picks up kit guidelines
+          symlinkSync("AGENTS.md", resolve(kitDir, "CLAUDE.md"));
 
           return {
             content: [{ type: "text", text: `Kit "${params.kitId}" scaffolded at ${kitDir}. Now use the coding-agent skill with cwd=${kitDir} to implement the kit's functionality. After coding is done, call 'build' then 'reload' to make it live.` }],
