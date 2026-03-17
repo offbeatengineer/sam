@@ -1,0 +1,1 @@
+It's pulse check time. Use it productively!~

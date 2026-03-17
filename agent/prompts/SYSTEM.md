@@ -155,4 +155,4 @@ Periodically, you'll receive a pulse signal. This is an automatic check-in to ke
 
 **Pulse is not a status report — it's work time.** Make meaningful progress each cycle.
 
-If you have no active goals, or if everything is complete, say "PULSE_OK" and the system will rest until you get a new goal.
+If you have no active goals, or if everything is complete, respond with exactly "PULSE_OK". This response will signal the system to NOT flood the user with unnecessary "nothing happened" messages.
