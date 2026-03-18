@@ -138,27 +138,27 @@ export async function createSession(config: SamConfig, key: SessionKey, kitsServ
   ];
 
   const customTools = [
-    createWebSearchTool(config.tools?.webSearch),
-    createWebFetchTool(),
-    createReportArtifactTool(),
+    { ...createWebSearchTool(config.tools?.webSearch), promptSnippet: "Search the web for current information, recent events, or topics." },
+    { ...createWebFetchTool(), promptSnippet: "Fetch and extract readable text content from a web page URL." },
+    { ...createReportArtifactTool(), promptSnippet: "Report an artifact written to ~/.sam/artifacts/ so the user can preview or open it." },
   ];
 
   // Add memory tools if enabled (default: true)
   if (config.memory?.enabled !== false && config.memory) {
     customTools.push(
-      createMemorySaveTool(config.memory),
-      createMemoryRecallTool(config.memory),
-      createMemoryUpdateTool(config.memory),
-      createMemoryForgetTool(config.memory),
-      createSessionSearchTool(config.memory),
-      createSessionReadTool(config.memory),
+      { ...createMemorySaveTool(config.memory), promptSnippet: "Save information to long-term memory for recall in future conversations." },
+      { ...createMemoryRecallTool(config.memory), promptSnippet: "Search long-term memory to recall user preferences, past decisions, or saved information." },
+      { ...createMemoryUpdateTool(config.memory), promptSnippet: "Update an existing memory entry by ID." },
+      { ...createMemoryForgetTool(config.memory), promptSnippet: "Delete a specific memory by ID when information is outdated or incorrect." },
+      { ...createSessionSearchTool(config.memory), promptSnippet: "Search past conversation sessions by semantic similarity." },
+      { ...createSessionReadTool(config.memory), promptSnippet: "Read messages from a past session by conversation ID." },
     );
   }
 
   // Add kit management tool if kits are enabled
   if (kitsServer && config.kits?.enabled !== false) {
     const kitsDir = config.kits?.dir ?? resolve(SAM_DIR, "kits");
-    customTools.push(createKitTool(kitsServer, kitsDir));
+    customTools.push({ ...createKitTool(kitsServer, kitsDir), promptSnippet: "Manage kits — create, build, reload, enable/disable, delete, or list mini-apps." });
   }
 
   const sessionManager = SessionManager.continueRecent(cwd, sessionDir);
