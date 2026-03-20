@@ -173,9 +173,19 @@ struct ChatContainerView: View {
         switch item.content {
         case .text(let text):
             userBubble(text)
+                .contextMenu {
+                    Button { UIPasteboard.general.string = text } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                }
 
         case .markdown(let text):
             MarkdownMessageCell(text: text)
+                .contextMenu {
+                    Button { UIPasteboard.general.string = text } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                }
 
         case .thinking(let text, let done):
             ThinkingCell(text: text, isDone: done)

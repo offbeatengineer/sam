@@ -156,12 +156,12 @@ extension ChatMessageItem {
         for entry in entries {
             guard let message = entry.message else {
                 // Non-message entries (model_change, compaction, etc.)
-                if let summary = entry.summary {
+                if entry.summary != nil {
                     items.append(ChatMessageItem(
                         id: entry.id,
                         isUser: false,
                         timestamp: parseTimestamp(entry.timestamp),
-                        content: .systemEvent(summary)
+                        content: .systemEvent("Context compacted")
                     ))
                 } else if let modelId = entry.modelId {
                     items.append(ChatMessageItem(
@@ -357,12 +357,12 @@ extension ChatMessageItem {
                     ))
                 ))
 
-            case .compactionSummary(let summary):
+            case .compactionSummary:
                 items.append(ChatMessageItem(
                     id: entry.id,
                     isUser: false,
                     timestamp: ts,
-                    content: .systemEvent(summary)
+                    content: .systemEvent("Context compacted")
                 ))
 
             case .other:
