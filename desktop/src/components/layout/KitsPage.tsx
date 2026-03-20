@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Package, ExternalLink, Power, PowerOff, Sparkles, Calculator, Calendar, Camera, MoreHorizontal,
+  Package, ExternalLink, ArrowLeft, Power, PowerOff, Sparkles, Calculator, Calendar, Camera, MoreHorizontal,
   BarChart3, LineChart, PieChart, ListChecks, Clock, Cloud, Code, Coins, Compass,
   Database, FileText, Folder, Gamepad2, Globe, GraduationCap, Heart, Home, Image,
   Inbox, Key, Layers, Lightbulb, Link, List, Mail, Map, Megaphone, MessageCircle,
@@ -133,6 +133,7 @@ function KitDetail({ kit }: { kit: KitInfo }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [bridgeTitle, setBridgeTitle] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<KitMenuItem[]>([]);
+  const [browsingUrl, setBrowsingUrl] = useState<string | null>(null);
 
   const triggerMenuAction = useCallback((actionId: string) => {
     iframeRef.current?.contentWindow?.postMessage(
@@ -157,6 +158,11 @@ function KitDetail({ kit }: { kit: KitInfo }) {
             );
           }
           break;
+        case "openUrl":
+          if (typeof event.data.url === "string") {
+            setBrowsingUrl(event.data.url);
+          }
+          break;
       }
     }
     window.addEventListener("message", onMessage);
@@ -167,67 +173,94 @@ function KitDetail({ kit }: { kit: KitInfo }) {
   useEffect(() => {
     setBridgeTitle(null);
     setMenuItems([]);
+    setBrowsingUrl(null);
   }, [kit.id]);
 
   return (
     <div className="flex flex-col flex-1 min-w-0">
       {/* Header */}
       <div data-tauri-drag-region className="h-12 border-b border-border shrink-0 flex items-center px-4 gap-3">
-        {getKitIcon(kit.icon)}
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium truncate">{bridgeTitle ?? kit.name}</h3>
-        </div>
+        {browsingUrl ? (
+          <>
+            <button
+              onClick={() => setBrowsingUrl(null)}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
+              title="Back to kit"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-medium truncate text-muted-foreground">{browsingUrl}</h3>
+            </div>
+          </>
+        ) : (
+          <>
+            {getKitIcon(kit.icon)}
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-medium truncate">{bridgeTitle ?? kit.name}</h3>
+            </div>
 
-        {/* Bridge menu items */}
-        {menuItems.length === 1 && (
-          <button
-            onClick={() => triggerMenuAction(menuItems[0].id)}
-            className={cn(
-              "flex items-center justify-center rounded-md hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors",
-              menuItems[0].icon ? "h-7 w-7" : "h-7 px-2 text-xs font-medium",
+            {/* Bridge menu items */}
+            {menuItems.length === 1 && (
+              <button
+                onClick={() => triggerMenuAction(menuItems[0].id)}
+                className={cn(
+                  "flex items-center justify-center rounded-md hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors",
+                  menuItems[0].icon ? "h-7 w-7" : "h-7 px-2 text-xs font-medium",
+                )}
+                title={menuItems[0].label}
+              >
+                {menuItems[0].icon ? getKitIcon(menuItems[0].icon) : menuItems[0].label}
+              </button>
             )}
-            title={menuItems[0].label}
-          >
-            {menuItems[0].icon ? getKitIcon(menuItems[0].icon) : menuItems[0].label}
-          </button>
-        )}
-        {menuItems.length > 1 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors">
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {menuItems.map((item) => (
-                <DropdownMenuItem key={item.id} onClick={() => triggerMenuAction(item.id)}>
-                  {item.icon && <span className="mr-2">{getKitIcon(item.icon)}</span>}
-                  {item.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+            {menuItems.length > 1 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors">
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {menuItems.map((item) => (
+                    <DropdownMenuItem key={item.id} onClick={() => triggerMenuAction(item.id)}>
+                      {item.icon && <span className="mr-2">{getKitIcon(item.icon)}</span>}
+                      {item.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
-        <span className="text-xs text-muted-foreground">v{kit.version}</span>
-        <a
-          href={kitUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
-          title="Open in browser"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
+            <span className="text-xs text-muted-foreground">v{kit.version}</span>
+            <a
+              href={kitUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
+              title="Open in browser"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </>
+        )}
       </div>
 
-      {/* Kit iframe */}
+      {/* Kit iframe / Browsing webview */}
       {kit.enabled ? (
-        <iframe
-          ref={iframeRef}
-          src={kitUrl}
-          className="flex-1 w-full border-0"
-          title={kit.name}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-        />
+        browsingUrl ? (
+          <iframe
+            src={browsingUrl}
+            className="flex-1 w-full border-0"
+            title="Browsing"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          />
+        ) : (
+          <iframe
+            ref={iframeRef}
+            src={kitUrl}
+            className="flex-1 w-full border-0"
+            title={kit.name}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          />
+        )
       ) : (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted-foreground">

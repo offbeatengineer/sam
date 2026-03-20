@@ -52,4 +52,9 @@ export const kit = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__kitMenuCallback = callback;
   },
+
+  /** Open an external URL in the system browser (works on both iOS and desktop). */
+  openUrl(url: string): void {
+    postBridge({ type: "openUrl", url });
+  },
 };

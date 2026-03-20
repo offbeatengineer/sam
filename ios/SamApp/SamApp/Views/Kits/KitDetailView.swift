@@ -1,5 +1,17 @@
 import SwiftUI
 import WebKit
+import SafariServices
+
+private extension UIView {
+    func findViewController() -> UIViewController? {
+        var responder: UIResponder? = self
+        while let next = responder?.next {
+            if let vc = next as? UIViewController { return vc }
+            responder = next
+        }
+        return nil
+    }
+}
 
 @Observable
 final class KitBridgeState {
@@ -131,6 +143,12 @@ struct KitWebView: UIViewRepresentable {
                                 systemImage: dict["systemImage"] as? String
                             )
                         }
+                    }
+                case "openUrl":
+                    if let urlString = body["url"] as? String,
+                       let url = URL(string: urlString) {
+                        let safari = SFSafariViewController(url: url)
+                        bridge.webView?.findViewController()?.present(safari, animated: true)
                     }
                 default:
                     break
