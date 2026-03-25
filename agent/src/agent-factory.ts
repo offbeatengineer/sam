@@ -108,7 +108,6 @@ function createResourceLoader(cwd: string, systemPromptPath: string, agentsPromp
     getAgentsFiles: () => ({ agentsFiles }),
     getSystemPrompt: () => systemPrompt,
     getAppendSystemPrompt: () => [],
-    getPathMetadata: () => new Map(),
     extendResources: () => {},
     reload: async () => {},
   };
