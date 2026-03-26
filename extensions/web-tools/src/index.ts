@@ -83,7 +83,7 @@ export default function webToolsExtension(pi: ExtensionAPI) {
       if (isPartial) return new Text(theme.fg("muted", "Fetching…"), 0, 0);
 
       const details = result.details as
-        | { url: string; title: string; description?: string; contentLength: number; truncated: boolean }
+        | { url: string; title: string; description?: string; totalLines: number; totalWords: number; totalChars: number; truncated: boolean; tmpFile?: string }
         | undefined;
 
       if (!details) {
@@ -107,27 +107,22 @@ export default function webToolsExtension(pi: ExtensionAPI) {
           }
 
           const meta: string[] = [];
-          meta.push(`${details.contentLength} chars`);
-          if (details.truncated) meta.push("truncated");
+          meta.push(`${details.totalLines} lines`);
+          meta.push(`${details.totalChars} chars`);
+          if (details.truncated && details.tmpFile) meta.push(`full: ${details.tmpFile}`);
           lines.push(truncateToWidth(`  ${theme.fg("dim", meta.join(" · "))}`, width));
 
           if (expanded && textContent) {
             lines.push("");
-            // Extract a plain-text excerpt from the JSON-wrapped content
-            let excerpt = "";
-            try {
-              const parsed = JSON.parse(textContent.replace(/<<<.*?>>>/gs, "").trim());
-              excerpt = parsed.content ?? "";
-            } catch {
-              excerpt = textContent;
-            }
-            const previewLines = excerpt.split("\n").slice(0, 20);
+            // Strip external content wrapper to get raw markdown
+            const raw = textContent.replace(/<<<.*?>>>/gs, "").trim();
+            const previewLines = raw.split("\n").slice(0, 20);
             for (const line of previewLines) {
               lines.push(truncateToWidth(`  ${theme.fg("dim", line)}`, width));
             }
-            const totalLines = excerpt.split("\n").length;
-            if (totalLines > 20) {
-              lines.push(truncateToWidth(`  ${theme.fg("muted", `… ${totalLines - 20} more lines`)}`, width));
+            const totalPreviewLines = raw.split("\n").length;
+            if (totalPreviewLines > 20) {
+              lines.push(truncateToWidth(`  ${theme.fg("muted", `… ${totalPreviewLines - 20} more lines`)}`, width));
             }
           }
 

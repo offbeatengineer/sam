@@ -2,12 +2,15 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
+import { writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import TurndownService from "turndown";
 import { errorResult, readCache, writeCache, wrapExternalContent, type Cache } from "./util.js";
 
 const Parameters = Type.Object({
   url: Type.String({ description: "The URL to fetch (must start with http:// or https://)" }),
-  maxChars: Type.Optional(
-    Type.Number({ description: "Maximum characters of content to return", default: 20000 }),
+  maxLines: Type.Optional(
+    Type.Number({ description: "Maximum lines of markdown to return inline. If content exceeds this, full content is written to a tmp file.", default: 200 }),
   ),
 });
 
@@ -23,27 +26,56 @@ interface PageMeta {
 interface FetchedPage {
   url: string;
   title: string;
-  content: string;
-  contentLength: number;
+  markdown: string;
   meta: PageMeta;
 }
 
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const cache: Cache<FetchedPage> = new Map();
 
+const turndown = new TurndownService({
+  headingStyle: "atx",
+  codeBlockStyle: "fenced",
+  bulletListMarker: "-",
+});
+
+function tmpPath(url: string): string {
+  const hash = createHash("sha256").update(url).digest("hex").slice(0, 12);
+  return `/tmp/web-fetch-${hash}.md`;
+}
+
+function formatResult(markdown: string, maxLines: number, url: string) {
+  const lines = markdown.split("\n");
+  const totalLines = lines.length;
+  const totalWords = markdown.split(/\s+/).filter(Boolean).length;
+  const totalChars = markdown.length;
+
+  if (totalLines <= maxLines) {
+    return { text: markdown, truncated: false, tmpFile: undefined, totalLines, totalWords, totalChars };
+  }
+
+  const filePath = tmpPath(url);
+  writeFileSync(filePath, markdown);
+
+  const text = lines.slice(0, maxLines).join("\n") +
+    `\n\n<content truncated at ${maxLines} lines. Full content available at ${filePath}. Total ${totalLines} lines, ${totalWords} words, ${totalChars} characters>`;
+
+  return { text, truncated: true, tmpFile: filePath, totalLines, totalWords, totalChars };
+}
+
 export function createWebFetchTool(): AgentTool {
   return {
     name: "web_fetch",
     label: "Web Fetch",
     description:
-      "Fetch a web page and extract its readable text content. " +
+      "Fetch a web page and extract its content as clean markdown. " +
       "Use this to read articles, documentation, or any web page. " +
-      "Returns the page title and cleaned text content.",
+      "Returns structured markdown preserving headings, links, lists, and code blocks.",
     parameters: Parameters,
     async execute(_toolCallId: string, raw: unknown) {
       const params = raw as Params;
       const { url } = params;
-      const maxChars = params.maxChars ?? 20_000;
+      const maxLines = params.maxLines ?? 200;
 
       if (!url.startsWith("http://") && !url.startsWith("https://")) {
         return errorResult("URL must start with http:// or https://");
@@ -51,17 +83,19 @@ export function createWebFetchTool(): AgentTool {
 
       const cached = readCache(cache, url);
       if (cached) {
-        const truncated = cached.content.length > maxChars;
-        const page = { ...cached, content: cached.content.slice(0, maxChars) };
-        const wrapped = wrapExternalContent(JSON.stringify(page, null, 2), url);
+        const { text, truncated, tmpFile, totalLines, totalWords, totalChars } = formatResult(cached.markdown, maxLines, url);
+        const wrapped = wrapExternalContent(text, url);
         return {
           content: [{ type: "text", text: wrapped }],
           details: {
             url,
             title: cached.title,
             ...cached.meta,
-            contentLength: cached.contentLength,
+            totalLines,
+            totalWords,
+            totalChars,
             truncated,
+            tmpFile,
           },
         };
       }
@@ -103,13 +137,11 @@ export function createWebFetchTool(): AgentTool {
             (metaDoc.querySelector('link[rel="shortcut icon"]') as any)?.getAttribute?.("href") ||
             undefined,
         };
-        // Resolve relative favicon to absolute
         if (meta.favicon && !meta.favicon.startsWith("http")) {
           try {
             meta.favicon = new URL(meta.favicon, url).href;
           } catch { /* leave as-is */ }
         }
-        // Resolve relative image to absolute
         if (meta.image && !meta.image.startsWith("http")) {
           try {
             meta.image = new URL(meta.image, url).href;
@@ -119,59 +151,56 @@ export function createWebFetchTool(): AgentTool {
         // meta extraction failed — not critical
       }
 
-      // Try Readability extraction
+      // Extract content as markdown via Readability + turndown
       let title = "";
-      let content = "";
+      let markdown = "";
 
       try {
         const { document } = parseHTML(html);
         const reader = new Readability(document as unknown as Document);
         const article = reader.parse();
-        if (article?.textContent) {
+        if (article) {
           title = article.title ?? "";
-          content = article.textContent;
+          markdown = turndown.turndown(article.content ?? "");
         }
       } catch {
-        // Readability failed — fall through to raw text fallback
+        // Readability failed — fall through to fallback
       }
 
-      // Fallback: strip tags and use raw text
-      if (!content) {
+      // Fallback: convert full body HTML to markdown
+      if (!markdown) {
         try {
           const { document } = parseHTML(html);
           title = document.querySelector("title")?.textContent ?? "";
-          content = document.body?.textContent ?? html;
+          const bodyHtml = document.body?.innerHTML ?? html;
+          markdown = turndown.turndown(bodyHtml);
         } catch {
-          content = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+          // Last resort: strip tags
+          markdown = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
         }
       }
 
-      const fullLength = content.length;
-      const page: FetchedPage = {
-        url,
-        title,
-        content,
-        contentLength: fullLength,
-        meta,
-      };
-
-      writeCache(cache, url, page, CACHE_TTL_MS);
-
-      const isTruncated = fullLength > maxChars;
-      const truncatedPage = { ...page, content: content.slice(0, maxChars) };
-      if (isTruncated) {
-        (truncatedPage as any).truncated = true;
+      if (title) {
+        markdown = `# ${title}\n\n${markdown}`;
       }
 
-      const wrapped = wrapExternalContent(JSON.stringify(truncatedPage, null, 2), url);
+      const page: FetchedPage = { url, title, markdown, meta };
+      writeCache(cache, url, page, CACHE_TTL_MS);
+
+      const { text, truncated, tmpFile, totalLines, totalWords, totalChars } = formatResult(markdown, maxLines, url);
+      const wrapped = wrapExternalContent(text, url);
+
       return {
         content: [{ type: "text", text: wrapped }],
         details: {
           url,
           title,
           ...meta,
-          contentLength: fullLength,
-          truncated: isTruncated,
+          totalLines,
+          totalWords,
+          totalChars,
+          truncated,
+          tmpFile,
         },
       };
     },
