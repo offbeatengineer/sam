@@ -2,16 +2,15 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import TurndownService from "turndown";
-import { errorResult, readCache, writeCache, wrapExternalContent, type Cache } from "./util.js";
+import { errorResult, readCache, writeCache, type Cache } from "./util.js";
 
 const Parameters = Type.Object({
   url: Type.String({ description: "The URL to fetch (must start with http:// or https://)" }),
-  maxLines: Type.Optional(
-    Type.Number({ description: "Maximum lines of markdown to return inline. If content exceeds this, full content is written to a tmp file.", default: 200 }),
-  ),
 });
 
 type Params = Static<typeof Parameters>;
@@ -30,6 +29,14 @@ interface FetchedPage {
   meta: PageMeta;
 }
 
+interface FileStats {
+  tmpFile: string;
+  fileSize: number;
+  totalLines: number;
+  totalWords: number;
+  totalChars: number;
+}
+
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const cache: Cache<FetchedPage> = new Map();
 
@@ -39,28 +46,46 @@ const turndown = new TurndownService({
   bulletListMarker: "-",
 });
 
-function tmpPath(url: string): string {
-  const hash = createHash("sha256").update(url).digest("hex").slice(0, 12);
-  return `/tmp/web-fetch-${hash}.md`;
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  const kb = n / 1024;
+  if (kb < 1024) return kb < 10 ? `${kb.toFixed(1)}KB` : `${Math.round(kb)}KB`;
+  const mb = kb / 1024;
+  return mb < 10 ? `${mb.toFixed(1)}MB` : `${Math.round(mb)}MB`;
 }
 
-function formatResult(markdown: string, maxLines: number, url: string) {
-  const lines = markdown.split("\n");
-  const totalLines = lines.length;
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function tmpPath(url: string): string {
+  const hash = createHash("sha256").update(url).digest("hex").slice(0, 12);
+  return join(tmpdir(), `web-fetch-${hash}.md`);
+}
+
+function writeAndStat(markdown: string, url: string): FileStats {
+  const tmpFile = tmpPath(url);
+  writeFileSync(tmpFile, markdown);
+  const fileSize = statSync(tmpFile).size;
+  const totalLines = markdown.split("\n").length;
   const totalWords = markdown.split(/\s+/).filter(Boolean).length;
   const totalChars = markdown.length;
+  return { tmpFile, fileSize, totalLines, totalWords, totalChars };
+}
 
-  if (totalLines <= maxLines) {
-    return { text: markdown, truncated: false, tmpFile: undefined, totalLines, totalWords, totalChars };
-  }
-
-  const filePath = tmpPath(url);
-  writeFileSync(filePath, markdown);
-
-  const text = lines.slice(0, maxLines).join("\n") +
-    `\n\n<content truncated at ${maxLines} lines. Full content available at ${filePath}. Total ${totalLines} lines, ${totalWords} words, ${totalChars} characters>`;
-
-  return { text, truncated: true, tmpFile: filePath, totalLines, totalWords, totalChars };
+function buildAgentText(args: {
+  title: string;
+  url: string;
+  durationMs: number;
+  file: FileStats;
+}): string {
+  const { title, url, durationMs, file } = args;
+  const head = title
+    ? `Fetched "${title}" from ${url} in ${formatDuration(durationMs)}`
+    : `Fetched ${url} in ${formatDuration(durationMs)}`;
+  const tail = `Content saved to ${file.tmpFile} (${formatBytes(file.fileSize)}, ${file.totalWords} words, ${file.totalLines} lines)`;
+  return `${head}\n${tail}`;
 }
 
 export function createWebFetchTool(): AgentTool {
@@ -70,12 +95,13 @@ export function createWebFetchTool(): AgentTool {
     description:
       "Fetch a web page and extract its content as clean markdown. " +
       "Use this to read articles, documentation, or any web page. " +
-      "Returns structured markdown preserving headings, links, lists, and code blocks.",
+      "The full content is saved to a temp file; the tool returns only metadata (file path, size, line/word counts). " +
+      "Use a file-reading tool on the returned path to access the content.",
     parameters: Parameters,
     async execute(_toolCallId: string, raw: unknown) {
       const params = raw as Params;
       const { url } = params;
-      const maxLines = params.maxLines ?? 200;
+      const start = Date.now();
 
       if (!url.startsWith("http://") && !url.startsWith("https://")) {
         return errorResult("URL must start with http:// or https://");
@@ -83,19 +109,18 @@ export function createWebFetchTool(): AgentTool {
 
       const cached = readCache(cache, url);
       if (cached) {
-        const { text, truncated, tmpFile, totalLines, totalWords, totalChars } = formatResult(cached.markdown, maxLines, url);
-        const wrapped = wrapExternalContent(text, url);
+        const file = writeAndStat(cached.markdown, url);
+        const durationMs = Date.now() - start;
+        const text = buildAgentText({ title: cached.title, url, durationMs, file });
         return {
-          content: [{ type: "text", text: wrapped }],
+          content: [{ type: "text", text }],
           details: {
             url,
             title: cached.title,
             ...cached.meta,
-            totalLines,
-            totalWords,
-            totalChars,
-            truncated,
-            tmpFile,
+            ...file,
+            durationMs,
+            cached: true,
           },
         };
       }
@@ -187,20 +212,19 @@ export function createWebFetchTool(): AgentTool {
       const page: FetchedPage = { url, title, markdown, meta };
       writeCache(cache, url, page, CACHE_TTL_MS);
 
-      const { text, truncated, tmpFile, totalLines, totalWords, totalChars } = formatResult(markdown, maxLines, url);
-      const wrapped = wrapExternalContent(text, url);
+      const file = writeAndStat(markdown, url);
+      const durationMs = Date.now() - start;
+      const text = buildAgentText({ title, url, durationMs, file });
 
       return {
-        content: [{ type: "text", text: wrapped }],
+        content: [{ type: "text", text }],
         details: {
           url,
           title,
           ...meta,
-          totalLines,
-          totalWords,
-          totalChars,
-          truncated,
-          tmpFile,
+          ...file,
+          durationMs,
+          cached: false,
         },
       };
     },

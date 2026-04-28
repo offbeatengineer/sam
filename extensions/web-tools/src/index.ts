@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { truncateToWidth } from "@mariozechner/pi-tui";
 import { createWebSearchTool } from "./web-search.js";
-import { createWebFetchTool } from "./web-fetch.js";
+import { createWebFetchTool, formatBytes, formatDuration } from "./web-fetch.js";
 
 // Re-export factory functions for programmatic use
 export { createWebSearchTool } from "./web-search.js";
@@ -73,25 +73,34 @@ export default function webToolsExtension(pi: ExtensionAPI) {
     promptSnippet: "Fetch and extract readable text content from a web page URL.",
     promptGuidelines: [
       "Use web_fetch to read articles, documentation, or any web page found via web_search.",
-      "The default limit is 20,000 characters. Use the maxChars parameter to request more or less content.",
+      "The fetched content is always saved to a temp file. The tool returns only metadata (file path, size, line/word counts) — not the content itself.",
+      "To read the content, use the `read` tool on the returned file path. Read the whole file for short pages, or use offset/limit for long pages.",
       "Content is extracted using Readability — it works best on article-style pages.",
     ],
     execute: async (toolCallId, params, signal, onUpdate, _ctx) =>
       fetchTool.execute(toolCallId, params, signal, onUpdate),
 
-    renderResult(result, { expanded, isPartial }, theme) {
+    renderResult(result, { isPartial }, theme) {
       if (isPartial) return new Text(theme.fg("muted", "Fetching…"), 0, 0);
 
       const details = result.details as
-        | { url: string; title: string; description?: string; totalLines: number; totalWords: number; totalChars: number; truncated: boolean; tmpFile?: string }
+        | {
+            url: string;
+            title: string;
+            description?: string;
+            tmpFile: string;
+            fileSize: number;
+            totalLines: number;
+            totalWords: number;
+            totalChars: number;
+            durationMs: number;
+            cached: boolean;
+          }
         | undefined;
 
       if (!details) {
         return new Text(theme.fg("dim", "No content"), 0, 0);
       }
-
-      const content = result.content[0];
-      const textContent = content?.type === "text" ? content.text : "";
 
       return {
         render(width: number) {
@@ -108,23 +117,13 @@ export default function webToolsExtension(pi: ExtensionAPI) {
 
           const meta: string[] = [];
           meta.push(`${details.totalLines} lines`);
-          meta.push(`${details.totalChars} chars`);
-          if (details.truncated && details.tmpFile) meta.push(`full: ${details.tmpFile}`);
+          meta.push(`${details.totalWords} words`);
+          meta.push(formatBytes(details.fileSize));
+          meta.push(formatDuration(details.durationMs));
+          if (details.cached) meta.push("cached");
           lines.push(truncateToWidth(`  ${theme.fg("dim", meta.join(" · "))}`, width));
 
-          if (expanded && textContent) {
-            lines.push("");
-            // Strip external content wrapper to get raw markdown
-            const raw = textContent.replace(/<<<.*?>>>/gs, "").trim();
-            const previewLines = raw.split("\n").slice(0, 20);
-            for (const line of previewLines) {
-              lines.push(truncateToWidth(`  ${theme.fg("dim", line)}`, width));
-            }
-            const totalPreviewLines = raw.split("\n").length;
-            if (totalPreviewLines > 20) {
-              lines.push(truncateToWidth(`  ${theme.fg("muted", `… ${totalPreviewLines - 20} more lines`)}`, width));
-            }
-          }
+          lines.push(truncateToWidth(`  ${theme.fg("dim", details.tmpFile)}`, width));
 
           return lines;
         },
