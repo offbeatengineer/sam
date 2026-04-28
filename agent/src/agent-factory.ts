@@ -3,10 +3,6 @@ import {
   AuthStorage,
   createAgentSession,
   createExtensionRuntime,
-  createCodingTools,
-  createGrepTool,
-  createFindTool,
-  createLsTool,
   createBashTool,
   loadSkillsFromDir,
   ModelRegistry,
@@ -123,20 +119,15 @@ export async function createSession(config: SamConfig, key: SessionKey, kitsServ
     authStorage.setRuntimeApiKey(config.model.provider, config.model.apiKey);
   }
 
-  const modelRegistry = new ModelRegistry(authStorage);
+  const modelRegistry = ModelRegistry.create(authStorage);
   const model = getModel(config.model.provider as any, config.model.id as any);
 
-  const tools = [
-    createBashTool(cwd, { spawnHook: createTmuxSpawnHook() }),
-    createCodingTools(cwd).find((t) => t.name === "read")!,
-    createCodingTools(cwd).find((t) => t.name === "edit")!,
-    createCodingTools(cwd).find((t) => t.name === "write")!,
-    createGrepTool(cwd),
-    createFindTool(cwd),
-    createLsTool(cwd),
-  ];
+  // Built-in tools enabled by name. Bash is excluded here and registered via
+  // customTools below so it can carry our tmux spawnHook.
+  const builtinToolNames = ["read", "edit", "write", "grep", "find", "ls"];
 
   const customTools = [
+    createBashTool(cwd, { spawnHook: createTmuxSpawnHook() }),
     { ...createWebSearchTool(config.tools?.webSearch), promptSnippet: "Search the web for current information, recent events, or topics." },
     { ...createWebFetchTool(), promptSnippet: "Fetch and extract readable text content from a web page URL." },
     { ...createReportArtifactTool(), promptSnippet: "Report an artifact written to ~/.sam/artifacts/ so the user can preview or open it." },
@@ -174,7 +165,7 @@ export async function createSession(config: SamConfig, key: SessionKey, kitsServ
     modelRegistry,
     model,
     thinkingLevel: config.model.thinking as any,
-    tools,
+    tools: builtinToolNames,
     customTools,
     resourceLoader,
     sessionManager,
