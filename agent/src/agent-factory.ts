@@ -123,7 +123,9 @@ export async function createSession(config: SamConfig, key: SessionKey, kitsServ
   const model = getModel(config.model.provider as any, config.model.id as any);
 
   // Built-in tools enabled by name. Bash is excluded here and registered via
-  // customTools below so it can carry our tmux spawnHook.
+  // customTools below so it can carry our tmux spawnHook. The allowlist below
+  // is extended with every customTool's name — pi-coding-agent's `tools`
+  // field is an allowlist that filters BOTH built-ins and customTools.
   const builtinToolNames = ["read", "edit", "write", "grep", "find", "ls"];
 
   const customTools = [
@@ -165,7 +167,7 @@ export async function createSession(config: SamConfig, key: SessionKey, kitsServ
     modelRegistry,
     model,
     thinkingLevel: config.model.thinking as any,
-    tools: builtinToolNames,
+    tools: [...builtinToolNames, ...customTools.map((t) => t.name)],
     customTools,
     resourceLoader,
     sessionManager,
