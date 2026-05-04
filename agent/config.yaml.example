@@ -42,6 +42,21 @@ model:
 
 # skills: ~/.sam/skills
 
+# Audio transcription via vocal (https://github.com/offbeatengineer/vocal):
+# When enabled, Sam runs `brew install ffmpeg`, `brew install offbeatengineer/tap/vocal`,
+# and `vocal download asr` automatically in the background on startup (Homebrew
+# is required and assumed to be on PATH). Setup never blocks the agent —
+# non-audio input is served normally throughout. Audio messages received before
+# setup completes get a "starting up" reply.
+# transcription:
+#   enabled: true
+#   model: small        # "small" (0.6B, ~1.8 GB) or "large" (1.7B, ~4.4 GB)
+#   # language: en      # optional ISO code hint; omit for auto-detect
+#   # threads: 8        # vocal default is 4
+#   # binaryPath: /opt/homebrew/bin/vocal  # override vocal binary lookup
+#   # modelDir: ~/.vocal/models            # override --model-dir
+#   # timeoutMs: 120000
+
 # Browser automation (optional — requires playwright-cli):
 #   npm install -g @playwright/cli
 #   playwright-cli install

@@ -547,17 +547,19 @@ export class AppChannel {
             }
 
             const transcriber = this.options.transcriber;
-            if (!transcriber) {
-              this.sendTo(ws, { type: "error", conversationId, error: "Audio transcription is not configured on this server" });
-              continue;
-            }
-            const transcript = await transcriber.transcribe(fileBuffer, att.mimeType);
-            if (transcript) {
+            const result = transcriber
+              ? await transcriber.transcribe(fileBuffer, att.mimeType)
+              : ({
+                  ok: false,
+                  reason: "disabled",
+                  message: "Audio transcription is not enabled on this server",
+                } as const);
+            if (result.ok) {
               promptText = promptText
-                ? `[Audio transcript]: ${transcript}\n\n${promptText}`
-                : `[Audio transcript]: ${transcript}`;
+                ? `[Audio transcript]: ${result.text}\n\n${promptText}`
+                : `[Audio transcript]: ${result.text}`;
             } else {
-              this.sendTo(ws, { type: "error", conversationId, error: "Failed to transcribe audio" });
+              this.sendTo(ws, { type: "error", conversationId, error: result.message });
             }
           }
         }

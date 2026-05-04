@@ -102,9 +102,21 @@ export class DiscordChannel implements ChatChannel {
         try {
           const res = await fetch(audio.url);
           const buffer = Buffer.from(await res.arrayBuffer());
-          text = (await this.transcriber.transcribe(buffer, audio.contentType!)) ?? "";
+          const result = await this.transcriber.transcribe(buffer, audio.contentType!);
+          if (result.ok) {
+            text = result.text;
+          } else {
+            await msg.reply(result.message).catch((err) => {
+              console.error("Failed to send transcription status reply:", err);
+            });
+            return;
+          }
         } catch (err) {
           console.error("Failed to download/transcribe audio:", err);
+          await msg
+            .reply("Sorry — I couldn't download or transcribe that audio attachment.")
+            .catch(() => {});
+          return;
         }
       }
     }

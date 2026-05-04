@@ -5,7 +5,7 @@ import { Dispatcher } from "./dispatcher.js";
 import { DiscordChannel } from "./channels/discord-channel.js";
 import { PulseChannel } from "./channels/pulse-channel.js";
 import { AppChannel } from "./channels/app-channel.js";
-import { CliTranscriber } from "./transcriber.js";
+import { VocalTranscriber } from "./transcriber.js";
 import { MemoryStore } from "./memory/store.js";
 import { SessionSearchStore } from "./session-search/store.js";
 import { SessionIndexer } from "./session-search/indexer.js";
@@ -50,10 +50,16 @@ async function main() {
   const registry = new SessionRegistry(config);
   const dispatcher = new Dispatcher(registry);
 
-  // Create transcriber once, shared by all channels
-  const transcriber = config.transcription?.modelPath
-    ? new CliTranscriber(config.transcription.modelPath)
+  // Create transcriber once, shared by all channels.
+  // Setup (brew install + model download) runs in the background — never blocks startup.
+  const transcriber = config.transcription?.enabled
+    ? new VocalTranscriber(config.transcription)
     : undefined;
+  if (transcriber) {
+    transcriber.ensureReady().catch((err) => {
+      console.error("[transcription] Background setup failed:", err);
+    });
+  }
 
   let discord: DiscordChannel | undefined;
   let appChannel: AppChannel | undefined;
