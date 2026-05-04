@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import type { MemoryConfig } from "./memory/types.js";
+import type { TranscriptionConfig } from "./transcriber.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BUNDLED_PROMPTS_DIR = resolve(__dirname, "..", "prompts");
@@ -43,9 +44,7 @@ export interface SamConfig {
     pulse: string;
     agents: string;
   };
-  transcription?: {
-    modelPath: string;
-  };
+  transcription?: TranscriptionConfig;
   tools?: {
     webSearch?: {
       provider?: "brave" | "searxng";
@@ -146,6 +145,14 @@ model:
 #   modelsPath: ~/.sam/models
 #   embeddingModel: mixedbread-ai/mxbai-embed-xsmall-v1
 #   embeddingDimensions: 384
+
+# transcription:
+#   enabled: true
+#   model: small  # "small" (0.6B, ~1.8 GB) or "large" (1.7B, ~4.4 GB)
+#   # language: en  # omit for auto-detect
+#   # threads: 8
+# Requires Homebrew on PATH. Sam auto-installs ffmpeg + vocal and downloads
+# the ASR model in the background on first startup.
 `;
 
 // ---------------------------------------------------------------------------
@@ -185,6 +192,32 @@ export function ensureSamDir(): void {
 
 function expandHome(p: string): string {
   return p.startsWith("~/") ? resolve(homedir(), p.slice(2)) : p;
+}
+
+function parseTranscriptionConfig(raw: any): TranscriptionConfig | undefined {
+  if (!raw) return undefined;
+
+  if ("modelPath" in raw && !("enabled" in raw)) {
+    console.warn(
+      "[config] transcription.modelPath is deprecated and ignored. " +
+        "Sam now uses `vocal` (https://github.com/offbeatengineer/vocal). " +
+        "Replace with:\n  transcription:\n    enabled: true\n    model: small  # or large",
+    );
+    return undefined;
+  }
+
+  if (raw.enabled !== true) return undefined;
+
+  const model = raw.model === "large" ? "large" : "small";
+  return {
+    enabled: true,
+    model,
+    language: raw.language,
+    threads: typeof raw.threads === "number" ? raw.threads : undefined,
+    binaryPath: raw.binaryPath ? expandHome(raw.binaryPath) : undefined,
+    modelDir: raw.modelDir ? expandHome(raw.modelDir) : undefined,
+    timeoutMs: typeof raw.timeoutMs === "number" ? raw.timeoutMs : undefined,
+  };
 }
 
 export function loadConfig(): SamConfig {
@@ -244,9 +277,7 @@ export function loadConfig(): SamConfig {
       pulse: expandHome(yaml.prompts?.pulse ?? resolve(SAM_DIR, "prompts", "PULSE.md")),
       agents: expandHome(yaml.prompts?.agents ?? resolve(SAM_DIR, "prompts", "AGENTS.md")),
     },
-    transcription: yaml.transcription?.modelPath
-      ? { modelPath: expandHome(yaml.transcription.modelPath) }
-      : undefined,
+    transcription: parseTranscriptionConfig(yaml.transcription),
     tools: {
       webSearch: {
         provider: yaml.tools?.webSearch?.provider,
