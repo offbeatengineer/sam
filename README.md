@@ -1,7 +1,7 @@
 # Sam
 
 Sam is a personal, always-on AI assistant built on top of
-[`pi-coding-agent`](https://github.com/badlogic/pi-mono). You run Sam yourself, keep your data local, and talk to the
+[`pi-coding-agent`](https://github.com/earendil-works/pi). You run Sam yourself, keep your data local, and talk to the
 same assistant from Discord, a desktop app, or your iPhone.
 
 Sam can:
@@ -139,7 +139,7 @@ Sam is entirely local unless you configure remote access.
 ## Credits
 
 Sam is built on top of the excellent
-[pi-mono](https://github.com/badlogic/pi-mono) project by Mario Zechner
+[pi](https://github.com/earendil-works/pi) project by Mario Zechner
 (`pi-coding-agent`, `pi-ai`).
 
 ## License

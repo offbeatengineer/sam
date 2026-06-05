@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
 import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { jsonResult, errorResult } from "./util.js";
 import { SessionSearchStore } from "../session-search/store.js";
 import { extractMessages } from "../session-search/extract.js";

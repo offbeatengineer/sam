@@ -9,7 +9,7 @@ import type { KitsServer } from "../kits-server.js";
 import type { Transcriber } from "../transcriber.js";
 import type { SessionIndexer } from "../session-search/indexer.js";
 import { SessionSearchStore } from "../session-search/store.js";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { readdirSync, readFileSync, writeFileSync, unlinkSync, statSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { resolve, basename, dirname, join, relative } from "node:path";
 import { randomUUID } from "node:crypto";

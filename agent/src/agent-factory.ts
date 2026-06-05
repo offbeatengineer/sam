@@ -1,4 +1,4 @@
-import { getModel } from "@mariozechner/pi-ai";
+import { getModel } from "@earendil-works/pi-ai";
 import {
   AuthStorage,
   createAgentSession,
@@ -9,7 +9,7 @@ import {
   type ResourceLoader,
   SessionManager,
   SettingsManager,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { readFileSync, existsSync } from "node:fs";
 import { getSystemPrompt } from "./system-prompt.js";
 import { SAM_DIR, type SamConfig } from "./config.js";
@@ -76,7 +76,7 @@ function createTmuxSpawnHook(): (context: any) => any {
   };
 }
 
-export type { AgentSession } from "@mariozechner/pi-coding-agent";
+export type { AgentSession } from "@earendil-works/pi-coding-agent";
 
 function createResourceLoader(cwd: string, systemPromptPath: string, agentsPromptPath: string, skillsDir: string): ResourceLoader {
   const systemPrompt = getSystemPrompt(cwd, systemPromptPath);

@@ -19,8 +19,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.70.5",
-    "@mariozechner/pi-coding-agent": "^0.70.5",
+    "@earendil-works/pi-ai": "^0.78.1",
+    "@earendil-works/pi-coding-agent": "^0.78.1",
     "chokidar": "^4.0.0",
     "discord.js": "^14.25.1",
     "hono": "^4.0.0",

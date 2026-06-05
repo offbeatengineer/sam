@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { jsonResult, errorResult } from "./util.js";
 import { MemoryStore } from "../memory/store.js";
 import type { MemoryConfig } from "../memory/types.js";

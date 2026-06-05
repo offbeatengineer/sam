@@ -1,7 +1,7 @@
 import { SessionSearchStore, type SessionMessage } from "./store.js";
 import { extractMessages } from "./extract.js";
 import type { MemoryConfig } from "../memory/types.js";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { readdirSync, statSync } from "node:fs";
 import { resolve, basename } from "node:path";
 
