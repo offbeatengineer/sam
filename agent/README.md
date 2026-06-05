@@ -7,7 +7,7 @@ exposes it through several channels at once:
 - **Discord channel** — an optional Discord bot.
 - **Pulse channel** — optional autonomous check-ins on a schedule.
 
-The agent is built on [`pi-coding-agent`](https://github.com/mariozechner/pi-mono)
+The agent is built on [`pi-coding-agent`](https://github.com/earendil-works/pi)
 and gives the assistant access to filesystem tools, bash, web search and fetch,
 long-term memory, skills, and project kits.
 
@@ -17,7 +17,7 @@ long-term memory, skills, and project kits.
 
 - **[Bun](https://bun.sh)** 1.1+ (runtime — installs fast: `curl -fsSL https://bun.sh/install | bash`)
 - **Credentials for an AI provider** supported by
-  [pi-ai](https://github.com/badlogic/pi-mono) — Sam works with any provider
+  [pi-ai](https://github.com/earendil-works/pi) — Sam works with any provider
   pi-ai knows about
 - Optional: a **Discord bot token** if you want to chat with Sam from Discord
 - Optional: a **web search provider** if you want Sam to search the web —
@@ -118,7 +118,7 @@ pulse:
 ### Model
 
 Pick a provider and model in `~/.sam/config.yaml`. Sam passes this straight
-through to [pi-ai](https://github.com/badlogic/pi-mono), so any provider and
+through to [pi-ai](https://github.com/earendil-works/pi), so any provider and
 model ID pi-ai supports will work:
 
 ```yaml

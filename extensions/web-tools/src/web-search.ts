@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { errorResult, readCache, writeCache, wrapExternalContent, type Cache } from "./util.js";
 
 const Parameters = Type.Object({
