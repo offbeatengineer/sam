@@ -1,0 +1,20 @@
+[package]
+name = "sam-app"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+sam-protocol.workspace = true
+sam-client.workspace = true
+gpui.workspace = true
+gpui-component.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+futures.workspace = true
+anyhow.workspace = true
+dirs.workspace = true
+uuid.workspace = true
+image.workspace = true
+chrono.workspace = true
+log.workspace = true
+env_logger.workspace = true
