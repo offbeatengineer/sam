@@ -613,8 +613,16 @@ fn is_displayable(entry: &SessionEntry) -> bool {
         | SessionEntry::ModelChange { .. }
         | SessionEntry::ThinkingLevelChange { .. }
         | SessionEntry::Unknown { .. } => true,
-        SessionEntry::Custom { .. }
-        | SessionEntry::Label { .. }
-        | SessionEntry::SessionInfo { .. } => false,
+        // Voice messages persist as audio_attachment custom entries; the
+        // agent adds data.url at serve time (see stripAttachmentData).
+        SessionEntry::Custom {
+            custom_type, data, ..
+        } => {
+            custom_type == "audio_attachment"
+                && data
+                    .as_ref()
+                    .is_some_and(|d| d.get("url").and_then(|u| u.as_str()).is_some())
+        }
+        SessionEntry::Label { .. } | SessionEntry::SessionInfo { .. } => false,
     }
 }

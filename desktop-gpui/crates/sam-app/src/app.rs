@@ -44,7 +44,10 @@ impl SamApp {
         let sessions = cx.new(|_| SessionStore::new(client));
         let image_cache = cx.new(|_| crate::state::images::ImageCache::new(conn.clone()));
         cx.set_global(crate::state::images::ImageCacheGlobal(image_cache));
-        let audio_player = cx.new(|_| crate::state::audio_player::AudioPlayer::new(conn.clone()));
+        let window_handle = window.window_handle();
+        let audio_player = cx.new(|cx| {
+            crate::state::audio_player::AudioPlayer::new(conn.clone(), window_handle, cx)
+        });
         cx.set_global(crate::state::audio_player::AudioPlayerGlobal(audio_player));
         let sidebar = cx.new(|cx| Sidebar::new(sessions.clone(), cx));
         let composer = cx.new(|cx| Composer::new(sessions.clone(), conn.clone(), window, cx));
@@ -60,6 +63,12 @@ impl SamApp {
         // Track focus so turn-end notifications only fire in the background.
         cx.observe_window_activation(window, |this, window, _| {
             this.window_active = window.is_window_active();
+        })
+        .detach();
+
+        // Follow live system light/dark switches (init() only syncs once).
+        cx.observe_window_appearance(window, |_, window, cx| {
+            gpui_component::Theme::sync_system_appearance(Some(window), cx);
         })
         .detach();
 

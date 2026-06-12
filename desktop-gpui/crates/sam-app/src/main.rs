@@ -7,8 +7,11 @@ mod state;
 mod views;
 
 use app::SamApp;
-use gpui::{px, size, App, AppContext, Application, Bounds, WindowBounds, WindowOptions};
-use gpui_component::{Root, TitleBar};
+use gpui::{
+    px, size, App, AppContext, Application, Bounds, Menu, MenuItem, OsAction, SystemMenuType,
+    WindowBounds, WindowOptions,
+};
+use gpui_component::{input, Root, TitleBar};
 
 gpui::actions!(sam, [NewSession, ToggleSettings, CloseWindow, Quit]);
 
@@ -38,6 +41,42 @@ fn main() {
             ]);
 
             cx.on_action(|_: &Quit, cx| cx.quit());
+
+            // Standard macOS menu bar. The Edit items route to the focused
+            // input via gpui-component's input actions; the OsAction tags let
+            // AppKit special-case them (e.g. in NSTextField dialogs).
+            cx.set_menus(vec![
+                Menu {
+                    name: "Sam".into(),
+                    items: vec![
+                        MenuItem::action("Settings…", ToggleSettings),
+                        MenuItem::separator(),
+                        MenuItem::os_submenu("Services", SystemMenuType::Services),
+                        MenuItem::separator(),
+                        MenuItem::action("Quit Sam", Quit),
+                    ],
+                },
+                Menu {
+                    name: "Session".into(),
+                    items: vec![MenuItem::action("New Session", NewSession)],
+                },
+                Menu {
+                    name: "Edit".into(),
+                    items: vec![
+                        MenuItem::os_action("Undo", input::Undo, OsAction::Undo),
+                        MenuItem::os_action("Redo", input::Redo, OsAction::Redo),
+                        MenuItem::separator(),
+                        MenuItem::os_action("Cut", input::Cut, OsAction::Cut),
+                        MenuItem::os_action("Copy", input::Copy, OsAction::Copy),
+                        MenuItem::os_action("Paste", input::Paste, OsAction::Paste),
+                        MenuItem::os_action("Select All", input::SelectAll, OsAction::SelectAll),
+                    ],
+                },
+                Menu {
+                    name: "Window".into(),
+                    items: vec![MenuItem::action("Close Window", CloseWindow)],
+                },
+            ]);
 
             let bounds = Bounds::centered(None, size(px(1200.), px(800.)), cx);
             let options = WindowOptions {

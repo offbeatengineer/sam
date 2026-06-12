@@ -143,22 +143,81 @@ All tests green (15: protocol round-trips, settings schema, resize, URL normaliz
 10. Instance switch: Settings → Connect on "Sam" (remote) → sessions clear
     and reload from the remote, newest app session auto-selected; switch back
     to "Willy". Also remove/re-add an instance.
-11. Audio: record a voice message, send, then click the chip in history —
-    plays via afplay, chip flips back when done.
+11. Audio: open the `AUDIO-PLAYER-TEST` session → click "voice message" →
+    plays, slider tracks progress, dragging scrubs, time label counts up,
+    chip flips back at the end. Then record a real voice message and send.
 12. Bundled app (target/bundle/Sam.app): mic permission prompt shows the
-    Info.plist string; notification fires from the bundle.
+    Info.plist string; notification fires from the bundle and **clicking it
+    focuses Sam**; app menu reads "Sam".
+13. Menu bar: Sam → Settings…, Session → New Session, Edit items work in the
+    composer (undo/copy/paste/select-all), Window → Close Window.
 
-## M6 backlog (remaining)
+### M6 progress (2026-06-12, third session)
 
-- Notification click should focus the app (osascript notifications can't;
-  needs a bundled-app notification API — UNUserNotificationCenter via objc,
-  or the `notify-rust`/`mac-notification-sys` route now that we have a
-  bundle id).
-- Audio player niceties: duration/seek UI (currently a play/stop chip);
-  show images from tool results too (only user messages render them).
-- App menu bar (cx.set_menus) for the bundle; standard About/Quit menus.
-- Parity checklist vs Tauri app, then dogfood for a week.
-- Later phases (architecture ready, protocol fully typed): skills editor, memory page, kits page, artifacts browser, session search.
+- ✅ **App menu bar**: Sam (Settings…/Services/Quit), Session (New Session),
+  Edit (undo/redo/cut/copy/paste/select-all → focused input, OsAction-tagged),
+  Window (Close). App-menu title shows the process name for the bare binary;
+  reads "Sam" in the bundle.
+- ✅ **Notification click focuses the app**: bundled builds deliver through
+  NSUserNotificationCenter via `mac-notification-sys` attributed to the
+  bundle id; bare dev binary keeps the osascript fallback (click inert).
+  Delivery from the bundle verified live.
+- ✅ **Audio mini-player with seek**: rodio replaces afplay. Idle chip →
+  playing row with a shared gpui-component Slider (drag scrubs via
+  `sink.try_seek`) and elapsed/total label; 300 ms poll drives progress and
+  reaps drained sinks. Voice messages persist as `audio_attachment` custom
+  entries (data.url injected by the agent at serve time) — these now render
+  as right-aligned players; `SessionEntry::Custom` was previously filtered
+  entirely. Decode/duration unit-tested; click-to-play needs eyes
+  (see `AUDIO-PLAYER-TEST` session).
+- ✅ **Live dark mode**: `observe_window_appearance` → 
+  `Theme::sync_system_appearance` (init only synced once). Verified by
+  toggling system appearance while running.
+
+## Parity sweep vs Tauri client (2026-06-12)
+
+Scope notes: ⏭ items are the agreed later phases; ❌ items are real gaps in
+the core-chat scope; ◐ partial.
+
+| Area | Status |
+|---|---|
+| Connection status, instance name in chrome | ✅ titlebar dot + name |
+| Settings: instance CRUD + switch | ✅ (◐ no API-key show/hide toggle; switcher lives in settings, not a sidebar dropdown) |
+| Sidebar: channel groups, counts, selection, rename/archive | ✅ |
+| Sidebar: archived section + unarchive | ❌ not implemented |
+| Sidebar: session search box | ❌ not implemented (agent has session_search) |
+| Sidebar: streaming dot on non-active sessions | ❌ events for inactive conversations are dropped (matches old React behavior pre-dot) |
+| Chat: markdown/GFM, thinking, tool cards, bash, dividers, custom | ✅ |
+| Chat: special tool cards (8 kinds) | ✅ streaming + history |
+| Chat: user images inline | ✅ (base64 + upload refs) |
+| Chat: voice-message player | ✅ play/seek/time (◐ no volume control) |
+| Chat: pending-user bubble | ◐ text only (Tauri previews staged images/audio too) |
+| Chat: empty states | ◐ ours plainer ("Select a session"; no "Describe your task…" hero) |
+| Chat: auto-scroll | ✅ bottom-aligned list |
+| Read-only channels (discord/pulse) | ✅ badge + hidden composer |
+| Composer: auto-grow, Enter/Shift+Enter, abort | ✅ (8 lines vs Tauri's 15) |
+| Composer: image picker/drag-drop/paste, 5-image cap, resize | ✅ |
+| Composer: mic recording → WAV | ✅ implemented (eyes-on pending) |
+| Artifact panel: md/code/image/HTML + live reload + open-in-browser | ✅ (◐ no Preview/Code toggle, no Open-in-Finder) |
+| Right sidebar: working-dir file tree, @file insert, drop-to-cwd | ❌ not implemented |
+| Right sidebar: session artifacts list | ❌ panel opens via cards only |
+| Right sidebar: session stats (models, tokens, cost) | ❌ not implemented |
+| Notifications | ✅ turn-end when unfocused, click focuses (bundle) (◐ Tauri also notifies for background sessions; ours active-conversation only) |
+| Dark/light theme | ✅ follows system, live |
+| Keybindings + menu bar | ✅ (gpui app only; Tauri has none) |
+| Memory / Skills / Artifacts / Kits pages, icon rail | ⏭ later phases |
+
+**Gap list for swap-over decision** (besides eyes-on items): archived
+sessions, sidebar session search, right-sidebar trio (file tree / artifacts
+list / session stats), background-session notifications + streaming dots,
+pending-attachment previews. None block dogfooding the core chat.
+
+## Remaining
+
+- Dogfood daily, fix as found; then decide swap-over (rename bundle id to
+  com.offbeatengineer.sam, retire `desktop/`).
+- Gap list above, then later phases: skills editor, memory page, kits page,
+  artifacts browser.
 
 ## Environment gotchas (this machine)
 

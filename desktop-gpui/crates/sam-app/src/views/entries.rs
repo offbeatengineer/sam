@@ -184,6 +184,30 @@ pub fn render_entry(
         )
         .into_any_element())
         .into_any_element(),
+        // Voice message (audio_attachment custom entry): right-aligned
+        // mini player, like the Tauri SessionEntryRenderer.
+        SessionEntry::Custom {
+            id,
+            custom_type,
+            data,
+            ..
+        } if custom_type == "audio_attachment" => {
+            let url = data
+                .as_ref()
+                .and_then(|d| d.get("url"))
+                .and_then(|u| u.as_str())
+                .map(str::to_string);
+            match url {
+                Some(url) => row(div()
+                    .w_full()
+                    .flex()
+                    .justify_end()
+                    .child(render_audio_chip(id, 0, &url, cx))
+                    .into_any_element())
+                .into_any_element(),
+                None => div().into_any_element(),
+            }
+        }
         SessionEntry::Unknown { raw } => system_line(
             format!(
                 "unsupported entry ({})",
@@ -339,38 +363,77 @@ fn render_user(
                 .v_flex()
                 .gap_1()
                 .when(!audio_urls.is_empty(), |this| {
-                    this.children(audio_urls.iter().enumerate().map(|(i, url)| {
-                        use crate::state::audio_player::{play_state, toggle, PlayState};
-                        let (label, icon) = match play_state(url, cx) {
-                            PlayState::Playing => ("playing", IconName::CircleX),
-                            PlayState::Loading => ("loading…", IconName::LoaderCircle),
-                            PlayState::Idle => ("voice message", IconName::ArrowRight),
-                        };
-                        let url = url.clone();
-                        div()
-                            .id(SharedString::from(format!("audio-{id}-{i}")))
-                            .h_flex()
-                            .gap_1()
-                            .px_2()
-                            .py_0p5()
-                            .rounded_md()
-                            .bg(cx.theme().background)
-                            .text_xs()
-                            .cursor_pointer()
-                            .hover(|this| this.bg(cx.theme().list_hover))
-                            .child(
-                                Icon::new(icon)
-                                    .xsmall()
-                                    .text_color(cx.theme().muted_foreground),
-                            )
-                            .child(label)
-                            .on_click(move |_, _, cx| toggle(&url, cx))
-                    }))
+                    this.children(
+                        audio_urls
+                            .iter()
+                            .enumerate()
+                            .map(|(i, url)| render_audio_chip(id, i, url, cx)),
+                    )
                 })
                 .child(md(SharedString::from(format!("md-{id}")), text, window, cx)),
         )
         .into_any_element())
     .into_any_element()
+}
+
+/// Voice-message mini player: play/stop chip; the playing clip grows a
+/// shared seek slider and an elapsed/total label.
+fn render_audio_chip(id: &str, ix: usize, url: &str, cx: &mut App) -> AnyElement {
+    use crate::state::audio_player::{clip_state, format_time, seek_slider, toggle, ClipState};
+    use gpui_component::slider::Slider;
+
+    let state = clip_state(url, cx);
+    let url_for_click = url.to_string();
+
+    let chip = div()
+        .id(SharedString::from(format!("audio-{id}-{ix}")))
+        .h_flex()
+        .gap_2()
+        .px_2()
+        .py_1()
+        .rounded_md()
+        .bg(cx.theme().background)
+        .text_xs()
+        .cursor_pointer()
+        .hover(|this| this.bg(cx.theme().list_hover));
+
+    match state {
+        ClipState::Playing { pos, total } => {
+            let label = match total {
+                Some(total) => format!("{} / {}", format_time(pos), format_time(total)),
+                None => format_time(pos),
+            };
+            chip.child(
+                Icon::new(IconName::CircleX)
+                    .xsmall()
+                    .text_color(cx.theme().muted_foreground),
+            )
+            .when_some(
+                seek_slider(cx).filter(|_| total.is_some()),
+                |this, slider| this.child(div().w(px(140.)).child(Slider::new(&slider))),
+            )
+            .child(div().text_color(cx.theme().muted_foreground).child(label))
+            .on_click(move |_, _, cx| toggle(&url_for_click, cx))
+            .into_any_element()
+        }
+        ClipState::Loading => chip
+            .child(
+                Icon::new(IconName::LoaderCircle)
+                    .xsmall()
+                    .text_color(cx.theme().muted_foreground),
+            )
+            .child("loading…")
+            .into_any_element(),
+        ClipState::Idle => chip
+            .child(
+                Icon::new(IconName::ArrowRight)
+                    .xsmall()
+                    .text_color(cx.theme().muted_foreground),
+            )
+            .child("voice message")
+            .on_click(move |_, _, cx| toggle(&url_for_click, cx))
+            .into_any_element(),
+    }
 }
 
 // ---------------------------------------------------------------------------
