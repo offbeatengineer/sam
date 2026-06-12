@@ -221,14 +221,30 @@ impl AppResponse {
     pub fn conversation_id(&self) -> Option<&str> {
         use AppResponse::*;
         match self {
-            TurnStart { conversation_id, .. }
-            | TurnEnd { conversation_id, .. }
-            | TextDelta { conversation_id, .. }
-            | ThinkingDelta { conversation_id, .. }
-            | ThinkingEnd { conversation_id, .. }
-            | ToolStart { conversation_id, .. }
-            | ToolUpdate { conversation_id, .. }
-            | ToolEnd { conversation_id, .. }
+            TurnStart {
+                conversation_id, ..
+            }
+            | TurnEnd {
+                conversation_id, ..
+            }
+            | TextDelta {
+                conversation_id, ..
+            }
+            | ThinkingDelta {
+                conversation_id, ..
+            }
+            | ThinkingEnd {
+                conversation_id, ..
+            }
+            | ToolStart {
+                conversation_id, ..
+            }
+            | ToolUpdate {
+                conversation_id, ..
+            }
+            | ToolEnd {
+                conversation_id, ..
+            }
             | SessionCreated { conversation_id }
             | SessionClosed { conversation_id }
             | Aborted { conversation_id } => Some(conversation_id),

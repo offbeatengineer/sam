@@ -230,25 +230,27 @@ impl Render for Sidebar {
                     div()
                         .id(SharedString::from(format!("ctx-{}", session.path)))
                         .child(item.context_menu(move |menu, _, _| {
-                        let rename_store = menu_store.clone();
-                        let rename_session = menu_session.clone();
-                        let archive_store = menu_store.clone();
-                        let archive_path = menu_session.path.clone();
-                        menu.item(PopupMenuItem::new("Rename…").on_click(
-                            move |_, window, cx| {
-                                open_rename_dialog(
-                                    rename_store.clone(),
-                                    rename_session.clone(),
-                                    window,
-                                    cx,
-                                );
-                            },
-                        ))
-                        .item(PopupMenuItem::new("Archive").on_click(move |_, _, cx| {
-                            archive_store.update(cx, |store, cx| {
-                                store.archive_session(archive_path.clone(), cx)
-                            });
-                        }))
+                            let rename_store = menu_store.clone();
+                            let rename_session = menu_session.clone();
+                            let archive_store = menu_store.clone();
+                            let archive_path = menu_session.path.clone();
+                            menu.item(PopupMenuItem::new("Rename…").on_click(
+                                move |_, window, cx| {
+                                    open_rename_dialog(
+                                        rename_store.clone(),
+                                        rename_session.clone(),
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            ))
+                            .item(
+                                PopupMenuItem::new("Archive").on_click(move |_, _, cx| {
+                                    archive_store.update(cx, |store, cx| {
+                                        store.archive_session(archive_path.clone(), cx)
+                                    });
+                                }),
+                            )
                         })),
                 );
             }

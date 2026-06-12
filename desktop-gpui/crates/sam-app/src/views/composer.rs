@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use gpui::{
-    div, prelude::*, Context, Entity, ExternalPaths, PathPromptOptions, SharedString,
+    div, prelude::*, px, Context, Entity, ExternalPaths, PathPromptOptions, SharedString,
     Subscription, Window,
 };
 use gpui_component::{
@@ -127,6 +127,41 @@ impl Composer {
         cx.notify();
     }
 
+    /// Cmd+V with an image on the clipboard stages it as an attachment
+    /// instead of pasting text (intercepted in the capture phase, before the
+    /// Input's own Paste handler runs — see render()). Returns false when
+    /// the clipboard holds no image, letting the text paste proceed.
+    fn paste_clipboard_image(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(item) = cx.read_from_clipboard() else {
+            return false;
+        };
+        let mut staged = Vec::new();
+        for entry in item.entries() {
+            if let gpui::ClipboardEntry::Image(image) = entry {
+                let ext = match image.format {
+                    gpui::ImageFormat::Png => "png",
+                    gpui::ImageFormat::Jpeg => "jpg",
+                    gpui::ImageFormat::Webp => "webp",
+                    gpui::ImageFormat::Gif => "gif",
+                    gpui::ImageFormat::Bmp => "bmp",
+                    gpui::ImageFormat::Tiff => "tiff",
+                    _ => continue,
+                };
+                let short = uuid::Uuid::new_v4().to_string()[..8].to_string();
+                let path = std::env::temp_dir().join(format!("pasted-{short}.{ext}"));
+                match std::fs::write(&path, &image.bytes) {
+                    Ok(()) => staged.push(path),
+                    Err(e) => log::warn!("failed to stage clipboard image: {e}"),
+                }
+            }
+        }
+        if staged.is_empty() {
+            return false;
+        }
+        self.add_image_paths(staged, cx);
+        true
+    }
+
     fn pick_images(&mut self, cx: &mut Context<Self>) {
         let receiver = cx.prompt_for_paths(PathPromptOptions {
             files: true,
@@ -136,7 +171,8 @@ impl Composer {
         });
         cx.spawn(async move |this, cx| {
             if let Ok(Ok(Some(paths))) = receiver.await {
-                this.update(cx, |this, cx| this.add_image_paths(paths, cx)).ok();
+                this.update(cx, |this, cx| this.add_image_paths(paths, cx))
+                    .ok();
             }
         })
         .detach();
@@ -189,7 +225,11 @@ impl Composer {
                 .update(cx, |input, cx| input.set_value("", window, cx));
             return;
         }
-        if self.pending_images.iter().any(|p| p.temp_path.as_os_str().is_empty()) {
+        if self
+            .pending_images
+            .iter()
+            .any(|p| p.temp_path.as_os_str().is_empty())
+        {
             self.error = Some("Still processing images…".into());
             cx.notify();
             return;
@@ -217,11 +257,7 @@ impl Composer {
             .active_instance()
             .and_then(|i| i.api_key.clone());
         let client = self.store.read(cx).client();
-        let images: Vec<PathBuf> = self
-            .pending_images
-            .drain(..)
-            .map(|p| p.temp_path)
-            .collect();
+        let images: Vec<PathBuf> = self.pending_images.drain(..).map(|p| p.temp_path).collect();
         let audio = self.pending_audio.take();
         self.sending = true;
         cx.notify();
@@ -278,9 +314,8 @@ impl Composer {
                         cx.notify();
                     }
                     None => {
-                        this.store.update(cx, |store, cx| {
-                            store.send_chat(text, Some(attachments), cx)
-                        });
+                        this.store
+                            .update(cx, |store, cx| store.send_chat(text, Some(attachments), cx));
                     }
                 }
             })
@@ -307,7 +342,20 @@ impl Composer {
                     .h_flex()
                     .gap_1()
                     .text_xs()
-                    .child(Icon::new(IconName::File).xsmall())
+                    .map(|this| {
+                        // Staged file on disk → thumbnail; still resizing →
+                        // generic file icon.
+                        if processing {
+                            this.child(Icon::new(IconName::File).xsmall())
+                        } else {
+                            this.child(
+                                gpui::img(image.temp_path.clone())
+                                    .rounded_sm()
+                                    .max_w(px(40.))
+                                    .max_h(px(28.)),
+                            )
+                        }
+                    })
                     .child(if processing {
                         format!("{}…", image.original_name)
                     } else {
@@ -384,6 +432,13 @@ impl Render for Composer {
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
                 this.add_image_paths(paths.paths().to_vec(), cx);
             }))
+            .capture_action(
+                cx.listener(|this, _: &gpui_component::input::Paste, _, cx| {
+                    if this.paste_clipboard_image(cx) {
+                        cx.stop_propagation();
+                    }
+                }),
+            )
             .children(chips)
             .child(
                 div()
@@ -400,7 +455,13 @@ impl Render for Composer {
                     .child(
                         Button::new("record")
                             .icon(IconName::Bell)
-                            .map(|b| if self.recording { b.danger() } else { b.ghost() })
+                            .map(|b| {
+                                if self.recording {
+                                    b.danger()
+                                } else {
+                                    b.ghost()
+                                }
+                            })
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_recording(cx))),
                     )
                     .child(div().flex_1().child(Input::new(&self.input)))
@@ -412,8 +473,7 @@ impl Render for Composer {
                                     .danger()
                                     .label("Stop")
                                     .on_click(cx.listener(|this, _, _, cx| {
-                                        this.store
-                                            .update(cx, |store, cx| store.abort_turn(cx));
+                                        this.store.update(cx, |store, cx| store.abort_turn(cx));
                                     })),
                             )
                         } else {

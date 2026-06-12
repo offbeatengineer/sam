@@ -33,7 +33,10 @@ pub struct ArtifactPanel {
 }
 
 fn extension(path: &str) -> String {
-    path.rsplit('.').next().unwrap_or_default().to_ascii_lowercase()
+    path.rsplit('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
 }
 
 fn image_format(ext: &str) -> Option<ImageFormat> {
@@ -48,11 +51,7 @@ fn image_format(ext: &str) -> Option<ImageFormat> {
 }
 
 impl ArtifactPanel {
-    pub fn new(
-        ui: Entity<UiState>,
-        conn: Entity<ConnectionState>,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(ui: Entity<UiState>, conn: Entity<ConnectionState>, cx: &mut Context<Self>) -> Self {
         cx.observe(&ui, |this: &mut Self, _, cx| {
             this.sync(cx);
             cx.notify();
@@ -162,8 +161,12 @@ impl ArtifactPanel {
         if self.webview.is_some() || !matches!(self.content, Content::Html) {
             return;
         }
-        let Some(path) = self.loaded_path.clone() else { return };
-        let Some(url) = self.artifact_url(&path, cx) else { return };
+        let Some(path) = self.loaded_path.clone() else {
+            return;
+        };
+        let Some(url) = self.artifact_url(&path, cx) else {
+            return;
+        };
         match wry::WebViewBuilder::new()
             .with_url(&url)
             .build_as_child(window)
@@ -256,7 +259,14 @@ impl Render for ArtifactPanel {
                     .border_color(cx.theme().border)
                     .h_flex()
                     .gap_2()
-                    .child(div().flex_1().text_sm().font_semibold().truncate().child(filename))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_sm()
+                            .font_semibold()
+                            .truncate()
+                            .child(filename),
+                    )
                     .when_some(browser_url, |this, url| {
                         this.child(
                             Button::new("open-browser")

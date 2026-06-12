@@ -162,14 +162,23 @@ impl Actor {
                 reply,
             } => {
                 tokio::spawn(async move {
-                    let result =
-                        upload::upload_file(&file_path, &upload_url, api_key, &mime_type, delete_after)
-                            .await
-                            .map_err(ClientError::Other);
+                    let result = upload::upload_file(
+                        &file_path,
+                        &upload_url,
+                        api_key,
+                        &mime_type,
+                        delete_after,
+                    )
+                    .await
+                    .map_err(ClientError::Other);
                     let _ = reply.send(result);
                 });
             }
-            Command::Fetch { url, api_key, reply } => {
+            Command::Fetch {
+                url,
+                api_key,
+                reply,
+            } => {
                 tokio::spawn(async move {
                     let result = upload::fetch_bytes(&url, api_key)
                         .await
@@ -190,9 +199,8 @@ impl Actor {
                     Ok(response) => {
                         // Correlated responses resolve their pending request and
                         // are consumed; everything else is broadcast to the UI.
-                        if let Some(reply) = response
-                            .request_id()
-                            .and_then(|id| self.pending.remove(id))
+                        if let Some(reply) =
+                            response.request_id().and_then(|id| self.pending.remove(id))
                         {
                             let _ = reply.send(Ok(response));
                         } else {

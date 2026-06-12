@@ -2,12 +2,14 @@
 //! `MessageEntryView.tsx` dispatch. Pure functions: state for collapsibles
 //! lives in window-keyed state, keyed by entry id.
 
+use std::collections::HashMap;
+
 use gpui::{div, prelude::*, px, AnyElement, App, Div, SharedString, Window};
 use gpui_component::{ActiveTheme, Icon, IconName, Sizable, StyledExt};
 use sam_protocol::session::{AgentMessage, ContentItem, MessageContent, SessionEntry};
 
 use crate::markdown::md;
-use crate::state::sessions::{StreamItem, ToolStatus};
+use crate::state::sessions::{StreamItem, ToolResultInfo, ToolStatus};
 
 /// Live row for the in-progress turn (port of `StreamingTurnView.tsx`).
 pub fn render_streaming(items: &[StreamItem], window: &mut Window, cx: &mut App) -> AnyElement {
@@ -65,7 +67,25 @@ pub fn render_streaming(items: &[StreamItem], window: &mut Window, cx: &mut App)
                 status,
                 args,
                 result,
+                details,
             } => {
+                // Completed calls of known tools get their special card
+                // (search results, artifact link, …) instead of the generic
+                // one — port of the dispatch in StreamingTurnView.tsx.
+                if !matches!(status, ToolStatus::Running) {
+                    if let Some(card) = crate::views::tool_cards::render_special(
+                        id,
+                        name,
+                        args,
+                        result.as_deref(),
+                        details.as_ref(),
+                        window,
+                        cx,
+                    ) {
+                        column = column.child(card);
+                        continue;
+                    }
+                }
                 let (icon, color) = match status {
                     ToolStatus::Running => (IconName::LoaderCircle, cx.theme().muted_foreground),
                     ToolStatus::Done => (IconName::Check, cx.theme().success),
@@ -126,12 +146,24 @@ pub fn render_streaming(items: &[StreamItem], window: &mut Window, cx: &mut App)
 
 /// The just-sent user message, shown until the JSONL refresh includes it.
 pub fn render_pending_user(text: &str, window: &mut Window, cx: &mut App) -> AnyElement {
-    render_user("pending-user", &MessageContent::Text(text.to_string()), window, cx)
+    render_user(
+        "pending-user",
+        &MessageContent::Text(text.to_string()),
+        window,
+        cx,
+    )
 }
 
-pub fn render_entry(entry: &SessionEntry, window: &mut Window, cx: &mut App) -> AnyElement {
+pub fn render_entry(
+    entry: &SessionEntry,
+    tool_results: &HashMap<String, ToolResultInfo>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
     match entry {
-        SessionEntry::Message { id, message, .. } => render_message(id, message, window, cx),
+        SessionEntry::Message { id, message, .. } => {
+            render_message(id, message, tool_results, window, cx)
+        }
         SessionEntry::Compaction { summary, .. } => {
             divider("Conversation compacted", Some(summary.clone()), cx).into_any_element()
         }
@@ -144,15 +176,13 @@ pub fn render_entry(entry: &SessionEntry, window: &mut Window, cx: &mut App) -> 
         SessionEntry::ThinkingLevelChange { thinking_level, .. } => {
             system_line(format!("thinking → {thinking_level}"), cx).into_any_element()
         }
-        SessionEntry::CustomMessage { id, content, .. } => row(
-            md(
-                SharedString::from(format!("md-{id}")),
-                content.plain_text(),
-                window,
-                cx,
-            )
-            .into_any_element(),
+        SessionEntry::CustomMessage { id, content, .. } => row(md(
+            SharedString::from(format!("md-{id}")),
+            content.plain_text(),
+            window,
+            cx,
         )
+        .into_any_element())
         .into_any_element(),
         SessionEntry::Unknown { raw } => system_line(
             format!(
@@ -167,20 +197,30 @@ pub fn render_entry(entry: &SessionEntry, window: &mut Window, cx: &mut App) -> 
     }
 }
 
-fn render_message(id: &str, message: &AgentMessage, window: &mut Window, cx: &mut App) -> AnyElement {
+fn render_message(
+    id: &str,
+    message: &AgentMessage,
+    tool_results: &HashMap<String, ToolResultInfo>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
     match message {
         AgentMessage::User { content, .. } => render_user(id, content, window, cx),
         AgentMessage::Assistant {
             content,
             error_message,
             ..
-        } => render_assistant(id, content, error_message.as_deref(), window, cx),
-        AgentMessage::ToolResult {
-            tool_name,
+        } => render_assistant(
+            id,
             content,
-            is_error,
-            ..
-        } => render_tool_result(id, tool_name, content, *is_error, window, cx),
+            error_message.as_deref(),
+            tool_results,
+            window,
+            cx,
+        ),
+        // Rendered inline at the assistant's tool-call row; filtered from
+        // display_indices, so this only runs defensively.
+        AgentMessage::ToolResult { .. } => div().into_any_element(),
         AgentMessage::BashExecution {
             command,
             output,
@@ -188,15 +228,13 @@ fn render_message(id: &str, message: &AgentMessage, window: &mut Window, cx: &mu
             cancelled,
             ..
         } => render_bash(id, command, output, *exit_code, *cancelled, window, cx),
-        AgentMessage::Custom { content, .. } => row(
-            md(
-                SharedString::from(format!("md-{id}")),
-                content.plain_text(),
-                window,
-                cx,
-            )
-            .into_any_element(),
+        AgentMessage::Custom { content, .. } => row(md(
+            SharedString::from(format!("md-{id}")),
+            content.plain_text(),
+            window,
+            cx,
         )
+        .into_any_element())
         .into_any_element(),
         AgentMessage::CompactionSummary { summary, .. } => {
             divider("Conversation compacted", Some(summary.clone()), cx).into_any_element()
@@ -211,26 +249,86 @@ fn render_message(id: &str, message: &AgentMessage, window: &mut Window, cx: &mu
 // User
 // ---------------------------------------------------------------------------
 
-fn render_user(id: &str, content: &MessageContent, window: &mut Window, cx: &mut App) -> AnyElement {
+fn render_user(
+    id: &str,
+    content: &MessageContent,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
     let text = content.plain_text();
-    let (image_count, audio_count) = match content {
+    let (images, audio_urls) = match content {
         MessageContent::Items(items) => (
             items
                 .iter()
                 .filter(|i| matches!(i, ContentItem::Image { .. }))
-                .count(),
+                .cloned()
+                .collect::<Vec<_>>(),
             items
                 .iter()
-                .filter(|i| matches!(i, ContentItem::AudioRef { .. }))
-                .count(),
+                .filter_map(|i| match i {
+                    ContentItem::AudioRef { url } => Some(url.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
         ),
-        _ => (0, 0),
+        _ => (Vec::new(), Vec::new()),
     };
+
+    // Thumbnails above the bubble, right-aligned like the bubble itself
+    // (port of UserMessageView; audio playback is still a TODO chip).
+    let thumbs = images
+        .iter()
+        .filter_map(|item| {
+            let ContentItem::Image {
+                data,
+                mime_type,
+                url,
+            } = item
+            else {
+                return None;
+            };
+            use crate::state::images::{resolve_image, ImageSlot};
+            let el = match resolve_image(data.as_deref(), mime_type, url.as_deref(), cx) {
+                ImageSlot::Ready(image) => gpui::img(image)
+                    .rounded_lg()
+                    .max_w(px(220.))
+                    .max_h(px(220.))
+                    .into_any_element(),
+                ImageSlot::Loading => div()
+                    .size(px(64.))
+                    .rounded_lg()
+                    .bg(cx.theme().muted)
+                    .into_any_element(),
+                ImageSlot::Failed => div()
+                    .px_2()
+                    .py_1()
+                    .rounded_md()
+                    .bg(cx.theme().muted)
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("image unavailable")
+                    .into_any_element(),
+            };
+            Some(el)
+        })
+        .collect::<Vec<_>>();
 
     row(div()
         .w_full()
-        .flex()
-        .justify_end()
+        .v_flex()
+        .items_end()
+        .gap_1p5()
+        .when(!thumbs.is_empty(), |this| {
+            this.child(
+                div()
+                    .h_flex()
+                    .gap_1p5()
+                    .flex_wrap()
+                    .justify_end()
+                    .max_w(px(560.))
+                    .children(thumbs),
+            )
+        })
         .child(
             div()
                 .max_w(px(560.))
@@ -240,30 +338,36 @@ fn render_user(id: &str, content: &MessageContent, window: &mut Window, cx: &mut
                 .bg(cx.theme().muted)
                 .v_flex()
                 .gap_1()
-                .when(image_count > 0 || audio_count > 0, |this| {
-                    let mut parts = Vec::new();
-                    if image_count > 0 {
-                        parts.push(format!(
-                            "{image_count} image{}",
-                            if image_count > 1 { "s" } else { "" }
-                        ));
-                    }
-                    if audio_count > 0 {
-                        parts.push("audio".to_string());
-                    }
-                    this.child(
+                .when(!audio_urls.is_empty(), |this| {
+                    this.children(audio_urls.iter().enumerate().map(|(i, url)| {
+                        use crate::state::audio_player::{play_state, toggle, PlayState};
+                        let (label, icon) = match play_state(url, cx) {
+                            PlayState::Playing => ("playing", IconName::CircleX),
+                            PlayState::Loading => ("loading…", IconName::LoaderCircle),
+                            PlayState::Idle => ("voice message", IconName::ArrowRight),
+                        };
+                        let url = url.clone();
                         div()
+                            .id(SharedString::from(format!("audio-{id}-{i}")))
+                            .h_flex()
+                            .gap_1()
+                            .px_2()
+                            .py_0p5()
+                            .rounded_md()
+                            .bg(cx.theme().background)
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("📎 {}", parts.join(" · "))),
-                    )
+                            .cursor_pointer()
+                            .hover(|this| this.bg(cx.theme().list_hover))
+                            .child(
+                                Icon::new(icon)
+                                    .xsmall()
+                                    .text_color(cx.theme().muted_foreground),
+                            )
+                            .child(label)
+                            .on_click(move |_, _, cx| toggle(&url, cx))
+                    }))
                 })
-                .child(md(
-                    SharedString::from(format!("md-{id}")),
-                    text,
-                    window,
-                    cx,
-                )),
+                .child(md(SharedString::from(format!("md-{id}")), text, window, cx)),
         )
         .into_any_element())
     .into_any_element()
@@ -277,6 +381,7 @@ fn render_assistant(
     id: &str,
     content: &[ContentItem],
     error_message: Option<&str>,
+    tool_results: &HashMap<String, ToolResultInfo>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -312,7 +417,48 @@ fn render_assistant(
                 arguments,
                 ..
             } => {
-                column = column.child(tool_call_card(call_id, name, arguments, cx));
+                let result = tool_results.get(call_id);
+                // Known tools with a successful result get their special
+                // card (same dispatch as MessageEntryView.tsx).
+                if let Some(result) = result.filter(|r| !r.is_error) {
+                    if let Some(card) = crate::views::tool_cards::render_special(
+                        call_id,
+                        name,
+                        arguments,
+                        Some(&result.text),
+                        result.details.as_ref(),
+                        window,
+                        cx,
+                    ) {
+                        column = column.child(card);
+                        continue;
+                    }
+                }
+                column = column.child(match result {
+                    // Generic call-with-result: collapsible, output in the
+                    // body (truncated like the React ToolCard).
+                    Some(result) => collapsible_card(
+                        format!("result-{call_id}"),
+                        if result.is_error {
+                            IconName::TriangleAlert
+                        } else {
+                            IconName::Check
+                        },
+                        if result.is_error {
+                            format!("{name} · error")
+                        } else {
+                            name.clone()
+                        },
+                        summarize_args(name, arguments),
+                        format!("```\n{}\n```", truncate(&result.text, 1000)),
+                        false,
+                        window,
+                        cx,
+                    )
+                    .into_any_element(),
+                    // No result recorded (aborted turn): bare call card.
+                    None => tool_call_card(call_id, name, arguments, cx).into_any_element(),
+                });
             }
             _ => {}
         }
@@ -344,7 +490,12 @@ fn tool_call_card(
     let args_summary = summarize_args(name, arguments);
     // report_artifact cards open the artifact panel.
     let artifact_path = (name == "report_artifact")
-        .then(|| arguments.get("path").and_then(|p| p.as_str()).map(str::to_string))
+        .then(|| {
+            arguments
+                .get("path")
+                .and_then(|p| p.as_str())
+                .map(str::to_string)
+        })
         .flatten();
 
     div()
@@ -401,54 +552,13 @@ fn summarize_args(name: &str, args: &serde_json::Value) -> String {
     };
     let text = summary.unwrap_or_else(|| {
         let s = args.to_string();
-        if s == "null" { String::new() } else { s }
+        if s == "null" {
+            String::new()
+        } else {
+            s
+        }
     });
     truncate(&text, 120)
-}
-
-// ---------------------------------------------------------------------------
-// Tool result
-// ---------------------------------------------------------------------------
-
-fn render_tool_result(
-    id: &str,
-    tool_name: &str,
-    content: &[ContentItem],
-    is_error: bool,
-    window: &mut Window,
-    cx: &mut App,
-) -> AnyElement {
-    let text: String = content
-        .iter()
-        .filter_map(|item| match item {
-            ContentItem::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let title = if is_error {
-        format!("{tool_name} · error")
-    } else {
-        tool_name.to_string()
-    };
-
-    row(collapsible_card(
-        format!("result-{id}"),
-        if is_error {
-            IconName::TriangleAlert
-        } else {
-            IconName::Check
-        },
-        title,
-        format!("{} chars", text.len()),
-        text,
-        false,
-        window,
-        cx,
-    )
-    .into_any_element())
-    .into_any_element()
 }
 
 // ---------------------------------------------------------------------------
@@ -578,7 +688,11 @@ fn collapsible_card(
                     .small()
                     .text_color(cx.theme().muted_foreground),
                 )
-                .child(Icon::new(icon).small().text_color(cx.theme().muted_foreground))
+                .child(
+                    Icon::new(icon)
+                        .small()
+                        .text_color(cx.theme().muted_foreground),
+                )
                 .child(div().font_semibold().child(title))
                 .child(
                     div()

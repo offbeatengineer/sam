@@ -154,7 +154,11 @@ impl SamClient {
         api_key: Option<String>,
     ) -> impl std::future::Future<Output = Result<Vec<u8>, ClientError>> + 'static {
         let (reply, rx) = oneshot::channel();
-        let sent = self.cmd_tx.send(Command::Fetch { url, api_key, reply });
+        let sent = self.cmd_tx.send(Command::Fetch {
+            url,
+            api_key,
+            reply,
+        });
         async move {
             if sent.is_err() {
                 return Err(ClientError::Other("client shut down".into()));

@@ -62,7 +62,10 @@ pub(crate) async fn fetch_bytes(url: &str, api_key: Option<String>) -> Result<Ve
     if let Some(key) = api_key {
         request = request.bearer_auth(key);
     }
-    let response = request.send().await.map_err(|e| format!("fetch failed: {e}"))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("fetch failed: {e}"))?;
     if !response.status().is_success() {
         return Err(format!("fetch failed: {}", response.status()));
     }

@@ -1,6 +1,8 @@
 //! Session list + active session entries (the read-only half of the Tauri
 //! client's `sessionStore`). Streaming-turn state lands here in M3.
 
+use std::collections::HashMap;
+
 use gpui::{Context, EventEmitter};
 use sam_client::SamClient;
 use sam_protocol::{
@@ -17,7 +19,55 @@ pub struct ActiveSession {
     pub entries: Vec<SessionEntry>,
     /// Indices into `entries` that produce a visible row in the chat.
     pub display_indices: Vec<usize>,
+    /// toolCallId → result, for rendering results inline at the assistant's
+    /// tool-call position (toolResult entries themselves render no row —
+    /// same as the Tauri client's MessageList/MessageEntryView).
+    pub tool_results: std::sync::Arc<HashMap<String, ToolResultInfo>>,
     pub loading: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolResultInfo {
+    pub text: String,
+    pub is_error: bool,
+    pub details: Option<serde_json::Value>,
+}
+
+fn collect_tool_results(entries: &[SessionEntry]) -> HashMap<String, ToolResultInfo> {
+    use sam_protocol::session::{AgentMessage, ContentItem};
+    let mut map = HashMap::new();
+    for entry in entries {
+        if let SessionEntry::Message {
+            message:
+                AgentMessage::ToolResult {
+                    tool_call_id,
+                    content,
+                    is_error,
+                    details,
+                    ..
+                },
+            ..
+        } = entry
+        {
+            let text = content
+                .iter()
+                .filter_map(|item| match item {
+                    ContentItem::Text { text, .. } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            map.insert(
+                tool_call_id.clone(),
+                ToolResultInfo {
+                    text,
+                    is_error: *is_error,
+                    details: details.clone(),
+                },
+            );
+        }
+    }
+    map
 }
 
 // --- Streaming turn (port of StreamingTurn in desktop sessionStore.ts) ---
@@ -42,6 +92,9 @@ pub enum StreamItem {
         status: ToolStatus,
         args: serde_json::Value,
         result: Option<String>,
+        /// Tool-specific structured payload from `tool_end` (drives the
+        /// special cards: web_search results, artifact metadata, …).
+        details: Option<serde_json::Value>,
     },
 }
 
@@ -99,6 +152,7 @@ impl StreamingTurn {
             status: ToolStatus::Running,
             args,
             result: None,
+            details: None,
         });
         self.revision += 1;
     }
@@ -115,10 +169,20 @@ impl StreamingTurn {
         }
     }
 
-    fn end_tool(&mut self, tool_call_id: &str, output: String, is_error: bool) {
+    fn end_tool(
+        &mut self,
+        tool_call_id: &str,
+        output: String,
+        is_error: bool,
+        tool_details: Option<serde_json::Value>,
+    ) {
         for item in self.items.iter_mut().rev() {
             if let StreamItem::Tool {
-                id, status, result, ..
+                id,
+                status,
+                result,
+                details,
+                ..
             } = item
             {
                 if id == tool_call_id {
@@ -128,6 +192,7 @@ impl StreamingTurn {
                         ToolStatus::Done
                     };
                     *result = Some(output);
+                    *details = tool_details;
                     self.revision += 1;
                     return;
                 }
@@ -149,6 +214,9 @@ pub struct SessionStore {
     pub streaming: Option<StreamingTurn>,
     /// Message just sent, shown until the JSONL refresh includes it.
     pub pending_user: Option<String>,
+    /// After an instance switch: select the newest app-channel session once
+    /// the next sessions list arrives (port of `switchInstance` step 5).
+    auto_select_latest: bool,
 }
 
 impl EventEmitter<SessionStoreEvent> for SessionStore {}
@@ -161,7 +229,20 @@ impl SessionStore {
             active: None,
             streaming: None,
             pending_user: None,
+            auto_select_latest: false,
         }
+    }
+
+    /// Drop everything tied to the previous backend instance (port of the
+    /// store clearing in `switchInstance`/`removeInstance`). The next
+    /// sessions list auto-selects the newest app-channel session.
+    pub fn clear_all(&mut self, cx: &mut Context<Self>) {
+        self.sessions.clear();
+        self.active = None;
+        self.streaming = None;
+        self.pending_user = None;
+        self.auto_select_latest = true;
+        cx.notify();
     }
 
     /// Start a fresh conversation; the session file (and its path) appears
@@ -183,6 +264,7 @@ impl SessionStore {
             },
             entries: Vec::new(),
             display_indices: Vec::new(),
+            tool_results: Default::default(),
             loading: false,
         });
         self.streaming = None;
@@ -289,10 +371,11 @@ impl SessionStore {
                 tool_call_id,
                 result,
                 is_error,
+                details,
                 ..
             } => {
                 if let Some(s) = &mut self.streaming {
-                    s.end_tool(&tool_call_id, result, is_error);
+                    s.end_tool(&tool_call_id, result, is_error, details);
                 }
             }
             AppResponse::TurnEnd { .. } | AppResponse::Aborted { .. } => {
@@ -359,6 +442,20 @@ impl SessionStore {
                             }
                             store.load_active_entries(cx);
                         }
+                        // After an instance switch: open the newest
+                        // app-channel session (or the newest of any channel).
+                        if store.auto_select_latest {
+                            store.auto_select_latest = false;
+                            let pick = store
+                                .sessions
+                                .iter()
+                                .find(|s| s.channel_id == "app")
+                                .or(store.sessions.first())
+                                .cloned();
+                            if let Some(info) = pick {
+                                store.select_session(info, cx);
+                            }
+                        }
                         // Dev hook: SAM_AUTOSELECT=<index> opens the Nth
                         // session on startup (headless UI verification).
                         if store.active.is_none() {
@@ -392,6 +489,7 @@ impl SessionStore {
             info: info.clone(),
             entries: Vec::new(),
             display_indices: Vec::new(),
+            tool_results: Default::default(),
             loading: true,
         });
         self.streaming = None;
@@ -417,11 +515,15 @@ impl SessionStore {
             match response {
                 Ok(AppResponse::SessionEntries { entries, .. }) => {
                     this.update(cx, |store, cx| {
-                        let Some(active) = &mut store.active else { return };
+                        let Some(active) = &mut store.active else {
+                            return;
+                        };
                         if active.info.path != path {
                             return; // user switched sessions mid-load
                         }
                         active.entries = entries.into_iter().map(parse_entry).collect();
+                        active.tool_results =
+                            std::sync::Arc::new(collect_tool_results(&active.entries));
                         active.display_indices = active
                             .entries
                             .iter()
@@ -500,6 +602,9 @@ fn is_displayable(entry: &SessionEntry) -> bool {
     match entry {
         SessionEntry::Message { message, .. } => match message {
             AgentMessage::Custom { display, .. } => *display,
+            // Results render inline at the assistant's tool-call row (via
+            // ActiveSession::tool_results), not as their own row.
+            AgentMessage::ToolResult { .. } => false,
             _ => true,
         },
         SessionEntry::CustomMessage { display, .. } => *display,
@@ -508,8 +613,8 @@ fn is_displayable(entry: &SessionEntry) -> bool {
         | SessionEntry::ModelChange { .. }
         | SessionEntry::ThinkingLevelChange { .. }
         | SessionEntry::Unknown { .. } => true,
-        SessionEntry::Custom { .. } | SessionEntry::Label { .. } | SessionEntry::SessionInfo { .. } => {
-            false
-        }
+        SessionEntry::Custom { .. }
+        | SessionEntry::Label { .. }
+        | SessionEntry::SessionInfo { .. } => false,
     }
 }

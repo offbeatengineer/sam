@@ -21,7 +21,9 @@ pub struct ChatView {
 
 /// Rows = displayable entries ++ pending user message ++ live streaming turn.
 fn row_count(store: &SessionStore) -> usize {
-    let Some(active) = &store.active else { return 0 };
+    let Some(active) = &store.active else {
+        return 0;
+    };
     active.display_indices.len()
         + usize::from(store.pending_user.is_some())
         + usize::from(store.streaming.is_some())
@@ -38,6 +40,22 @@ impl ChatView {
             cx.notify();
         })
         .detach();
+
+        // Inline images resolve asynchronously; re-render visible rows when
+        // one lands (row heights re-measure on the next layout pass).
+        if let Some(cache) = cx
+            .try_global::<crate::state::images::ImageCacheGlobal>()
+            .map(|g| g.0.clone())
+        {
+            cx.observe(&cache, |_, _, cx| cx.notify()).detach();
+        }
+        // Same for audio chips flipping between idle/loading/playing.
+        if let Some(player) = cx
+            .try_global::<crate::state::audio_player::AudioPlayerGlobal>()
+            .map(|g| g.0.clone())
+        {
+            cx.observe(&player, |_, _, cx| cx.notify()).detach();
+        }
 
         Self {
             store,
@@ -100,7 +118,12 @@ impl Render for ChatView {
         let store_handle = self.store.clone();
         let message_list = list(self.list_state.clone(), move |ix, window, cx| {
             enum Row {
-                Entry(sam_protocol::session::SessionEntry),
+                Entry(
+                    sam_protocol::session::SessionEntry,
+                    std::sync::Arc<
+                        std::collections::HashMap<String, crate::state::sessions::ToolResultInfo>,
+                    >,
+                ),
                 PendingUser(String),
                 Streaming(Vec<crate::state::sessions::StreamItem>),
                 None,
@@ -111,7 +134,10 @@ impl Render for ChatView {
                     Some(active) => {
                         let display_count = active.display_indices.len();
                         if ix < display_count {
-                            Row::Entry(active.entries[active.display_indices[ix]].clone())
+                            Row::Entry(
+                                active.entries[active.display_indices[ix]].clone(),
+                                active.tool_results.clone(),
+                            )
                         } else if ix == display_count && store.pending_user.is_some() {
                             Row::PendingUser(store.pending_user.clone().unwrap_or_default())
                         } else if let Some(streaming) = &store.streaming {
@@ -124,7 +150,7 @@ impl Render for ChatView {
                 }
             };
             match row {
-                Row::Entry(entry) => render_entry(&entry, window, cx),
+                Row::Entry(entry, tool_results) => render_entry(&entry, &tool_results, window, cx),
                 Row::PendingUser(text) => render_pending_user(&text, window, cx),
                 Row::Streaming(items) => render_streaming(&items, window, cx),
                 Row::None => div().into_any_element(),

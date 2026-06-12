@@ -18,7 +18,11 @@ pub struct BackendInstance {
 }
 
 impl BackendInstance {
-    pub fn new(name: impl Into<String>, server_url: impl Into<String>, api_key: Option<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        server_url: impl Into<String>,
+        api_key: Option<String>,
+    ) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             name: name.into(),
@@ -32,7 +36,11 @@ impl BackendInstance {
     pub fn connection_url(&self) -> String {
         match &self.api_key {
             Some(key) => {
-                let sep = if self.server_url.contains('?') { "&" } else { "?" };
+                let sep = if self.server_url.contains('?') {
+                    "&"
+                } else {
+                    "?"
+                };
                 format!("{}{}apiKey={}", self.server_url, sep, key)
             }
             None => self.server_url.clone(),
@@ -144,7 +152,10 @@ mod tests {
             "activeInstanceId": "a"
         }"#;
         let settings: AppSettings = serde_json::from_str(json).unwrap();
-        assert_eq!(settings.active_instance().unwrap().server_url, "ws://127.0.0.1:9222");
+        assert_eq!(
+            settings.active_instance().unwrap().server_url,
+            "ws://127.0.0.1:9222"
+        );
         let out = serde_json::to_value(&settings).unwrap();
         assert_eq!(out["instances"][0]["serverUrl"], "ws://127.0.0.1:9222");
         assert_eq!(out["activeInstanceId"], "a");

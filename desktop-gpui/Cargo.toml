@@ -10,10 +10,7 @@ license = "MIT"
 sam-protocol = { path = "crates/sam-protocol" }
 sam-client = { path = "crates/sam-client" }
 
-# runtime_shaders: compile Metal shaders at runtime instead of via the `metal`
-# CLI (this machine's Xcode 26.5 lacks the Metal Toolchain component; fix via
-# `xcodebuild -downloadComponent MetalToolchain` before release packaging in M6).
-gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+gpui = { version = "=0.2.2" }
 gpui-component = { version = "=0.5.1", features = ["webview", "tree-sitter-languages"] }
 
 serde = { version = "1", features = ["derive"] }
@@ -26,6 +23,7 @@ reqwest = { version = "0.12", features = ["json"] }
 cpal = "0.15"
 hound = "3.5"
 anyhow = "1"
+base64 = "0.22"
 thiserror = "2"
 dirs = "5"
 uuid = { version = "1", features = ["v4"] }

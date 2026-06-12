@@ -249,7 +249,10 @@ mod tests {
         assert!(matches!(
             &parsed[2],
             SessionEntry::Message {
-                message: AgentMessage::BashExecution { exit_code: Some(0), .. },
+                message: AgentMessage::BashExecution {
+                    exit_code: Some(0),
+                    ..
+                },
                 ..
             }
         ));

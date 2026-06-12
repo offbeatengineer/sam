@@ -18,3 +18,5 @@ image.workspace = true
 chrono.workspace = true
 log.workspace = true
 env_logger.workspace = true
+gpui-component-assets = "=0.5.1"
+base64.workspace = true

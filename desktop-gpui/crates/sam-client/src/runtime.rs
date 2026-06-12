@@ -5,7 +5,9 @@ use futures::channel::mpsc::UnboundedSender;
 
 /// Spawn the IO thread; returns the command sender the [`crate::SamClient`]
 /// handle wraps. The thread exits when every command sender is dropped.
-pub(crate) fn spawn(event_tx: UnboundedSender<ClientEvent>) -> tokio::sync::mpsc::UnboundedSender<Command> {
+pub(crate) fn spawn(
+    event_tx: UnboundedSender<ClientEvent>,
+) -> tokio::sync::mpsc::UnboundedSender<Command> {
     let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
 
     std::thread::Builder::new()

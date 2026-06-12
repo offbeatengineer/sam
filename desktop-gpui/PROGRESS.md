@@ -53,8 +53,10 @@ crates/
 ```
 
 Key version pins (pre-1.0, breaking churn — upgrade both together, exact pins):
-`gpui = "=0.2.2"` (with `runtime_shaders`, see gotchas) and
-`gpui-component = "=0.5.1"` (features `webview`, `tree-sitter-languages`).
+`gpui = "=0.2.2"`, `gpui-component = "=0.5.1"` (features `webview`,
+`tree-sitter-languages`), and `gpui-component-assets = "=0.5.1"` (embeds the
+IconName SVGs — without `.with_assets(...)` in main.rs every icon renders
+blank, including inside gpui-component's own widgets).
 API ground truth when coding: read the vendored sources at
 `~/.cargo/registry/src/index.crates.io-*/gpui-0.2.2/` and `gpui-component-0.5.1/`
 — do NOT trust memory of Zed's main branch.
@@ -68,7 +70,56 @@ API ground truth when coding: read the vendored sources at
 | M3 streaming chat + new-session | ✅ | ✅ real streamed turn end-to-end (session `6985FDAD…` created, adopted, 4 entries reloaded) |
 | M4 attachments + audio | ✅ | ◐ resize unit tests + live `/upload` smoke pass; **needs eyes**: drag-drop, picker, paste (NOT implemented), mic recording |
 | M5 artifact panel + WebView | ✅ | ◐ artifacts HTTP listing verified; **needs eyes**: wry WebView render/layering, live-reload |
-| M6 polish + parity sweep | ❌ not started | — |
+| M6 polish + parity sweep | ◐ in progress | see below |
+
+### M6 progress (2026-06-12, second session)
+
+- ✅ **Metal Toolchain installed** → dropped `runtime_shaders`; shaders now
+  compile at build time (verified: app renders).
+- ✅ **Icon assets fixed**: added `gpui-component-assets` +
+  `Application::with_assets(...)` — icons were silently blank app-wide before.
+- ✅ **Multi-instance settings page**: instance list with active badge,
+  Connect (switch), Edit, remove (✕), New instance + edit form
+  (`settings_form.rs`); `ConnectionState::{save_instance, switch_instance,
+  remove_instance}` port the settingsStore.ts flows; switch/remove-active
+  clears the SessionStore and auto-selects the newest app session after the
+  next sessions list (`auto_select_latest`). Verified visually
+  (SAM_OPEN_SETTINGS=1); live switch to the remote instance not exercised.
+- ✅ **Keybindings**: Cmd+N new session, Cmd+, toggle settings, Cmd+W close
+  window, Cmd+Q quit (actions in main.rs, handlers on SamApp root).
+- ✅ **Turn-end notification** when window unfocused (`notify.rs`, osascript
+  `display notification`, preview = last streamed text). Verified end-to-end
+  with a real backgrounded turn.
+- ✅ **Image paste**: Cmd+V with a clipboard image stages it as an attachment
+  (capture-phase interception of the Input's Paste action in composer.rs).
+- ✅ **Special tool cards** (streaming view): web_search / web_fetch /
+  memory_save·update·forget / memory_recall / session_search / session_read /
+  manage_kit / report_artifact (clickable → artifact panel) in
+  `views/tool_cards.rs`; `StreamItem::Tool` now carries `details` from
+  tool_end. Verified visually mid-stream (query + "SearXNG · 5 results").
+- ✅ **Special tool cards in history** + inline results: toolResult entries
+  no longer render their own row; `ActiveSession::tool_results`
+  (toolCallId → text/isError/details) renders the result at the assistant's
+  tool-call position — special card when known, collapsible generic card
+  with the output otherwise (port of MessageList/MessageEntryView). Verified
+  visually.
+- ✅ **Inline images in history**: user-message images render as thumbnails
+  above the bubble (base64 `data` and upload `url` refs). `state/images.rs`
+  is an async ImageCache entity — needed because gpui's `img(uri)` is dead
+  weight with the default `NullHttpClient`. ChatView observes the cache;
+  visible list rows re-measure on notify. Verified visually with a synthetic
+  session. Composer chips now show file thumbnails (local temp path).
+- ✅ **Audio playback (MVP)**: voice-message chips in history play via
+  `afplay` on a temp download (`state/audio_player.rs`, one clip at a time,
+  poll-reaps for chip flip-back). Untested — no session with audio refs
+  exists yet; verify together with mic recording.
+- ✅ **macOS bundle**: `scripts/bundle-macos.sh` → `target/bundle/Sam.app`
+  (release build, Tauri icon.icns reused, Info.plist with
+  NSMicrophoneUsageDescription, ad-hoc codesign). Launched + rendered +
+  connected. Bundle id is `com.offbeatengineer.sam-gpui` while the Tauri app
+  coexists — switch to `com.offbeatengineer.sam` at swap-over. Note: bare
+  `osascript` notifications still; a bundled-notification API (and
+  notification-click-to-focus) can come later.
 
 All tests green (15: protocol round-trips, settings schema, resize, URL normalization).
 `parse_sessions` example: 6,158 real entries from `~/.sam/sessions`, 0 unknown.
@@ -81,17 +132,31 @@ All tests green (15: protocol round-trips, settings schema, resize, URL normaliz
 4. Artifact panel: click a `report_artifact` card in an old session → HTML renders in WebView; edit the file on disk → live-reload; check nothing must overlay the webview region (native child view layers above gpui).
 5. Sidebar context menu: rename dialog, archive.
 6. Live streaming visuals (progressive markdown, no flicker/CPU spike).
+7. Keybindings: Cmd+N / Cmd+, / Cmd+W / Cmd+Q (synthetic keystrokes blocked
+   without Accessibility permission, so untested).
+8. Image paste: copy a screenshot region (Cmd+Ctrl+Shift+4), Cmd+V in the
+   composer → chip appears; plain-text paste must still work.
+9. Special tool cards: expanding rows (web_search results open the browser,
+   memory recall / session search lists); streaming report_artifact card
+   click opens the panel. Collapsed render verified in both streaming and
+   history.
+10. Instance switch: Settings → Connect on "Sam" (remote) → sessions clear
+    and reload from the remote, newest app session auto-selected; switch back
+    to "Willy". Also remove/re-add an instance.
+11. Audio: record a voice message, send, then click the chip in history —
+    plays via afplay, chip flips back when done.
+12. Bundled app (target/bundle/Sam.app): mic permission prompt shows the
+    Info.plist string; notification fires from the bundle.
 
-## M6 backlog (next major chunk)
+## M6 backlog (remaining)
 
-- Multi-instance switcher UI (settings page currently only edits the active instance; `BackendInstance` + settings schema already support multiple — port `switchInstance` clear-all + reconnect flow from `settingsStore.ts`).
-- Keybindings: Cmd+N new session, etc.
-- Notification on turn_end when window unfocused.
-- Image paste into composer (clipboard image read) — skipped in M4.
-- Thumbnails for pending images (chips are filename-only); render images/audio players inline in history (currently a 📎 count line); audio playback.
-- Special tool cards (web_search, web_fetch, memory save/recall, session search/read, kit create) — currently all render via the generic card; port mappings from `StreamingTurnView.tsx:46-106`.
-- Streaming `report_artifact` card should also be clickable (history cards are).
-- App icon + macOS bundle (cargo-bundle or script), Info.plist with `NSMicrophoneUsageDescription`; fix Metal toolchain and consider dropping `runtime_shaders` for release.
+- Notification click should focus the app (osascript notifications can't;
+  needs a bundled-app notification API — UNUserNotificationCenter via objc,
+  or the `notify-rust`/`mac-notification-sys` route now that we have a
+  bundle id).
+- Audio player niceties: duration/seek UI (currently a play/stop chip);
+  show images from tool results too (only user messages render them).
+- App menu bar (cx.set_menus) for the bundle; standard About/Quit menus.
 - Parity checklist vs Tauri app, then dogfood for a week.
 - Later phases (architecture ready, protocol fully typed): skills editor, memory page, kits page, artifacts browser, session search.
 

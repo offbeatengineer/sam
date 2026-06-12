@@ -5,8 +5,12 @@ use sam_client::SamClient;
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let file = args.next().expect("usage: upload_smoke <file> <base-url> [api-key]");
-    let base = args.next().unwrap_or_else(|| "http://127.0.0.1:9222".into());
+    let file = args
+        .next()
+        .expect("usage: upload_smoke <file> <base-url> [api-key]");
+    let base = args
+        .next()
+        .unwrap_or_else(|| "http://127.0.0.1:9222".into());
     let api_key = args.next();
 
     let mime = match file.rsplit('.').next() {
@@ -24,7 +28,10 @@ fn main() {
         false,
     );
     match futures::executor::block_on(upload) {
-        Ok(result) => println!("uploaded: id={} path={} mime={}", result.id, result.path, result.mime_type),
+        Ok(result) => println!(
+            "uploaded: id={} path={} mime={}",
+            result.id, result.path, result.mime_type
+        ),
         Err(e) => {
             eprintln!("upload failed: {e}");
             std::process::exit(1);

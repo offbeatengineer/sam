@@ -6,10 +6,13 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 fn main() {
-    let dir = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| {
-        let home = std::env::var("HOME").expect("HOME not set");
-        PathBuf::from(home).join(".sam/sessions")
-    });
+    let dir = std::env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let home = std::env::var("HOME").expect("HOME not set");
+            PathBuf::from(home).join(".sam/sessions")
+        });
 
     let mut files = Vec::new();
     collect_jsonl(&dir, &mut files);
