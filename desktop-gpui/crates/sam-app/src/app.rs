@@ -49,7 +49,7 @@ impl SamApp {
             crate::state::audio_player::AudioPlayer::new(conn.clone(), window_handle, cx)
         });
         cx.set_global(crate::state::audio_player::AudioPlayerGlobal(audio_player));
-        let sidebar = cx.new(|cx| Sidebar::new(sessions.clone(), cx));
+        let sidebar = cx.new(|cx| Sidebar::new(sessions.clone(), window, cx));
         let composer = cx.new(|cx| Composer::new(sessions.clone(), conn.clone(), window, cx));
         let chat = cx.new(|cx| ChatView::new(sessions.clone(), composer, cx));
         let ui = cx.new(|_| UiState::new());

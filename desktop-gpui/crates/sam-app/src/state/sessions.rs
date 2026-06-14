@@ -1,7 +1,7 @@
 //! Session list + active session entries (the read-only half of the Tauri
 //! client's `sessionStore`). Streaming-turn state lands here in M3.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use gpui::{Context, EventEmitter};
 use sam_client::SamClient;
@@ -217,6 +217,14 @@ pub struct SessionStore {
     /// After an instance switch: select the newest app-channel session once
     /// the next sessions list arrives (port of `switchInstance` step 5).
     auto_select_latest: bool,
+    /// Active session-search matches by conversationId; `None` = not searching
+    /// (port of `sessionSearchStore.matchingIds`).
+    pub search_matches: Option<HashSet<String>>,
+    /// A `session_search` request is in flight (results not back yet).
+    pub searching: bool,
+    /// Archived sessions, lazy-loaded the first time the sidebar group expands.
+    pub archived: Vec<SessionInfoDto>,
+    pub archived_loaded: bool,
 }
 
 impl EventEmitter<SessionStoreEvent> for SessionStore {}
@@ -230,6 +238,10 @@ impl SessionStore {
             streaming: None,
             pending_user: None,
             auto_select_latest: false,
+            search_matches: None,
+            searching: false,
+            archived: Vec::new(),
+            archived_loaded: false,
         }
     }
 
@@ -242,6 +254,10 @@ impl SessionStore {
         self.streaming = None;
         self.pending_user = None;
         self.auto_select_latest = true;
+        self.search_matches = None;
+        self.searching = false;
+        self.archived.clear();
+        self.archived_loaded = false;
         cx.notify();
     }
 
@@ -590,6 +606,112 @@ impl SessionStore {
                     store.active = None;
                 }
                 store.load_sessions(cx);
+                // Keep the archived group in sync if it's already open.
+                if store.archived_loaded {
+                    store.load_archived(cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    // --- Session search (port of `sessionSearchApi` + `sessionSearchStore`) ---
+
+    /// Run a `session_search`; the sidebar filters the loaded list to the
+    /// matching conversationIds once results arrive. Empty query clears.
+    pub fn search_sessions(&mut self, query: String, cx: &mut Context<Self>) {
+        let query = query.trim().to_string();
+        if query.is_empty() {
+            self.clear_search(cx);
+            return;
+        }
+        self.searching = true;
+        cx.notify();
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let response = client
+                .request(AppRequest::SessionSearch {
+                    request_id: request_id(),
+                    query,
+                    limit: Some(20),
+                })
+                .await;
+            this.update(cx, |store, cx| {
+                store.searching = false;
+                match response {
+                    Ok(AppResponse::SessionSearchResult { results, .. }) => {
+                        store.search_matches =
+                            Some(results.into_iter().map(|r| r.conversation_id).collect());
+                    }
+                    Ok(other) => {
+                        log::warn!("unexpected session_search response: {other:?}");
+                        store.search_matches = Some(HashSet::new());
+                    }
+                    Err(e) => {
+                        log::warn!("session_search failed: {e}");
+                        store.search_matches = Some(HashSet::new());
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Leave search mode and show the full session list again.
+    pub fn clear_search(&mut self, cx: &mut Context<Self>) {
+        if self.search_matches.is_some() || self.searching {
+            self.search_matches = None;
+            self.searching = false;
+            cx.notify();
+        }
+    }
+
+    // --- Archived sessions (port of `loadArchivedSessions`/`unarchiveSession`) ---
+
+    /// Lazy-load the archived sessions (called when the sidebar group expands).
+    pub fn load_archived(&mut self, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let response = client
+                .request(AppRequest::ListArchivedSessions {
+                    request_id: request_id(),
+                })
+                .await;
+            this.update(cx, |store, cx| {
+                match response {
+                    Ok(AppResponse::ArchivedSessionsList { mut sessions, .. }) => {
+                        sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
+                        store.archived = sessions;
+                    }
+                    Ok(other) => log::warn!("unexpected archived list response: {other:?}"),
+                    Err(e) => log::warn!("list_archived_sessions failed: {e}"),
+                }
+                store.archived_loaded = true;
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    pub fn unarchive_session(&mut self, path: String, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let response = client
+                .request(AppRequest::UnarchiveSession {
+                    request_id: request_id(),
+                    session_path: path,
+                })
+                .await;
+            if let Err(e) = response {
+                log::warn!("unarchive_session failed: {e}");
+            }
+            this.update(cx, |store, cx| {
+                store.load_sessions(cx);
+                store.load_archived(cx);
             })
             .ok();
         })
