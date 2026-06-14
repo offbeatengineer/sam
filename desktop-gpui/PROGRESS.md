@@ -70,7 +70,8 @@ API ground truth when coding: read the vendored sources at
 | M3 streaming chat + new-session | ✅ | ✅ real streamed turn end-to-end (session `6985FDAD…` created, adopted, 4 entries reloaded) |
 | M4 attachments + audio | ✅ | ◐ resize unit tests + live `/upload` smoke pass; **needs eyes**: drag-drop, picker, paste (NOT implemented), mic recording |
 | M5 artifact panel + WebView | ✅ | ◐ artifacts HTTP listing verified; **needs eyes**: wry WebView render/layering, live-reload |
-| M6 polish + parity sweep | ◐ in progress | see below |
+| M6 polish + parity sweep | ✅ | ✅ multi-instance, menu bar, notifications, bundle |
+| M7 swap-over gaps | ✅ | ◐ build/tests/round-trips/right-sidebar shot; interactive flows need eyes-on (see M7 section) |
 
 ### M6 progress (2026-06-12, second session)
 
@@ -184,14 +185,14 @@ the core-chat scope; ◐ partial.
 | Connection status, instance name in chrome | ✅ titlebar dot + name |
 | Settings: instance CRUD + switch | ✅ (◐ no API-key show/hide toggle; switcher lives in settings, not a sidebar dropdown) |
 | Sidebar: channel groups, counts, selection, rename/archive | ✅ |
-| Sidebar: archived section + unarchive | ❌ not implemented |
-| Sidebar: session search box | ❌ not implemented (agent has session_search) |
-| Sidebar: streaming dot on non-active sessions | ❌ events for inactive conversations are dropped (matches old React behavior pre-dot) |
+| Sidebar: archived section + unarchive | ✅ lazy-loaded group + Unarchive menu |
+| Sidebar: session search box | ✅ Enter searches, filters the loaded list |
+| Sidebar: streaming dot on non-active sessions | ✅ for sessions started here then left (agent streams only to the conversation owner) |
 | Chat: markdown/GFM, thinking, tool cards, bash, dividers, custom | ✅ |
 | Chat: special tool cards (8 kinds) | ✅ streaming + history |
 | Chat: user images inline | ✅ (base64 + upload refs) |
 | Chat: voice-message player | ✅ play/seek/time (◐ no volume control) |
-| Chat: pending-user bubble | ◐ text only (Tauri previews staged images/audio too) |
+| Chat: pending-user bubble | ✅ text + image thumbnails + audio chip |
 | Chat: empty states | ◐ ours plainer ("Select a session"; no "Describe your task…" hero) |
 | Chat: auto-scroll | ✅ bottom-aligned list |
 | Read-only channels (discord/pulse) | ✅ badge + hidden composer |
@@ -199,18 +200,55 @@ the core-chat scope; ◐ partial.
 | Composer: image picker/drag-drop/paste, 5-image cap, resize | ✅ |
 | Composer: mic recording → WAV | ✅ implemented (eyes-on pending) |
 | Artifact panel: md/code/image/HTML + live reload + open-in-browser | ✅ (◐ no Preview/Code toggle, no Open-in-Finder) |
-| Right sidebar: working-dir file tree, @file insert, drop-to-cwd | ❌ not implemented |
-| Right sidebar: session artifacts list | ❌ panel opens via cards only |
-| Right sidebar: session stats (models, tokens, cost) | ❌ not implemented |
-| Notifications | ✅ turn-end when unfocused, click focuses (bundle) (◐ Tauri also notifies for background sessions; ours active-conversation only) |
+| Right sidebar: working-dir file tree, @file insert, drop-to-cwd | ✅ (lazy tree, no live file-watch) |
+| Right sidebar: session artifacts list | ✅ report_artifact calls, click opens panel |
+| Right sidebar: session stats (models, tokens, cost) | ✅ |
+| Notifications | ✅ turn-end when unfocused, active + background sessions, click focuses (bundle) |
 | Dark/light theme | ✅ follows system, live |
 | Keybindings + menu bar | ✅ (gpui app only; Tauri has none) |
 | Memory / Skills / Artifacts / Kits pages, icon rail | ⏭ later phases |
 
-**Gap list for swap-over decision** (besides eyes-on items): archived
-sessions, sidebar session search, right-sidebar trio (file tree / artifacts
-list / session stats), background-session notifications + streaming dots,
-pending-attachment previews. None block dogfooding the core chat.
+**Gap list for swap-over decision** — all closed in M7 (2026-06-14, see below):
+archived sessions, sidebar session search, the right-sidebar trio (file tree /
+artifacts list / session stats), background-session streaming dots +
+notifications, and pending-attachment previews. What remains before retiring
+`desktop/` is eyes-on verification of the M7 interactive flows and the
+later-phase pages.
+
+## M7 — swap-over gaps closed (2026-06-14)
+
+All five swap-over gaps are implemented and committed on `gpui-rebuild`. No
+protocol changes were needed — `sam-protocol` already typed every op.
+
+- ✅ **Sidebar session search** (`SessionStore::search_sessions/clear_search`,
+  search `Input` in `sidebar.rs`): Enter runs `session_search`; results filter
+  the loaded list by conversationId; clearing the box restores the full list.
+- ✅ **Archived sessions** (`load_archived`/`unarchive_session`): a lazy-loaded
+  "Archived" group at the bottom with an Unarchive context-menu item.
+- ✅ **Background-session streaming dots + notifications**
+  (`background_turns`, `demote_streaming_to_background`,
+  `handle_background_stream`, `turn_preview`): a turn left running when you
+  switch sessions keeps a blue dot on its row and fires a turn-end notification
+  (titled with the session name) when the window is unfocused. Limited to app
+  conversations started here — the agent streams only to the conversation owner.
+- ✅ **Pending-attachment previews** (`PendingUser { text, images, audio_secs }`,
+  `set_pending`/`clear_pending`): the optimistic bubble shows staged image
+  thumbnails + an audio chip (preview-temp copies, deleted on refresh).
+- ✅ **Right sidebar** (`views/right_sidebar.rs`): always-on when a session is
+  active (the artifact panel replaces it when open). Artifacts list
+  (report_artifact details, dedup by path → opens panel), working-dir file tree
+  (lazy `read_dir`, `@file` insert via `ComposerInputGlobal`, drop-to-cwd), and
+  session stats (models, messages, tool calls, token in/out/cache, cost).
+
+Verified autonomously: clean build (no `runtime_shaders`, no warnings), 17 tests
+green, live `session_search`/`list_archived_sessions` round-trips
+(`examples/search_smoke`: 20 hits / 14 archived), and a live screenshot of the
+right sidebar (stats = minimax-cn/MiniMax-M3, 14 in / 442 out / 6.6k cache,
+$0.002; file tree listing the real cwd). **Needs eyes-on** (synthetic input is
+blocked here): type-to-filter search, expand archived + Unarchive, the
+background dot + notification (start a turn → switch away → background the
+window), attachment previews in the optimistic bubble, file-tree `@`-insert,
+and drop-to-cwd.
 
 ## Remaining
 
@@ -225,13 +263,15 @@ pending-attachment previews. None block dogfooding the core chat.
   (`watchexec … bun --env-file=.env src/index.ts`, config in `~/.sam/config.yaml`).
   Don't kill it; don't start a second one (EADDRINUSE). Active settings instance:
   "Willy" → `ws://127.0.0.1:9223`.
-- **Xcode 26.5 lacks the Metal Toolchain component**, so gpui's build script
-  can't run the `metal` CLI → we build gpui with the `runtime_shaders` feature
-  (see workspace Cargo.toml comment). `xcodebuild -downloadComponent
-  MetalToolchain` itself fails (broken DVTDownloads plug-in); try
-  `xcodebuild -runFirstLaunch` (likely sudo) before release packaging.
+- **Metal Toolchain is installed** (`xcrun -f metal` resolves), so gpui's
+  shaders compile at build time and the workspace carries no `runtime_shaders`
+  feature. (Historically Xcode 26.5 lacked it and we used `runtime_shaders`.)
 - `screencapture -x` works for headless UI verification (crop with `sips`),
   but fails/black when the screen is locked or asleep (`caffeinate -u` to wake).
+  It captures the *active* Space only — if a fullscreen app is foregrounded, the
+  Sam window (on another Space) won't appear; `pyobjc`/`Quartz` is not installed,
+  so per-window capture isn't available. Synthetic clicks/keys are also blocked
+  (no Accessibility permission), so interactive flows need eyes-on verification.
 
 ## Dev hooks & verification commands
 
