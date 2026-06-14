@@ -158,28 +158,27 @@ impl SamApp {
                 use sam_protocol::AppResponse;
                 match &response {
                     _ if response.conversation_id().is_some() => {
-                        // The window is in the background and our turn just
-                        // finished → desktop notification with a preview.
+                        // Window backgrounded and a turn (active or background)
+                        // just finished → desktop notification with a preview.
+                        // Read before handle_stream_response clears the turn.
                         if !self.window_active {
                             if let AppResponse::TurnEnd { .. } = &response {
-                                let sessions = self.sessions.read(cx);
-                                let ours = sessions.streaming.as_ref().is_some_and(|s| {
-                                    Some(s.conversation_id.as_str()) == response.conversation_id()
-                                });
-                                if ours {
-                                    let preview = sessions
-                                        .streaming
-                                        .as_ref()
-                                        .and_then(|s| {
-                                            s.items.iter().rev().find_map(|item| match item {
-                                                crate::state::sessions::StreamItem::Text(t) => {
-                                                    Some(t.chars().take(120).collect::<String>())
-                                                }
-                                                _ => None,
-                                            })
-                                        })
-                                        .unwrap_or_else(|| "Turn finished".into());
-                                    crate::notify::notify("Sam", &preview);
+                                if let Some(conv) = response.conversation_id() {
+                                    let sessions = self.sessions.read(cx);
+                                    if let Some(preview) = sessions.turn_preview(conv) {
+                                        let name = sessions
+                                            .sessions
+                                            .iter()
+                                            .find(|s| s.conversation_id == conv)
+                                            .and_then(|s| {
+                                                s.name.clone().filter(|n| !n.is_empty())
+                                            });
+                                        let title = match name {
+                                            Some(n) => format!("Sam · {n}"),
+                                            None => "Sam".to_string(),
+                                        };
+                                        crate::notify::notify(&title, &preview);
+                                    }
                                 }
                             }
                         }

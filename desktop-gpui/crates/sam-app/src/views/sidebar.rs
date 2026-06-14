@@ -115,6 +115,7 @@ impl Sidebar {
         session: &SessionInfoDto,
         selected: bool,
         archived: bool,
+        streaming: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let title = session
@@ -142,7 +143,24 @@ impl Sidebar {
             })
             .v_flex()
             .gap_0p5()
-            .child(div().text_sm().truncate().child(title))
+            .child(
+                div()
+                    .h_flex()
+                    .items_center()
+                    .gap_1p5()
+                    .child(div().flex_1().min_w_0().text_sm().truncate().child(title))
+                    // Pulsing-style "working" dot on a streaming session we're
+                    // not currently viewing (port of SessionItem's blue dot).
+                    .when(streaming && !selected, |this| {
+                        this.child(
+                            div()
+                                .flex_none()
+                                .size(px(8.))
+                                .rounded_full()
+                                .bg(gpui::rgb(0x3b82f6)),
+                        )
+                    }),
+            )
             .child(
                 div()
                     .text_xs()
@@ -245,7 +263,7 @@ impl Render for Sidebar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Snapshot what we need out of the store so its borrow ends before we
         // build listeners (which reborrow cx mutably).
-        let (active_path, searching, search_active, visible, archived, archived_loaded) = {
+        let (active_path, searching, search_active, visible, archived, archived_loaded, streaming_convs) = {
             let store = self.store.read(cx);
             let active_path = store.active.as_ref().map(|a| a.info.path.clone());
             let matches = store.search_matches.clone();
@@ -266,6 +284,11 @@ impl Render for Sidebar {
                 visible,
                 store.archived.clone(),
                 store.archived_loaded,
+                store
+                    .background_turns
+                    .keys()
+                    .cloned()
+                    .collect::<HashSet<String>>(),
             )
         };
 
@@ -374,7 +397,8 @@ impl Render for Sidebar {
 
             for session in sessions {
                 let selected = active_path.as_deref() == Some(session.path.as_str());
-                root = root.child(self.render_session_row(&session, selected, false, cx));
+                let streaming = streaming_convs.contains(&session.conversation_id);
+                root = root.child(self.render_session_row(&session, selected, false, streaming, cx));
             }
         }
 
@@ -421,7 +445,7 @@ impl Render for Sidebar {
             } else {
                 for session in archived {
                     let selected = active_path.as_deref() == Some(session.path.as_str());
-                    root = root.child(self.render_session_row(&session, selected, true, cx));
+                    root = root.child(self.render_session_row(&session, selected, true, false, cx));
                 }
             }
         }

@@ -212,6 +212,11 @@ pub struct SessionStore {
     pub sessions: Vec<SessionInfoDto>,
     pub active: Option<ActiveSession>,
     pub streaming: Option<StreamingTurn>,
+    /// Conversations *other than* the active one with an in-flight turn →
+    /// last text preview. Drives the sidebar "working" dot and background
+    /// turn-end notifications. Populated when the user navigates away from a
+    /// streaming session (and from any stray non-active stream events).
+    pub background_turns: HashMap<String, String>,
     /// Message just sent, shown until the JSONL refresh includes it.
     pub pending_user: Option<String>,
     /// After an instance switch: select the newest app-channel session once
@@ -236,6 +241,7 @@ impl SessionStore {
             sessions: Vec::new(),
             active: None,
             streaming: None,
+            background_turns: HashMap::new(),
             pending_user: None,
             auto_select_latest: false,
             search_matches: None,
@@ -252,6 +258,7 @@ impl SessionStore {
         self.sessions.clear();
         self.active = None;
         self.streaming = None;
+        self.background_turns.clear();
         self.pending_user = None;
         self.auto_select_latest = true;
         self.search_matches = None;
@@ -259,6 +266,25 @@ impl SessionStore {
         self.archived.clear();
         self.archived_loaded = false;
         cx.notify();
+    }
+
+    /// When navigating away from a session whose turn is still streaming, keep
+    /// the turn tracked in `background_turns` (sidebar dot + turn-end notify)
+    /// instead of dropping it. The live rendered view is discarded — only the
+    /// active conversation streams into the message list.
+    fn demote_streaming_to_background(&mut self) {
+        if let Some(turn) = self.streaming.take() {
+            let preview = turn
+                .items
+                .iter()
+                .rev()
+                .find_map(|item| match item {
+                    StreamItem::Text(t) => Some(t.chars().take(200).collect::<String>()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            self.background_turns.insert(turn.conversation_id, preview);
+        }
     }
 
     /// Start a fresh conversation; the session file (and its path) appears
@@ -283,7 +309,7 @@ impl SessionStore {
             tool_results: Default::default(),
             loading: false,
         });
-        self.streaming = None;
+        self.demote_streaming_to_background();
         self.pending_user = None;
         cx.notify();
     }
@@ -340,8 +366,8 @@ impl SessionStore {
                 self.load_sessions(cx);
                 return;
             }
-            _ if !for_active => {
-                log::debug!("ignoring stream event for inactive conversation");
+            resp if !for_active => {
+                self.handle_background_stream(&resp, cx);
                 return;
             }
             AppResponse::TurnStart { .. } => {
@@ -407,6 +433,61 @@ impl SessionStore {
             _ => {}
         }
         cx.notify();
+    }
+
+    /// Lightweight tracking for a turn streaming in a non-active conversation:
+    /// just enough to show the sidebar dot and build a turn-end notification
+    /// (we don't render its content — only the active turn streams to the list).
+    fn handle_background_stream(&mut self, response: &AppResponse, cx: &mut Context<Self>) {
+        let Some(conv) = response.conversation_id() else {
+            return;
+        };
+        match response {
+            AppResponse::TurnStart { .. }
+            | AppResponse::ToolStart { .. }
+            | AppResponse::ThinkingDelta { .. } => {
+                self.background_turns.entry(conv.to_string()).or_default();
+            }
+            AppResponse::TextDelta { delta, .. } => {
+                let preview = self.background_turns.entry(conv.to_string()).or_default();
+                if preview.chars().count() < 200 {
+                    preview.push_str(delta);
+                }
+            }
+            AppResponse::TurnEnd { .. }
+            | AppResponse::Aborted { .. }
+            | AppResponse::Error { .. } => {
+                self.background_turns.remove(conv);
+            }
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    /// Notification preview for a just-finished turn, whether it was the active
+    /// rendered turn or a backgrounded one. `None` if we weren't tracking it.
+    pub fn turn_preview(&self, conv: &str) -> Option<String> {
+        if let Some(s) = &self.streaming {
+            if s.conversation_id == conv {
+                return Some(
+                    s.items
+                        .iter()
+                        .rev()
+                        .find_map(|item| match item {
+                            StreamItem::Text(t) => Some(t.chars().take(120).collect::<String>()),
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| "Turn finished".into()),
+                );
+            }
+        }
+        self.background_turns.get(conv).map(|p| {
+            if p.is_empty() {
+                "Turn finished".into()
+            } else {
+                p.clone()
+            }
+        })
     }
 
     /// Streaming UI is ephemeral; the JSONL on disk is the source of truth.
@@ -501,6 +582,11 @@ impl SessionStore {
         {
             return;
         }
+        let new_conv = info.conversation_id.clone();
+        // A turn still running in the session we're leaving moves to the
+        // background (dot + notify); entering this one clears its own dot.
+        self.demote_streaming_to_background();
+        self.background_turns.remove(&new_conv);
         self.active = Some(ActiveSession {
             info: info.clone(),
             entries: Vec::new(),
@@ -508,7 +594,6 @@ impl SessionStore {
             tool_results: Default::default(),
             loading: true,
         });
-        self.streaming = None;
         self.pending_user = None;
         cx.notify();
         self.load_active_entries(cx);
