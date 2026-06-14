@@ -169,6 +169,7 @@ pub fn render_pending_user(pending: &PendingUser, window: &mut Window, cx: &mut 
             this.child(
                 div()
                     .h_flex()
+                    .items_start()
                     .gap_1p5()
                     .flex_wrap()
                     .justify_end()
@@ -401,6 +402,7 @@ fn render_user(
             this.child(
                 div()
                     .h_flex()
+                    .items_start()
                     .gap_1p5()
                     .flex_wrap()
                     .justify_end()

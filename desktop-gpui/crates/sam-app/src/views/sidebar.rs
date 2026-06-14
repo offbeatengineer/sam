@@ -137,6 +137,7 @@ impl Sidebar {
             .py_1p5()
             .rounded_md()
             .cursor_pointer()
+            .min_w_0()
             .when(selected, |this| this.bg(cx.theme().list_active))
             .when(!selected, |this| {
                 this.hover(|this| this.bg(cx.theme().list_hover))
@@ -180,6 +181,8 @@ impl Sidebar {
             let path = session.path.clone();
             div()
                 .id(wrapper_id)
+                .w_full()
+                .min_w_0()
                 .child(item.context_menu(move |menu, _, _| {
                     let store = store.clone();
                     let path = path.clone();
@@ -193,6 +196,8 @@ impl Sidebar {
             let menu_session = session.clone();
             div()
                 .id(wrapper_id)
+                .w_full()
+                .min_w_0()
                 .child(item.context_menu(move |menu, _, _| {
                     let rename_store = menu_store.clone();
                     let rename_session = menu_session.clone();
@@ -301,20 +306,15 @@ impl Render for Sidebar {
         }
         groups.sort_by_key(|(channel, _)| channel_order(channel));
 
+        // Content lives in a fixed-width column so its children stretch to a
+        // definite width. Direct children of the overflow-scroll root don't get
+        // one (that's why rows were content-width and the search box narrow).
         let mut root = div()
-            .id("sidebar-scroll")
-            .h_full()
-            .w(px(260.))
-            .flex_none()
-            .overflow_y_scroll()
-            .bg(cx.theme().sidebar)
-            .text_color(cx.theme().sidebar_foreground)
-            .border_r_1()
-            .border_color(cx.theme().sidebar_border)
+            .w(px(259.))
             .v_flex()
             .py_2()
             .child(
-                div().px_3().pb_2().child(
+                div().px_3().pb_2().w_full().child(
                     gpui_component::button::Button::new("new-session")
                         .icon(IconName::Plus)
                         .label("New session")
@@ -325,17 +325,16 @@ impl Render for Sidebar {
                 ),
             )
             .child(
-                div().px_3().pb_2().w_full().h_flex().child(
-                    div().flex_1().child(
-                        Input::new(&self.search_input)
-                            .small()
-                            .cleanable(true)
-                            .prefix(
-                                Icon::new(IconName::Search)
-                                    .xsmall()
-                                    .text_color(cx.theme().muted_foreground),
-                            ),
-                    ),
+                div().px_3().pb_2().w_full().child(
+                    Input::new(&self.search_input)
+                        .w_full()
+                        .small()
+                        .cleanable(true)
+                        .prefix(
+                            Icon::new(IconName::Search)
+                                .xsmall()
+                                .text_color(cx.theme().muted_foreground),
+                        ),
                 ),
             );
 
@@ -450,6 +449,16 @@ impl Render for Sidebar {
             }
         }
 
-        root
+        div()
+            .id("sidebar-scroll")
+            .h_full()
+            .w(px(260.))
+            .flex_none()
+            .overflow_y_scroll()
+            .bg(cx.theme().sidebar)
+            .text_color(cx.theme().sidebar_foreground)
+            .border_r_1()
+            .border_color(cx.theme().sidebar_border)
+            .child(root)
     }
 }
