@@ -155,7 +155,6 @@ pub fn render_pending_user(pending: &PendingUser, window: &mut Window, cx: &mut 
             gpui::img(path.clone())
                 .rounded_lg()
                 .max_w(px(220.))
-                .max_h(px(220.))
                 .into_any_element()
         })
         .collect();
@@ -371,8 +370,10 @@ fn render_user(
             let el = match resolve_image(data.as_deref(), mime_type, url.as_deref(), cx) {
                 ImageSlot::Ready(image) => gpui::img(image)
                     .rounded_lg()
+                    // Width-capped only; height follows aspect. A max_h would
+                    // make the box reserve that height and letterbox wide
+                    // images vertically (the gap-below-wide-images bug).
                     .max_w(px(220.))
-                    .max_h(px(220.))
                     .into_any_element(),
                 ImageSlot::Loading => div()
                     .size(px(64.))
