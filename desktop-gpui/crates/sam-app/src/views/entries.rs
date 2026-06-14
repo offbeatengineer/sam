@@ -9,7 +9,7 @@ use gpui_component::{ActiveTheme, Icon, IconName, Sizable, StyledExt};
 use sam_protocol::session::{AgentMessage, ContentItem, MessageContent, SessionEntry};
 
 use crate::markdown::md;
-use crate::state::sessions::{StreamItem, ToolResultInfo, ToolStatus};
+use crate::state::sessions::{PendingUser, StreamItem, ToolResultInfo, ToolStatus};
 
 /// Live row for the in-progress turn (port of `StreamingTurnView.tsx`).
 pub fn render_streaming(items: &[StreamItem], window: &mut Window, cx: &mut App) -> AnyElement {
@@ -144,14 +144,69 @@ pub fn render_streaming(items: &[StreamItem], window: &mut Window, cx: &mut App)
     row(column.into_any_element()).into_any_element()
 }
 
-/// The just-sent user message, shown until the JSONL refresh includes it.
-pub fn render_pending_user(text: &str, window: &mut Window, cx: &mut App) -> AnyElement {
-    render_user(
-        "pending-user",
-        &MessageContent::Text(text.to_string()),
-        window,
-        cx,
-    )
+/// The just-sent user message, shown optimistically with staged image/audio
+/// previews until the JSONL refresh includes it (port of MessageList's pending
+/// block). Images are local preview-temp paths rendered directly.
+pub fn render_pending_user(pending: &PendingUser, window: &mut Window, cx: &mut App) -> AnyElement {
+    let thumbs: Vec<AnyElement> = pending
+        .images
+        .iter()
+        .map(|path| {
+            gpui::img(path.clone())
+                .rounded_lg()
+                .max_w(px(220.))
+                .max_h(px(220.))
+                .into_any_element()
+        })
+        .collect();
+
+    row(div()
+        .w_full()
+        .v_flex()
+        .items_end()
+        .gap_1p5()
+        .when(!thumbs.is_empty(), |this| {
+            this.child(
+                div()
+                    .h_flex()
+                    .gap_1p5()
+                    .flex_wrap()
+                    .justify_end()
+                    .max_w(px(560.))
+                    .children(thumbs),
+            )
+        })
+        .child(
+            div()
+                .max_w(px(560.))
+                .px_3()
+                .py_2()
+                .rounded_lg()
+                .bg(cx.theme().muted)
+                .v_flex()
+                .gap_1()
+                .when_some(pending.audio_secs, |this, secs| {
+                    this.child(
+                        div()
+                            .h_flex()
+                            .gap_1()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(Icon::new(IconName::Bell).xsmall())
+                            .child(format!("audio · {secs:.1}s")),
+                    )
+                })
+                .when(!pending.text.is_empty(), |this| {
+                    this.child(md(
+                        SharedString::from("pending-user"),
+                        pending.text.clone(),
+                        window,
+                        cx,
+                    ))
+                }),
+        )
+        .into_any_element())
+    .into_any_element()
 }
 
 pub fn render_entry(

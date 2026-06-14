@@ -257,6 +257,25 @@ impl Composer {
             .active_instance()
             .and_then(|i| i.api_key.clone());
         let client = self.store.read(cx).client();
+
+        // Optimistic bubble: show the staged images/audio immediately. Copy
+        // each resized JPEG to a preview temp (the upload deletes its own temp
+        // via delete_after; SessionStore deletes these in clear_pending).
+        let preview_images: Vec<PathBuf> = self
+            .pending_images
+            .iter()
+            .filter(|p| !p.temp_path.as_os_str().is_empty())
+            .filter_map(|p| {
+                let dst = std::env::temp_dir()
+                    .join(format!("pending-preview-{}.jpg", uuid::Uuid::new_v4()));
+                std::fs::copy(&p.temp_path, &dst).ok().map(|_| dst)
+            })
+            .collect();
+        let audio_secs = self.pending_audio.as_ref().map(|a| a.duration as f32);
+        self.store.update(cx, |store, cx| {
+            store.set_pending(text.clone(), preview_images, audio_secs, cx)
+        });
+
         let images: Vec<PathBuf> = self.pending_images.drain(..).map(|p| p.temp_path).collect();
         let audio = self.pending_audio.take();
         self.sending = true;
@@ -311,7 +330,11 @@ impl Composer {
                 match failure {
                     Some(error) => {
                         this.error = Some(error.into());
-                        cx.notify();
+                        // Drop the optimistic bubble — the send never happened.
+                        this.store.update(cx, |store, cx| {
+                            store.clear_pending();
+                            cx.notify();
+                        });
                     }
                     None => {
                         this.store
