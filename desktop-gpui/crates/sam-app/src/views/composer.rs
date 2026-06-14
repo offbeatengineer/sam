@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use gpui::{
-    div, prelude::*, px, Context, Entity, ExternalPaths, PathPromptOptions, SharedString,
+    div, prelude::*, px, Context, Entity, ExternalPaths, Global, PathPromptOptions, SharedString,
     Subscription, Window,
 };
 use gpui_component::{
@@ -25,6 +25,12 @@ struct PendingImage {
     original_name: String,
     temp_path: PathBuf,
 }
+
+/// The composer's text input, exposed globally so the right-sidebar file tree
+/// can insert `@path` references into it.
+pub struct ComposerInputGlobal(pub Entity<InputState>);
+
+impl Global for ComposerInputGlobal {}
 
 pub struct Composer {
     store: Entity<SessionStore>,
@@ -51,6 +57,8 @@ impl Composer {
                 .auto_grow(1, 8)
                 .placeholder("Message Sam — Enter to send, Shift+Enter for newline")
         });
+        // Expose the input so the right-sidebar file tree can insert @path refs.
+        cx.set_global(ComposerInputGlobal(input.clone()));
 
         let subscription = cx.subscribe_in(
             &input,

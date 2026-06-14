@@ -14,6 +14,7 @@ use crate::state::{ConnectionState, ConnectionStatus};
 use crate::views::artifact_panel::ArtifactPanel;
 use crate::views::chat::ChatView;
 use crate::views::composer::Composer;
+use crate::views::right_sidebar::RightSidebar;
 use crate::views::settings_form::{SettingsForm, SettingsFormEvent};
 use crate::views::sidebar::Sidebar;
 use crate::views::titlebar::render_titlebar;
@@ -30,6 +31,7 @@ pub struct SamApp {
     sidebar: Entity<Sidebar>,
     chat: Entity<ChatView>,
     artifact_panel: Entity<ArtifactPanel>,
+    right_sidebar: Entity<RightSidebar>,
     ui: Entity<UiState>,
     settings_form: Entity<SettingsForm>,
     page: Page,
@@ -52,6 +54,7 @@ impl SamApp {
         let sidebar = cx.new(|cx| Sidebar::new(sessions.clone(), window, cx));
         let composer = cx.new(|cx| Composer::new(sessions.clone(), conn.clone(), window, cx));
         let chat = cx.new(|cx| ChatView::new(sessions.clone(), composer, cx));
+        let right_sidebar = cx.new(|cx| RightSidebar::new(sessions.clone(), cx));
         let ui = cx.new(|_| UiState::new());
         cx.set_global(UiStateGlobal(ui.clone()));
         cx.observe(&ui, |_, _, cx| cx.notify()).detach();
@@ -116,6 +119,7 @@ impl SamApp {
             sidebar,
             chat,
             artifact_panel,
+            right_sidebar,
             ui,
             settings_form,
             // Dev hook: SAM_OPEN_SETTINGS=1 starts on the settings page.
@@ -215,6 +219,7 @@ impl SamApp {
 
     fn render_chat_page(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let artifact_open = self.ui.read(cx).selected_artifact.is_some();
+        let has_session = self.sessions.read(cx).active.is_some();
         div()
             .size_full()
             .flex()
@@ -222,6 +227,11 @@ impl SamApp {
             .min_h_0()
             .child(self.sidebar.clone())
             .child(div().flex_1().min_w_0().h_full().child(self.chat.clone()))
+            // The artifact panel replaces the right sidebar when open (parity
+            // with the Tauri layout).
+            .when(has_session && !artifact_open, |this| {
+                this.child(self.right_sidebar.clone())
+            })
             .when(artifact_open, |this| {
                 this.child(self.artifact_panel.clone())
             })
