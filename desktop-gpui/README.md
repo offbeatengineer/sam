@@ -21,10 +21,10 @@ cargo run -p sam-app                       # agent must be running (see ../agent
 RUST_LOG=info cargo run -p sam-app         # with logs
 ```
 
-gpui is built with the `runtime_shaders` feature because this machine's Xcode
-lacks the Metal Toolchain component (`xcodebuild -downloadComponent
-MetalToolchain` to fix). Before producing release builds, install it and
-consider dropping the feature for precompiled shaders.
+gpui compiles its Metal shaders at build time, so the Xcode **Metal Toolchain**
+component must be installed (`xcrun -f metal` should resolve to a `metal`
+binary). It is on this machine; the old `runtime_shaders` workaround has been
+dropped.
 
 `gpui` and `gpui-component` are pinned to exact versions (pre-1.0, breaking
 changes between releases). Upgrade deliberately, both together — gpui-component
@@ -51,6 +51,9 @@ and new-session flow, image attachments (picker/drag-drop, resized to JPEG
 ≤1024px), audio recording (cpal → WAV → upload), artifact panel (native
 markdown/code/image preview, wry WebView for HTML with agent live-reload).
 
-Remaining (M6): multi-instance switcher UI, keybindings beyond Enter/Shift+Enter,
-notifications, app icon + macOS bundle (needs `NSMicrophoneUsageDescription`),
-parity sweep vs the Tauri app.
+M6 (polish/parity) and the swap-over gap list are done: multi-instance switching,
+keybindings + menu bar, notifications, macOS bundle, sidebar session search +
+archived sessions, background-session streaming dots, pending-attachment previews,
+and the right sidebar (artifacts list / working-dir file tree / session stats).
+See `PROGRESS.md`. Remaining: the later-phase pages (skills / memory / kits /
+artifacts browser).

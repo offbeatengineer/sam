@@ -124,7 +124,7 @@ impl Render for ChatView {
                         std::collections::HashMap<String, crate::state::sessions::ToolResultInfo>,
                     >,
                 ),
-                PendingUser(String),
+                PendingUser(crate::state::sessions::PendingUser),
                 Streaming(Vec<crate::state::sessions::StreamItem>),
                 None,
             }
@@ -151,7 +151,7 @@ impl Render for ChatView {
             };
             match row {
                 Row::Entry(entry, tool_results) => render_entry(&entry, &tool_results, window, cx),
-                Row::PendingUser(text) => render_pending_user(&text, window, cx),
+                Row::PendingUser(pending) => render_pending_user(&pending, window, cx),
                 Row::Streaming(items) => render_streaming(&items, window, cx),
                 Row::None => div().into_any_element(),
             }

@@ -1,7 +1,8 @@
 //! Session list + active session entries (the read-only half of the Tauri
 //! client's `sessionStore`). Streaming-turn state lands here in M3.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 use gpui::{Context, EventEmitter};
 use sam_client::SamClient;
@@ -207,16 +208,39 @@ pub enum SessionStoreEvent {
     EntriesLoaded,
 }
 
+/// The just-sent user message shown optimistically until the JSONL refresh
+/// includes it. `images` are local preview-temp copies owned by the store
+/// (deleted in `clear_pending`); `audio_secs` is a staged voice clip's length.
+#[derive(Clone, Default)]
+pub struct PendingUser {
+    pub text: String,
+    pub images: Vec<PathBuf>,
+    pub audio_secs: Option<f32>,
+}
+
 pub struct SessionStore {
     client: SamClient,
     pub sessions: Vec<SessionInfoDto>,
     pub active: Option<ActiveSession>,
     pub streaming: Option<StreamingTurn>,
+    /// Conversations *other than* the active one with an in-flight turn →
+    /// last text preview. Drives the sidebar "working" dot and background
+    /// turn-end notifications. Populated when the user navigates away from a
+    /// streaming session (and from any stray non-active stream events).
+    pub background_turns: HashMap<String, String>,
     /// Message just sent, shown until the JSONL refresh includes it.
-    pub pending_user: Option<String>,
+    pub pending_user: Option<PendingUser>,
     /// After an instance switch: select the newest app-channel session once
     /// the next sessions list arrives (port of `switchInstance` step 5).
     auto_select_latest: bool,
+    /// Active session-search matches by conversationId; `None` = not searching
+    /// (port of `sessionSearchStore.matchingIds`).
+    pub search_matches: Option<HashSet<String>>,
+    /// A `session_search` request is in flight (results not back yet).
+    pub searching: bool,
+    /// Archived sessions, lazy-loaded the first time the sidebar group expands.
+    pub archived: Vec<SessionInfoDto>,
+    pub archived_loaded: bool,
 }
 
 impl EventEmitter<SessionStoreEvent> for SessionStore {}
@@ -228,8 +252,13 @@ impl SessionStore {
             sessions: Vec::new(),
             active: None,
             streaming: None,
+            background_turns: HashMap::new(),
             pending_user: None,
             auto_select_latest: false,
+            search_matches: None,
+            searching: false,
+            archived: Vec::new(),
+            archived_loaded: false,
         }
     }
 
@@ -240,9 +269,33 @@ impl SessionStore {
         self.sessions.clear();
         self.active = None;
         self.streaming = None;
-        self.pending_user = None;
+        self.background_turns.clear();
+        self.clear_pending();
         self.auto_select_latest = true;
+        self.search_matches = None;
+        self.searching = false;
+        self.archived.clear();
+        self.archived_loaded = false;
         cx.notify();
+    }
+
+    /// When navigating away from a session whose turn is still streaming, keep
+    /// the turn tracked in `background_turns` (sidebar dot + turn-end notify)
+    /// instead of dropping it. The live rendered view is discarded — only the
+    /// active conversation streams into the message list.
+    fn demote_streaming_to_background(&mut self) {
+        if let Some(turn) = self.streaming.take() {
+            let preview = turn
+                .items
+                .iter()
+                .rev()
+                .find_map(|item| match item {
+                    StreamItem::Text(t) => Some(t.chars().take(200).collect::<String>()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            self.background_turns.insert(turn.conversation_id, preview);
+        }
     }
 
     /// Start a fresh conversation; the session file (and its path) appears
@@ -267,9 +320,38 @@ impl SessionStore {
             tool_results: Default::default(),
             loading: false,
         });
-        self.streaming = None;
-        self.pending_user = None;
+        self.demote_streaming_to_background();
+        self.clear_pending();
         cx.notify();
+    }
+
+    /// Show the just-sent message optimistically with its attachment previews
+    /// (called by the composer at send-start, before the upload completes).
+    /// Takes ownership of `images` (preview-temp copies); `clear_pending`
+    /// deletes them once the real entry lands.
+    pub fn set_pending(
+        &mut self,
+        text: String,
+        images: Vec<PathBuf>,
+        audio_secs: Option<f32>,
+        cx: &mut Context<Self>,
+    ) {
+        self.clear_pending();
+        self.pending_user = Some(PendingUser {
+            text,
+            images,
+            audio_secs,
+        });
+        cx.notify();
+    }
+
+    /// Drop the optimistic bubble and delete its preview-temp images.
+    pub fn clear_pending(&mut self) {
+        if let Some(pending) = self.pending_user.take() {
+            for path in pending.images {
+                let _ = std::fs::remove_file(path);
+            }
+        }
     }
 
     pub fn send_chat(
@@ -283,7 +365,15 @@ impl SessionStore {
             return;
         }
         let conversation_id = active.info.conversation_id.clone();
-        self.pending_user = Some(text.clone());
+        // Composer sets a richer pending (with attachment previews) before
+        // uploading; only fall back to text-only here (e.g. SAM_AUTOSEND).
+        if self.pending_user.is_none() {
+            self.pending_user = Some(PendingUser {
+                text: text.clone(),
+                images: Vec::new(),
+                audio_secs: None,
+            });
+        }
         self.streaming = Some(StreamingTurn::new(conversation_id.clone()));
         self.client.send(AppRequest::Chat {
             request_id: request_id(),
@@ -324,8 +414,8 @@ impl SessionStore {
                 self.load_sessions(cx);
                 return;
             }
-            _ if !for_active => {
-                log::debug!("ignoring stream event for inactive conversation");
+            resp if !for_active => {
+                self.handle_background_stream(&resp, cx);
                 return;
             }
             AppResponse::TurnStart { .. } => {
@@ -391,6 +481,61 @@ impl SessionStore {
             _ => {}
         }
         cx.notify();
+    }
+
+    /// Lightweight tracking for a turn streaming in a non-active conversation:
+    /// just enough to show the sidebar dot and build a turn-end notification
+    /// (we don't render its content — only the active turn streams to the list).
+    fn handle_background_stream(&mut self, response: &AppResponse, cx: &mut Context<Self>) {
+        let Some(conv) = response.conversation_id() else {
+            return;
+        };
+        match response {
+            AppResponse::TurnStart { .. }
+            | AppResponse::ToolStart { .. }
+            | AppResponse::ThinkingDelta { .. } => {
+                self.background_turns.entry(conv.to_string()).or_default();
+            }
+            AppResponse::TextDelta { delta, .. } => {
+                let preview = self.background_turns.entry(conv.to_string()).or_default();
+                if preview.chars().count() < 200 {
+                    preview.push_str(delta);
+                }
+            }
+            AppResponse::TurnEnd { .. }
+            | AppResponse::Aborted { .. }
+            | AppResponse::Error { .. } => {
+                self.background_turns.remove(conv);
+            }
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    /// Notification preview for a just-finished turn, whether it was the active
+    /// rendered turn or a backgrounded one. `None` if we weren't tracking it.
+    pub fn turn_preview(&self, conv: &str) -> Option<String> {
+        if let Some(s) = &self.streaming {
+            if s.conversation_id == conv {
+                return Some(
+                    s.items
+                        .iter()
+                        .rev()
+                        .find_map(|item| match item {
+                            StreamItem::Text(t) => Some(t.chars().take(120).collect::<String>()),
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| "Turn finished".into()),
+                );
+            }
+        }
+        self.background_turns.get(conv).map(|p| {
+            if p.is_empty() {
+                "Turn finished".into()
+            } else {
+                p.clone()
+            }
+        })
     }
 
     /// Streaming UI is ephemeral; the JSONL on disk is the source of truth.
@@ -485,6 +630,11 @@ impl SessionStore {
         {
             return;
         }
+        let new_conv = info.conversation_id.clone();
+        // A turn still running in the session we're leaving moves to the
+        // background (dot + notify); entering this one clears its own dot.
+        self.demote_streaming_to_background();
+        self.background_turns.remove(&new_conv);
         self.active = Some(ActiveSession {
             info: info.clone(),
             entries: Vec::new(),
@@ -492,8 +642,7 @@ impl SessionStore {
             tool_results: Default::default(),
             loading: true,
         });
-        self.streaming = None;
-        self.pending_user = None;
+        self.clear_pending();
         cx.notify();
         self.load_active_entries(cx);
     }
@@ -532,7 +681,13 @@ impl SessionStore {
                             .map(|(i, _)| i)
                             .collect();
                         active.loading = false;
-                        store.pending_user = None;
+                        // Field-level clear (disjoint from the &mut active
+                        // borrow above; clear_pending() would reborrow *store).
+                        if let Some(p) = store.pending_user.take() {
+                            for img in p.images {
+                                let _ = std::fs::remove_file(img);
+                            }
+                        }
                         log::info!(
                             "loaded {} entries ({} displayable) for {}",
                             active.entries.len(),
@@ -590,6 +745,112 @@ impl SessionStore {
                     store.active = None;
                 }
                 store.load_sessions(cx);
+                // Keep the archived group in sync if it's already open.
+                if store.archived_loaded {
+                    store.load_archived(cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    // --- Session search (port of `sessionSearchApi` + `sessionSearchStore`) ---
+
+    /// Run a `session_search`; the sidebar filters the loaded list to the
+    /// matching conversationIds once results arrive. Empty query clears.
+    pub fn search_sessions(&mut self, query: String, cx: &mut Context<Self>) {
+        let query = query.trim().to_string();
+        if query.is_empty() {
+            self.clear_search(cx);
+            return;
+        }
+        self.searching = true;
+        cx.notify();
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let response = client
+                .request(AppRequest::SessionSearch {
+                    request_id: request_id(),
+                    query,
+                    limit: Some(20),
+                })
+                .await;
+            this.update(cx, |store, cx| {
+                store.searching = false;
+                match response {
+                    Ok(AppResponse::SessionSearchResult { results, .. }) => {
+                        store.search_matches =
+                            Some(results.into_iter().map(|r| r.conversation_id).collect());
+                    }
+                    Ok(other) => {
+                        log::warn!("unexpected session_search response: {other:?}");
+                        store.search_matches = Some(HashSet::new());
+                    }
+                    Err(e) => {
+                        log::warn!("session_search failed: {e}");
+                        store.search_matches = Some(HashSet::new());
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Leave search mode and show the full session list again.
+    pub fn clear_search(&mut self, cx: &mut Context<Self>) {
+        if self.search_matches.is_some() || self.searching {
+            self.search_matches = None;
+            self.searching = false;
+            cx.notify();
+        }
+    }
+
+    // --- Archived sessions (port of `loadArchivedSessions`/`unarchiveSession`) ---
+
+    /// Lazy-load the archived sessions (called when the sidebar group expands).
+    pub fn load_archived(&mut self, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let response = client
+                .request(AppRequest::ListArchivedSessions {
+                    request_id: request_id(),
+                })
+                .await;
+            this.update(cx, |store, cx| {
+                match response {
+                    Ok(AppResponse::ArchivedSessionsList { mut sessions, .. }) => {
+                        sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
+                        store.archived = sessions;
+                    }
+                    Ok(other) => log::warn!("unexpected archived list response: {other:?}"),
+                    Err(e) => log::warn!("list_archived_sessions failed: {e}"),
+                }
+                store.archived_loaded = true;
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    pub fn unarchive_session(&mut self, path: String, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let response = client
+                .request(AppRequest::UnarchiveSession {
+                    request_id: request_id(),
+                    session_path: path,
+                })
+                .await;
+            if let Err(e) = response {
+                log::warn!("unarchive_session failed: {e}");
+            }
+            this.update(cx, |store, cx| {
+                store.load_sessions(cx);
+                store.load_archived(cx);
             })
             .ok();
         })

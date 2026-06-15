@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use gpui::{
-    div, prelude::*, px, Context, Entity, ExternalPaths, PathPromptOptions, SharedString,
+    div, prelude::*, px, Context, Entity, ExternalPaths, Global, PathPromptOptions, SharedString,
     Subscription, Window,
 };
 use gpui_component::{
@@ -25,6 +25,12 @@ struct PendingImage {
     original_name: String,
     temp_path: PathBuf,
 }
+
+/// The composer's text input, exposed globally so the right-sidebar file tree
+/// can insert `@path` references into it.
+pub struct ComposerInputGlobal(pub Entity<InputState>);
+
+impl Global for ComposerInputGlobal {}
 
 pub struct Composer {
     store: Entity<SessionStore>,
@@ -51,6 +57,8 @@ impl Composer {
                 .auto_grow(1, 8)
                 .placeholder("Message Sam — Enter to send, Shift+Enter for newline")
         });
+        // Expose the input so the right-sidebar file tree can insert @path refs.
+        cx.set_global(ComposerInputGlobal(input.clone()));
 
         let subscription = cx.subscribe_in(
             &input,
@@ -257,6 +265,25 @@ impl Composer {
             .active_instance()
             .and_then(|i| i.api_key.clone());
         let client = self.store.read(cx).client();
+
+        // Optimistic bubble: show the staged images/audio immediately. Copy
+        // each resized JPEG to a preview temp (the upload deletes its own temp
+        // via delete_after; SessionStore deletes these in clear_pending).
+        let preview_images: Vec<PathBuf> = self
+            .pending_images
+            .iter()
+            .filter(|p| !p.temp_path.as_os_str().is_empty())
+            .filter_map(|p| {
+                let dst = std::env::temp_dir()
+                    .join(format!("pending-preview-{}.jpg", uuid::Uuid::new_v4()));
+                std::fs::copy(&p.temp_path, &dst).ok().map(|_| dst)
+            })
+            .collect();
+        let audio_secs = self.pending_audio.as_ref().map(|a| a.duration as f32);
+        self.store.update(cx, |store, cx| {
+            store.set_pending(text.clone(), preview_images, audio_secs, cx)
+        });
+
         let images: Vec<PathBuf> = self.pending_images.drain(..).map(|p| p.temp_path).collect();
         let audio = self.pending_audio.take();
         self.sending = true;
@@ -311,7 +338,11 @@ impl Composer {
                 match failure {
                     Some(error) => {
                         this.error = Some(error.into());
-                        cx.notify();
+                        // Drop the optimistic bubble — the send never happened.
+                        this.store.update(cx, |store, cx| {
+                            store.clear_pending();
+                            cx.notify();
+                        });
                     }
                     None => {
                         this.store
