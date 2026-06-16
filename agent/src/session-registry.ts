@@ -1,4 +1,4 @@
-import type { AgentSession } from "./agent-factory.js";
+import type { SamAgentSession } from "./backend/types.js";
 import { createSession } from "./agent-factory.js";
 import type { SamConfig } from "./config.js";
 import type { KitsServer } from "./kits-server.js";
@@ -6,13 +6,13 @@ import type { SessionKey } from "./types.js";
 import { sessionKeyToString } from "./types.js";
 
 interface SessionEntry {
-  session: AgentSession;
+  session: SamAgentSession;
   lastActivity: number;
 }
 
 export class SessionRegistry {
   private sessions = new Map<string, SessionEntry>();
-  private creating = new Map<string, Promise<AgentSession>>();
+  private creating = new Map<string, Promise<SamAgentSession>>();
   private kitsServer?: KitsServer;
 
   constructor(private config: SamConfig) {}
@@ -21,7 +21,7 @@ export class SessionRegistry {
     this.kitsServer = kitsServer;
   }
 
-  async getOrCreate(key: SessionKey): Promise<AgentSession> {
+  async getOrCreate(key: SessionKey): Promise<SamAgentSession> {
     const id = sessionKeyToString(key);
 
     const existing = this.sessions.get(id);

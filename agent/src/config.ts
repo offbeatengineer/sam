@@ -35,6 +35,8 @@ export interface SamConfig {
     id: string;
     thinking: string;
     apiKey?: string;
+    /** Agent backend: "pi" (default, pi-coding-agent) or "agent-sdk" (Claude Agent SDK; subscription billing). */
+    backend?: "pi" | "agent-sdk";
   };
   workspace: string;
   sessions: string;
@@ -103,6 +105,13 @@ model:
   provider: anthropic
   id: claude-sonnet-4-20250514
   thinking: "off"
+  # backend: pi
+  # "pi" (default) routes turns through pi-coding-agent (API key / pay-per-token).
+  # "agent-sdk" routes turns through the Claude Agent SDK so usage draws from your
+  # Claude Pro/Max subscription. Requires genuine claude CLI auth: either run
+  # "claude setup-token" and set CLAUDE_CODE_OAUTH_TOKEN, or be logged in via claude.
+  # Anthropic provider only; do not set MODEL_API_KEY/ANTHROPIC_API_KEY if you want
+  # subscription billing.
 
 # workspace: ~/.sam/workspace
 # sessions: ~/.sam/sessions
@@ -268,6 +277,7 @@ export function loadConfig(): SamConfig {
       id: process.env.MODEL_ID ?? yaml.model?.id ?? "claude-sonnet-4-20250514",
       thinking: process.env.MODEL_THINKING ?? yaml.model?.thinking ?? "off",
       apiKey: process.env.MODEL_API_KEY ?? yaml.model?.apiKey,
+      backend: (process.env.MODEL_BACKEND ?? yaml.model?.backend ?? "pi") as "pi" | "agent-sdk",
     },
     workspace: expandHome(yaml.workspace ?? resolve(SAM_DIR, "workspace")),
     sessions: expandHome(yaml.sessions ?? resolve(SAM_DIR, "sessions")),

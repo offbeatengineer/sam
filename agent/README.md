@@ -133,6 +133,59 @@ Credentials can live in `agent/.env` (`MODEL_API_KEY=...`) or inline under
 `model.apiKey` in the YAML. Some providers also honour their own standard
 env var name — see pi-ai for the list.
 
+### Use your Claude Pro/Max subscription (Agent SDK backend)
+
+By default Sam runs the pi-coding-agent loop and bills **per token** against
+whatever API key you configure. Even logging pi in with a Claude subscription
+keeps billing per-token — Anthropic treats a re-implemented harness as
+"third-party usage." To draw on your **Claude Pro/Max plan** instead, Sam can
+route turns through the **Claude Agent SDK**, the genuine Claude Code client,
+which Anthropic bills against your subscription.
+
+Enable it in `~/.sam/config.yaml`:
+
+```yaml
+model:
+  provider: anthropic            # required — the SDK backend is Anthropic-only
+  id: claude-sonnet-4-20250514   # any Claude model your plan can use
+  thinking: "off"
+  backend: agent-sdk             # default is "pi"
+```
+
+Then authenticate the genuine `claude` client (no `ANTHROPIC_API_KEY` /
+`MODEL_API_KEY` — an API key takes precedence and would bill per token):
+
+```bash
+# Headless-friendly: a one-year subscription token (recommended for a daemon)
+claude setup-token
+# copy the printed token into agent/.env:
+#   CLAUDE_CODE_OAUTH_TOKEN=...
+```
+
+or, for a local desktop run, just be logged in via `claude` (`/login`). On the
+first turn the agent logs the active auth source, e.g.
+`[agent-sdk] auth=CLAUDE_CODE_OAUTH_TOKEN model=…`. Confirm turns draw from the
+plan with `claude` → `/status`.
+
+Everything else is unchanged: Sam's tools (bash, web, memory, sessions, kits),
+session history, the WebSocket protocol, and all clients work exactly as before.
+The SDK backend uses Claude Code's native file tools (Read/Edit/Write/Glob/Grep)
+and bridges Sam's own tools in-process.
+
+**Good to know (v1):**
+
+- **Anthropic provider only.** Any other `provider` falls back to the pi backend
+  (logged at startup). The default `backend: pi` is untouched, so non-Anthropic
+  providers keep working.
+- **Feature gaps vs. the pi backend:** no mid-turn steering, no pi
+  compaction/retry knobs, and no incremental tool-output streaming. Per-message
+  token counts are recorded; per-message cost is not (the SDK reports cost per
+  turn).
+- **Policy volatility.** Anthropic announced — then *paused* (June 15, 2026) —
+  restricting Agent SDK / `claude -p` subscription billing to interactive use.
+  It works today, but if that changes, switch `backend` back to `pi`. Re-check
+  with `claude` → `/status` if billing behaves unexpectedly.
+
 ### Web search
 
 Sam's `web_search` tool supports two providers. Pick one.

@@ -21,6 +21,7 @@ import { createReportArtifactTool } from "./tools/report-artifact.js";
 import { createKitTool } from "./tools/kits.js";
 import type { KitsServer } from "./kits-server.js";
 import type { SessionKey } from "./types.js";
+import type { SamAgentSession } from "./backend/types.js";
 import { resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -109,26 +110,13 @@ function createResourceLoader(cwd: string, systemPromptPath: string, agentsPromp
   };
 }
 
-export async function createSession(config: SamConfig, key: SessionKey, kitsServer?: KitsServer) {
-  const cwd = config.workspace;
-  const sessionDir = resolve(config.sessions, key.channelId, key.conversationId);
-  mkdirSync(sessionDir, { recursive: true });
-
-  const authStorage = AuthStorage.create(resolve(SAM_DIR, "auth.json"));
-  if (config.model.apiKey) {
-    authStorage.setRuntimeApiKey(config.model.provider, config.model.apiKey);
-  }
-
-  const modelRegistry = ModelRegistry.create(authStorage);
-  const model = getModel(config.model.provider as any, config.model.id as any);
-
-  // Built-in tools enabled by name. Bash is excluded here and registered via
-  // customTools below so it can carry our tmux spawnHook. The allowlist below
-  // is extended with every customTool's name — pi-coding-agent's `tools`
-  // field is an allowlist that filters BOTH built-ins and customTools.
-  const builtinToolNames = ["read", "edit", "write", "grep", "find", "ls"];
-
-  const customTools = [
+/**
+ * Build sam's custom tools (bash-with-tmux, web, artifacts, memory, sessions,
+ * kits). Shared by both the pi backend and the Agent SDK backend (which bridges
+ * these same tools into an in-process MCP server).
+ */
+export function buildCustomTools(config: SamConfig, cwd: string, kitsServer?: KitsServer): any[] {
+  const customTools: any[] = [
     createBashTool(cwd, { spawnHook: createTmuxSpawnHook() }),
     { ...createWebSearchTool(config.tools?.webSearch), promptSnippet: "Search the web for current information, recent events, or topics." },
     { ...createWebFetchTool(), promptSnippet: "Fetch and extract readable text content from a web page URL." },
@@ -153,6 +141,57 @@ export async function createSession(config: SamConfig, key: SessionKey, kitsServ
     customTools.push({ ...createKitTool(kitsServer, kitsDir), promptSnippet: "Manage kits — create, build, reload, enable/disable, delete, or list mini-apps." });
   }
 
+  return customTools;
+}
+
+/**
+ * Build a flat system-prompt string for the Agent SDK backend (which doesn't
+ * use pi's ResourceLoader). Combines SYSTEM.md, AGENTS.md, and a summary of
+ * available skills so the SDK-backed agent keeps sam's personality and skills.
+ */
+export function buildSystemPromptText(config: SamConfig): string {
+  const parts: string[] = [getSystemPrompt(config.workspace, config.prompts.system)];
+
+  if (existsSync(config.prompts.agents)) {
+    parts.push(readFileSync(config.prompts.agents, "utf-8"));
+  }
+
+  const bundled = loadSkillsFromDir({ dir: BUNDLED_SKILLS_DIR, source: "bundled" });
+  const user = loadSkillsFromDir({ dir: config.skills, source: "user" });
+  const merged = new Map<string, any>(bundled.skills.map((s: any) => [s.name, s]));
+  for (const s of user.skills as any[]) merged.set(s.name, s);
+  const skills = [...merged.values()];
+  if (skills.length > 0) {
+    const lines = skills.map((s: any) => `- **${s.name}**${s.description ? `: ${s.description}` : ""}`);
+    parts.push(
+      `## Available skills\n\nWhen a task matches one of these skills, read its file for the full playbook before proceeding.\n\n${lines.join("\n")}`,
+    );
+  }
+
+  return parts.join("\n\n");
+}
+
+async function createPiSession(config: SamConfig, key: SessionKey, kitsServer?: KitsServer): Promise<SamAgentSession> {
+  const cwd = config.workspace;
+  const sessionDir = resolve(config.sessions, key.channelId, key.conversationId);
+  mkdirSync(sessionDir, { recursive: true });
+
+  const authStorage = AuthStorage.create(resolve(SAM_DIR, "auth.json"));
+  if (config.model.apiKey) {
+    authStorage.setRuntimeApiKey(config.model.provider, config.model.apiKey);
+  }
+
+  const modelRegistry = ModelRegistry.create(authStorage);
+  const model = getModel(config.model.provider as any, config.model.id as any);
+
+  // Built-in tools enabled by name. Bash is excluded here and registered via
+  // customTools below so it can carry our tmux spawnHook. The allowlist below
+  // is extended with every customTool's name — pi-coding-agent's `tools`
+  // field is an allowlist that filters BOTH built-ins and customTools.
+  const builtinToolNames = ["read", "edit", "write", "grep", "find", "ls"];
+
+  const customTools = buildCustomTools(config, cwd, kitsServer);
+
   const sessionManager = SessionManager.continueRecent(cwd, sessionDir);
   const settingsManager = SettingsManager.inMemory({
     compaction: { enabled: true },
@@ -175,4 +214,24 @@ export async function createSession(config: SamConfig, key: SessionKey, kitsServ
   });
 
   return session;
+}
+
+/**
+ * Create a session using the configured backend. Defaults to the pi-coding-agent
+ * loop; opts into the Claude Agent SDK backend (subscription billing) when
+ * `model.backend === "agent-sdk"` and the provider is anthropic. The SDK module
+ * is imported lazily so the default path never loads it.
+ */
+export async function createSession(config: SamConfig, key: SessionKey, kitsServer?: KitsServer): Promise<SamAgentSession> {
+  if (config.model.backend === "agent-sdk") {
+    if (config.model.provider !== "anthropic") {
+      console.warn(
+        `[backend] model.backend "agent-sdk" requires provider "anthropic" (Claude subscription); got "${config.model.provider}". Falling back to the pi backend.`,
+      );
+    } else {
+      const { createAgentSdkSession } = await import("./backend/agent-sdk/session.js");
+      return createAgentSdkSession(config, key, kitsServer);
+    }
+  }
+  return createPiSession(config, key, kitsServer);
 }
