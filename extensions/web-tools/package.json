@@ -10,13 +10,13 @@
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "linkedom": "^0.18.12",
-    "turndown": "^7.2.0"
+    "turndown": "^7.2.4"
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": "^0.78.1",
-    "@earendil-works/pi-coding-agent": "^0.78.1",
-    "@earendil-works/pi-tui": "^0.78.1",
-    "@sinclair/typebox": "*"
+    "@earendil-works/pi-agent-core": "^0.79.6",
+    "@earendil-works/pi-coding-agent": "^0.79.6",
+    "@earendil-works/pi-tui": "^0.79.6",
+    "@sinclair/typebox": "^0.34.48"
   },
   "devDependencies": {
     "@types/turndown": "^5.0.6"
