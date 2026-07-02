@@ -13,10 +13,10 @@
     "turndown": "^7.2.4"
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": "^0.79.6",
-    "@earendil-works/pi-coding-agent": "^0.79.6",
-    "@earendil-works/pi-tui": "^0.79.6",
-    "@sinclair/typebox": "^0.34.48"
+    "@earendil-works/pi-agent-core": "^0.80.3",
+    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@earendil-works/pi-tui": "^0.80.3",
+    "@sinclair/typebox": "^0.34.49"
   },
   "devDependencies": {
     "@types/turndown": "^5.0.6"

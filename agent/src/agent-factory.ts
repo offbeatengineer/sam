@@ -1,4 +1,4 @@
-import { getModel } from "@earendil-works/pi-ai";
+import { getModel } from "@earendil-works/pi-ai/compat";
 import {
   AuthStorage,
   createAgentSession,
