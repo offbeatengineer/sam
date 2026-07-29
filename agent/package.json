@@ -25,6 +25,7 @@
     "chokidar": "^4.0.3",
     "discord.js": "^14.26.4",
     "hono": "^4.12.27",
+    "typebox": "1.1.38",
     "yaml": "^2.9.0"
   },
   "devDependencies": {

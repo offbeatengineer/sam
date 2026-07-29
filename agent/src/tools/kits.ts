@@ -1,4 +1,4 @@
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { KitsServer } from "../kits-server.js";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync, statSync, symlinkSync } from "node:fs";

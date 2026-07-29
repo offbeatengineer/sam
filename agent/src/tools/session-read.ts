@@ -1,5 +1,5 @@
 import { dirname } from "node:path";
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { jsonResult, errorResult } from "./util.js";

@@ -1,4 +1,4 @@
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { jsonResult, errorResult } from "./util.js";
 import { SessionSearchStore } from "../session-search/store.js";
