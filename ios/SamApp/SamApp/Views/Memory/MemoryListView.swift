@@ -14,8 +14,27 @@ struct MemoryListView: View {
                         Text(memory.text)
                             .font(.body)
                             .lineLimit(3)
+                            .strikethrough(!memory.isActive)
+                            .foregroundStyle(memory.isActive ? .primary : .secondary)
 
                         HStack(spacing: 6) {
+                            if memory.isProfile {
+                                Text("always")
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 1)
+                                    .background(Color.accentColor.opacity(0.15))
+                                    .clipShape(Capsule())
+                            }
+                            if !memory.isActive {
+                                Text(memory.status == "superseded" ? "replaced" : "forgotten")
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 1)
+                                    .background(Color.secondary.opacity(0.15))
+                                    .clipShape(Capsule())
+                            }
+
                             Text(memory.createdDate, style: .relative)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -52,6 +71,12 @@ struct MemoryListView: View {
                     Image(systemName: "plus")
                 }
             }
+            ToolbarItem(placement: .secondaryAction) {
+                Toggle("Show replaced and forgotten", isOn: $memoryVM.showAll)
+            }
+        }
+        .onChange(of: appVM.memoryVM.showAll) { _, _ in
+            Task { await appVM.memoryVM.loadMemories(using: appVM) }
         }
         .sheet(isPresented: $showNewMemory) {
             NewMemoryView()

@@ -8,9 +8,27 @@ struct MemoryDetailView: View {
     @State private var editedTags: String = ""
     @State private var isEditing = false
     @State private var showDeleteConfirmation = false
+    // `memory` is a navigation value and does not update, so track what this screen changes.
+    @State private var isProfile = false
+    @State private var isActive = true
 
     var body: some View {
         Form {
+            if !isActive {
+                Section {
+                    Text(memory.status == "superseded"
+                         ? "Replaced by a newer memory, so Sam no longer uses this one."
+                         : "Forgotten at your request. Sam no longer uses it, and it is no longer sent anywhere.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button("Restore") {
+                        Task {
+                            if await appVM.memoryVM.setMemory(id: memory.id, status: "active", using: appVM) { isActive = true }
+                        }
+                    }
+                }
+            }
+
             Section("Content") {
                 if isEditing {
                     TextEditor(text: $editedText)
@@ -42,6 +60,26 @@ struct MemoryDetailView: View {
                 }
             }
 
+            if isActive && memory.kind != nil {
+                Section {
+                    Toggle("Always apply", isOn: Binding(
+                        get: { isProfile },
+                        set: { newValue in
+                            Task {
+                                let ok = await appVM.memoryVM.setMemory(
+                                    id: memory.id, kind: newValue ? "profile" : "situational", using: appVM
+                                )
+                                if ok { isProfile = newValue }
+                            }
+                        }
+                    ))
+                } footer: {
+                    Text(isProfile
+                         ? "Given to Sam in every conversation, whatever the topic."
+                         : "Sam sees this only when it is relevant to the message.")
+                }
+            }
+
             Section("Info") {
                 LabeledContent("Source", value: memory.source)
                 LabeledContent("Created", value: memory.createdDate, format: .dateTime)
@@ -51,6 +89,10 @@ struct MemoryDetailView: View {
             }
         }
         .navigationTitle("Memory")
+        .onAppear {
+            isProfile = memory.isProfile
+            isActive = memory.isActive
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 if isEditing {

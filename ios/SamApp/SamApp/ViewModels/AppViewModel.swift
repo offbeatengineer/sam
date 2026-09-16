@@ -163,6 +163,20 @@ final class AppViewModel {
             }
             _ = toolName
 
+        // Automatic memory
+        case .memoryRecalled(let convId, let activity):
+            if chatVM.activeConversationId == convId, !(activity.memories ?? []).isEmpty {
+                chatVM.addMemoryActivity(activity)
+            }
+
+        case .memoryWritten(let convId, let activity):
+            if chatVM.activeConversationId == convId {
+                chatVM.appendMemoryActivity(activity)
+            }
+            if !memoryVM.memories.isEmpty {
+                Task { await memoryVM.loadMemories(using: self) }
+            }
+
         // Session lifecycle
         case .sessionCreated:
             break

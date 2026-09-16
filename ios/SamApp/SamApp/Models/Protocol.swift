@@ -22,10 +22,10 @@ enum ClientRequest: Encodable {
     case unarchiveSession(requestId: String, sessionPath: String)
     case listArchivedSessions(requestId: String)
     // Memory
-    case memoryList(requestId: String, limit: Int?, offset: Int?)
+    case memoryList(requestId: String, limit: Int?, offset: Int?, status: String? = nil)
     case memorySearch(requestId: String, query: String, limit: Int?, tags: [String]?)
     case memorySave(requestId: String, text: String, tags: [String]?, source: String?)
-    case memoryUpdate(requestId: String, id: String, text: String, tags: [String]?)
+    case memoryUpdate(requestId: String, id: String, text: String?, tags: [String]?, kind: String? = nil, status: String? = nil)
     case memoryDelete(requestId: String, id: String)
     // Skills
     case listSkills(requestId: String)
@@ -83,11 +83,12 @@ enum ClientRequest: Encodable {
             try container.encode("list_archived_sessions", forKey: .key("type"))
             try container.encode(requestId, forKey: .key("requestId"))
 
-        case .memoryList(let requestId, let limit, let offset):
+        case .memoryList(let requestId, let limit, let offset, let status):
             try container.encode("memory_list", forKey: .key("type"))
             try container.encode(requestId, forKey: .key("requestId"))
             try container.encodeIfPresent(limit, forKey: .key("limit"))
             try container.encodeIfPresent(offset, forKey: .key("offset"))
+            try container.encodeIfPresent(status, forKey: .key("status"))
 
         case .memorySearch(let requestId, let query, let limit, let tags):
             try container.encode("memory_search", forKey: .key("type"))
@@ -103,12 +104,14 @@ enum ClientRequest: Encodable {
             try container.encodeIfPresent(tags, forKey: .key("tags"))
             try container.encodeIfPresent(source, forKey: .key("source"))
 
-        case .memoryUpdate(let requestId, let id, let text, let tags):
+        case .memoryUpdate(let requestId, let id, let text, let tags, let kind, let status):
             try container.encode("memory_update", forKey: .key("type"))
             try container.encode(requestId, forKey: .key("requestId"))
             try container.encode(id, forKey: .key("id"))
-            try container.encode(text, forKey: .key("text"))
+            try container.encodeIfPresent(text, forKey: .key("text"))
             try container.encodeIfPresent(tags, forKey: .key("tags"))
+            try container.encodeIfPresent(kind, forKey: .key("kind"))
+            try container.encodeIfPresent(status, forKey: .key("status"))
 
         case .memoryDelete(let requestId, let id):
             try container.encode("memory_delete", forKey: .key("type"))
@@ -173,6 +176,9 @@ enum ServerMessage: Decodable {
     case memoryUpdateResult(requestId: String, success: Bool)
     case memoryDeleteResult(requestId: String, success: Bool)
     case memoryError(requestId: String, error: String)
+    // Automatic memory activity for a turn (unsolicited)
+    case memoryRecalled(conversationId: String, activity: MemoryActivity)
+    case memoryWritten(conversationId: String, activity: MemoryActivity)
     // Session mutation
     case renameSessionResult(requestId: String, success: Bool)
     case archiveSessionResult(requestId: String, success: Bool)
@@ -316,6 +322,14 @@ enum ServerMessage: Decodable {
                 requestId: try container.decode(String.self, forKey: .requestId),
                 error: try container.decode(String.self, forKey: .error)
             )
+        case "memory_recalled", "memory_written":
+            // The message body is the activity itself; its own keys are all optional.
+            var activity = try MemoryActivity(from: decoder)
+            activity.phase = type == "memory_recalled" ? "recall" : "write"
+            let conversationId = try container.decode(String.self, forKey: .conversationId)
+            self = type == "memory_recalled"
+                ? .memoryRecalled(conversationId: conversationId, activity: activity)
+                : .memoryWritten(conversationId: conversationId, activity: activity)
         case "rename_session_result":
             self = .renameSessionResult(
                 requestId: try container.decode(String.self, forKey: .requestId),

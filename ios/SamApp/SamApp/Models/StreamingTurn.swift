@@ -5,6 +5,7 @@ enum StreamItem {
     case text(String)
     case thinking(String, done: Bool)
     case tool(StreamingToolExecution)
+    case memory(MemoryActivity)
 }
 
 /// Tracks the state of a streaming assistant turn in progress.
@@ -77,6 +78,12 @@ final class StreamingTurn {
             tool.isDone = true
             items[idx] = .tool(tool)
         }
+    }
+
+    // MARK: - Memory
+
+    func addMemoryActivity(_ activity: MemoryActivity) {
+        items.append(.memory(activity))
     }
 
     // MARK: - Convenience

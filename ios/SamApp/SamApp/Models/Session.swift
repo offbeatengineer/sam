@@ -36,6 +36,8 @@ struct SessionEntry: Identifiable {
     // For non-message entries
     let modelId: String?
     let summary: String?
+    /// Set for `memory_activity` custom entries.
+    var memoryActivity: MemoryActivity? = nil
 }
 
 // MARK: - Agent message (role-based, mirrors pi-coding-agent types)
@@ -122,6 +124,15 @@ extension SessionEntry {
                     id: entryId, entryType: entryType,
                     message: .user(content: "", images: [], audioAttachments: [UserAudioAttachment(remotePath: url)]),
                     timestamp: timestamp, modelId: nil, summary: nil
+                )
+            }
+            if customType == "memory_activity",
+               let data = dict["data"] as? [String: Any],
+               let activity = MemoryActivity.from(entryData: data) {
+                return SessionEntry(
+                    id: entryId, entryType: entryType, message: nil,
+                    timestamp: timestamp, modelId: nil, summary: nil,
+                    memoryActivity: activity
                 )
             }
             return nil

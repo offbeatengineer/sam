@@ -309,6 +309,24 @@ final class ChatViewModel {
         streamingRevision &+= 1
     }
 
+    func addMemoryActivity(_ activity: MemoryActivity) {
+        streamingTurn?.addMemoryActivity(activity)
+        streamingRevision &+= 1
+    }
+
+    /// Memory is written after the turn ends, so this lands in history rather than in the stream.
+    func appendMemoryActivity(_ activity: MemoryActivity) {
+        historicalEntries.append(memoryEntry(activity))
+    }
+
+    private func memoryEntry(_ activity: MemoryActivity) -> SessionEntry {
+        SessionEntry(
+            id: UUID().uuidString, entryType: "custom", message: nil,
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            modelId: nil, summary: nil, memoryActivity: activity
+        )
+    }
+
     func updateTool(toolCallId: String, partialResult: String) {
         streamingTurn?.updateTool(toolCallId: toolCallId, partialResult: partialResult)
         streamingRevision &+= 1
@@ -334,6 +352,9 @@ final class ChatViewModel {
             case .tool(let tool):
                 blocks.append(.toolCall(id: tool.toolCallId, name: tool.toolName, arguments: tool.args))
                 if tool.isDone { doneTools.append(tool) }
+            case .memory(let activity):
+                // Recall happens before the reply, so it goes in ahead of the assistant message.
+                historicalEntries.append(memoryEntry(activity))
             default:
                 break
             }

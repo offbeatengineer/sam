@@ -19,6 +19,7 @@ struct ChatMessageItem: Identifiable {
         case webFetchPage(WebFetchDetails)
         case memoryCard(MemoryCardDetails)
         case memoryRecall(MemoryRecallDetails)
+        case memoryActivity(MemoryActivity)
         case sessionSearchCard(SessionSearchDetails2)
         case sessionReadCard(SessionReadDetails)
         case kitCreateCard(KitCreateDetails)
@@ -156,7 +157,14 @@ extension ChatMessageItem {
         for entry in entries {
             guard let message = entry.message else {
                 // Non-message entries (model_change, compaction, etc.)
-                if entry.summary != nil {
+                if let activity = entry.memoryActivity {
+                    items.append(ChatMessageItem(
+                        id: entry.id,
+                        isUser: false,
+                        timestamp: parseTimestamp(entry.timestamp),
+                        content: .memoryActivity(activity)
+                    ))
+                } else if entry.summary != nil {
                     items.append(ChatMessageItem(
                         id: entry.id,
                         isUser: false,
@@ -393,6 +401,13 @@ extension ChatMessageItem {
                     isUser: false,
                     timestamp: now,
                     content: .thinking(text, done: done)
+                ))
+            case .memory(let activity):
+                result.append(ChatMessageItem(
+                    id: "streaming-memory-\(i)",
+                    isUser: false,
+                    timestamp: now,
+                    content: .memoryActivity(activity)
                 ))
             case .tool(let tool):
                 if tool.toolName == "report_artifact" {

@@ -7,13 +7,15 @@ final class MemoryViewModel {
     var isLoading = false
     var searchQuery: String = ""
     var error: String?
+    /// Include memories that were replaced or forgotten.
+    var showAll = false
 
     func loadMemories(using app: AppViewModel) async {
         let requestId = UUID().uuidString
         isLoading = true
         do {
             let response = try await app.request(
-                .memoryList(requestId: requestId, limit: 100, offset: 0),
+                .memoryList(requestId: requestId, limit: 100, offset: 0, status: showAll ? "all" : "active"),
                 requestId: requestId
             )
             if case .memoryListResult(_, let items, let total) = response {
@@ -81,6 +83,24 @@ final class MemoryViewModel {
         do {
             let response = try await app.request(
                 .memoryUpdate(requestId: requestId, id: id, text: text, tags: tags),
+                requestId: requestId
+            )
+            if case .memoryUpdateResult(_, let success) = response, success {
+                await loadMemories(using: app)
+                return true
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+        return false
+    }
+
+    /// Change when a memory applies ("profile" = always) or whether it is in use ("active" restores it).
+    func setMemory(id: String, kind: String? = nil, status: String? = nil, using app: AppViewModel) async -> Bool {
+        let requestId = UUID().uuidString
+        do {
+            let response = try await app.request(
+                .memoryUpdate(requestId: requestId, id: id, text: nil, tags: nil, kind: kind, status: status),
                 requestId: requestId
             )
             if case .memoryUpdateResult(_, let success) = response, success {

@@ -208,6 +208,9 @@ struct ChatContainerView: View {
         case .memoryRecall(let details):
             MemoryRecallCardCell(details: details)
 
+        case .memoryActivity(let activity):
+            MemoryActivityCell(activity: activity)
+
         case .sessionSearchCard(let details):
             SessionSearchCardCell(details: details, onNavigate: handleSessionNavigate)
 
