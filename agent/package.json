@@ -17,12 +17,14 @@
     "start": "bun src/index.ts",
     "dev": "watchexec --project-origin . -w src -w prompts -r -- bun --env-file=.env src/index.ts",
     "typecheck": "tsc --noEmit",
+    "test": "bun test src",
     "eval:memory:smoke": "bun --env-file=.env evals/memory/smoke.ts",
     "eval:memory:recall": "bun --env-file=.env evals/memory/recall.ts",
     "eval:memory:baseline": "bun evals/memory/baseline.ts",
     "eval:memory:write": "bun --env-file=.env evals/memory/save_update.ts",
     "eval:memory:scale": "bun --env-file=.env evals/memory/scale.ts",
-    "eval:memory:edge": "bun --env-file=.env evals/memory/edge.ts"
+    "eval:memory:edge": "bun --env-file=.env evals/memory/edge.ts",
+    "eval:memory:all": "bun --env-file=.env evals/memory/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.198",

@@ -1,0 +1,19 @@
+{
+  "recall.core": { "min": 19, "of": 20 },
+  "recall.noise": { "max": 6 },
+  "recall_sharded.core": { "min": 19, "of": 20 },
+  "recall_sharded.noise": { "max": 8 },
+  "recall_sharded.min_shards": { "min": 2 },
+  "gate.correct": { "min": 17, "of": 18 },
+  "gate.false_forget": { "max": 1 },
+  "update.outdated_found": { "min": 4, "of": 7 },
+  "update.false_supersede": { "max": 0 },
+  "update.traps": { "max": 0 },
+  "duplicate.shortlisted": { "min": 4, "of": 5 },
+  "duplicate.found": { "min": 4, "of": 5 },
+  "instruction.correct": { "min": 7, "of": 8 },
+  "instruction.missed": { "max": 0 },
+  "profile.correct": { "min": 6, "of": 7 },
+  "forget.correct": { "min": 6, "of": 7 },
+  "forget.wrongly_forgotten": { "max": 0 }
+}
