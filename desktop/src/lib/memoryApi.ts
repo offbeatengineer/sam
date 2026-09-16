@@ -1,8 +1,10 @@
 import { sendRaw, generateRequestId } from "./tauri";
+import type { MemoryKind, MemoryStatus } from "@/types/chat";
 
-export function listMemories(limit?: number, offset?: number): string {
+/** `status: "all"` includes memories that were replaced or forgotten. */
+export function listMemories(limit?: number, offset?: number, status?: "active" | "all"): string {
   const requestId = generateRequestId();
-  sendRaw({ type: "memory_list", requestId, limit, offset });
+  sendRaw({ type: "memory_list", requestId, limit, offset, status });
   return requestId;
 }
 
@@ -28,11 +30,10 @@ export function saveMemory(
 
 export function updateMemory(
   id: string,
-  text: string,
-  tags?: string[],
+  patch: { text?: string; tags?: string[]; kind?: MemoryKind; status?: MemoryStatus },
 ): string {
   const requestId = generateRequestId();
-  sendRaw({ type: "memory_update", requestId, id, text, tags });
+  sendRaw({ type: "memory_update", requestId, id, ...patch });
   return requestId;
 }
 

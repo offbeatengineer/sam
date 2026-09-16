@@ -7,11 +7,14 @@ interface MemoryStore {
   isLoading: boolean;
   searchQuery: string;
   selectedMemoryId: string | null;
+  /** Include memories that were replaced or forgotten. */
+  showAll: boolean;
 
   setMemories: (memories: MemoryItem[], total: number) => void;
   addMemory: (memory: MemoryItem) => void;
   removeMemory: (id: string) => void;
-  updateMemoryInList: (id: string, text: string, tags: string[]) => void;
+  updateMemoryInList: (id: string, patch: Partial<MemoryItem>) => void;
+  setShowAll: (showAll: boolean) => void;
   setSelectedMemoryId: (id: string | null) => void;
   setSearchQuery: (query: string) => void;
   setIsLoading: (loading: boolean) => void;
@@ -23,6 +26,7 @@ export const useMemoryStore = create<MemoryStore>()((set) => ({
   isLoading: false,
   searchQuery: "",
   selectedMemoryId: null,
+  showAll: false,
 
   setMemories: (memories, total) => set({ memories, total, isLoading: false }),
 
@@ -40,12 +44,14 @@ export const useMemoryStore = create<MemoryStore>()((set) => ({
         state.selectedMemoryId === id ? null : state.selectedMemoryId,
     })),
 
-  updateMemoryInList: (id, text, tags) =>
+  updateMemoryInList: (id, patch) =>
     set((state) => ({
       memories: state.memories.map((m) =>
-        m.id === id ? { ...m, text, tags } : m,
+        m.id === id ? { ...m, ...patch } : m,
       ),
     })),
+
+  setShowAll: (showAll) => set({ showAll }),
 
   setSelectedMemoryId: (id) => set({ selectedMemoryId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),

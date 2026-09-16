@@ -84,13 +84,13 @@ function SettingsSkillsPage() {
 }
 
 function SettingsMemoryPage() {
-  const { searchQuery, setSearchQuery, setIsLoading } = useMemoryStore();
+  const { searchQuery, setSearchQuery, setIsLoading, showAll, setShowAll } = useMemoryStore();
   const [isNewMemoryDialogOpen, setIsNewMemoryDialogOpen] = useState(false);
 
   useEffect(() => {
     setIsLoading(true);
-    listMemories();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    listMemories(undefined, undefined, showAll ? "all" : "active");
+  }, [showAll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = useCallback(
     (query: string) => {
@@ -99,10 +99,10 @@ function SettingsMemoryPage() {
       if (query.trim()) {
         searchMemories(query.trim());
       } else {
-        listMemories();
+        listMemories(undefined, undefined, showAll ? "all" : "active");
       }
     },
-    [setSearchQuery, setIsLoading],
+    [setSearchQuery, setIsLoading, showAll],
   );
 
   return (
@@ -130,6 +130,22 @@ function SettingsMemoryPage() {
             <Plus className="h-4 w-4" />
             New memory
           </button>
+          {/* Search only covers memories in use, so the filter applies to the plain list. */}
+          {!searchQuery.trim() && (
+            <div className="flex items-center gap-1 px-1 pb-1 text-xs">
+              {([false, true] as const).map((all) => (
+                <button
+                  key={String(all)}
+                  onClick={() => setShowAll(all)}
+                  className={`px-2 py-0.5 rounded transition-colors ${
+                    showAll === all ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50"
+                  }`}
+                >
+                  {all ? "All" : "In use"}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <ScrollArea className="flex-1">
           <MemoryList />

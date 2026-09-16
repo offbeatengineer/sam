@@ -7,7 +7,9 @@ import { useArtifactsStore } from "@/stores/artifactsStore";
 import { useKitsStore } from "@/stores/kitsStore";
 import { useTauriEvents } from "@/hooks/useTauriEvents";
 import { showTaskNotification } from "@/lib/notifications";
-import type { AppResponse } from "@/types/chat";
+import { useMemoryStore } from "@/stores/memoryStore";
+import { listMemories } from "@/lib/memoryApi";
+import type { AppResponse, MemoryActivity } from "@/types/chat";
 
 export function ChatContainer() {
   const activeSessionId = useSessionStore((state) => state.activeSessionId);
@@ -91,6 +93,25 @@ export function ChatContainer() {
             response.isError ?? false,
             response.details,
           );
+        }
+        break;
+
+      case "memory_recalled": {
+        const recalled = (response as unknown as MemoryActivity).memories ?? [];
+        if (recalled.length > 0) {
+          store.addMemoryActivity({ phase: "recall", memories: recalled, ms: (response as unknown as MemoryActivity).ms });
+        }
+        break;
+      }
+
+      case "memory_written":
+        // Written after turn_end, so the history loaded then does not have the
+        // activity entry yet; reload it, and the memory list if it is showing.
+        if (sessionId === store.activeSessionId && !store.streamingTurn) {
+          store.refreshActiveSession();
+        }
+        if (useMemoryStore.getState().memories.length > 0) {
+          listMemories(undefined, undefined, useMemoryStore.getState().showAll ? "all" : "active");
         }
         break;
 

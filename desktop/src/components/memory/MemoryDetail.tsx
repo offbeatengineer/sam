@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, RotateCcw, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -50,10 +50,26 @@ export function MemoryDetail() {
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
-    updateMemory(memory.id, editText, tags);
-    updateMemoryInList(memory.id, editText, tags);
+    updateMemory(memory.id, { text: editText, tags });
+    updateMemoryInList(memory.id, { text: editText, tags });
     setIsEditing(false);
   };
+
+  const isActive = !memory.status || memory.status === "active";
+  const isProfile = memory.kind === "profile";
+
+  const handleToggleProfile = () => {
+    const kind = isProfile ? "situational" : "profile";
+    updateMemory(memory.id, { kind });
+    updateMemoryInList(memory.id, { kind });
+  };
+
+  const handleRestore = () => {
+    updateMemory(memory.id, { status: "active" });
+    updateMemoryInList(memory.id, { status: "active", superseded_by: "" });
+  };
+
+  const replacement = memory.superseded_by ? memories.find((m) => m.id === memory.superseded_by) : undefined;
 
   const handleCancel = () => {
     setIsEditing(false);
@@ -71,6 +87,11 @@ export function MemoryDetail() {
         <h2 className="text-sm font-medium truncate">Memory Detail</h2>
         {!isEditing && (
           <div className="flex items-center gap-1">
+            {!isActive && (
+              <Button variant="ghost" size="sm" onClick={handleRestore} title="Put this memory back in use">
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={handleEdit}>
               <Pencil className="h-4 w-4" />
             </Button>
@@ -120,6 +141,16 @@ export function MemoryDetail() {
       ) : (
         /* Read-only view */
         <div className="flex-1 overflow-auto p-4 space-y-4">
+          {!isActive && (
+            <div className="rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+              {memory.status === "superseded"
+                ? "Replaced by a newer memory, so Sam no longer uses this one."
+                : "Forgotten at your request. Sam no longer uses it, and it is no longer sent anywhere."}
+              {replacement && <span className="block mt-1 text-foreground">Now: {replacement.text}</span>}
+              <span className="block mt-1">Restore it, or delete it to remove it for good.</span>
+            </div>
+          )}
+
           {/* Content */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -153,6 +184,26 @@ export function MemoryDetail() {
             )}
           </div>
 
+          {/* When it applies */}
+          {isActive && memory.kind !== undefined && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Applies
+              </label>
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={isProfile} onChange={handleToggleProfile} className="mt-0.5" />
+                <span>
+                  Always
+                  <span className="block text-xs text-muted-foreground">
+                    {isProfile
+                      ? "Given to Sam in every conversation, whatever the topic."
+                      : "Off: Sam sees this only when it is relevant to the message."}
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
+
           {/* Metadata */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -169,6 +220,14 @@ export function MemoryDetail() {
                   {new Date(memory.created_at).toLocaleString()}
                 </span>
               </div>
+              {memory.updated_at !== undefined && memory.updated_at !== memory.created_at && (
+                <div>
+                  Updated:{" "}
+                  <span className="text-foreground">
+                    {new Date(memory.updated_at).toLocaleString()}
+                  </span>
+                </div>
+              )}
               {memory.score > 0 && (
                 <div>
                   Relevance:{" "}

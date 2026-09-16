@@ -34,8 +34,24 @@ export function MemoryList() {
           )}
           onClick={() => setSelectedMemoryId(memory.id)}
         >
-          <span className="truncate">{memory.text}</span>
+          <span
+            className={cn(
+              "truncate",
+              // Replaced or forgotten: still here to review, no longer in use.
+              memory.status && memory.status !== "active" && "line-through text-muted-foreground",
+            )}
+          >
+            {memory.text}
+          </span>
           <div className="flex items-center gap-1.5">
+            {memory.kind === "profile" && (
+              <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded">always</span>
+            )}
+            {memory.status && memory.status !== "active" && (
+              <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+                {memory.status === "superseded" ? "replaced" : "forgotten"}
+              </span>
+            )}
             {memory.tags.slice(0, 3).map((tag) => (
               <span
                 key={tag}

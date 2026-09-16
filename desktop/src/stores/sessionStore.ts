@@ -8,13 +8,15 @@ import type {
   SessionHeader,
 } from "@/types/session";
 import { parseSessionInfo as parseInfo } from "@/types/session";
+import type { MemoryActivity } from "@/types/chat";
 
 // ======================== Streaming Turn ========================
 
 export type StreamItem =
   | { kind: "text"; content: string }
   | { kind: "thinking"; content: string; isComplete: boolean }
-  | { kind: "tool"; id: string; name: string; status: "running" | "success" | "error"; args?: unknown; result?: string; isError?: boolean; details?: unknown };
+  | { kind: "tool"; id: string; name: string; status: "running" | "success" | "error"; args?: unknown; result?: string; isError?: boolean; details?: unknown }
+  | { kind: "memory"; activity: MemoryActivity };
 
 export interface StreamingTurn {
   /** Single ordered timeline — items appended as they arrive from the stream. */
@@ -116,6 +118,7 @@ interface SessionState {
   appendThinkingDelta: (delta: string) => void;
   completeThinking: () => void;
   addToolStart: (toolCallId: string, toolName: string, args: unknown) => void;
+  addMemoryActivity: (activity: MemoryActivity) => void;
   updateTool: (toolCallId: string, partialResult: string) => void;
   endTool: (toolCallId: string, result: string, isError: boolean, details?: unknown) => void;
   endStreaming: () => void;
@@ -367,6 +370,13 @@ export const useSessionStore = create<SessionState>()(
         }
 
         return { streamingTurn: { items } };
+      });
+    },
+
+    addMemoryActivity: (activity: MemoryActivity) => {
+      set((state) => {
+        if (!state.streamingTurn) return state;
+        return { streamingTurn: { items: [...state.streamingTurn.items, { kind: "memory" as const, activity }] } };
       });
     },
 

@@ -24,6 +24,8 @@ export function useMemoryResponses() {
             source: "user",
             created_at: Date.now(),
             score: 0,
+            kind: "situational",
+            status: "active",
           });
         }
         store.setIsLoading(false);

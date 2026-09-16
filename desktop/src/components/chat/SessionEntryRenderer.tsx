@@ -2,6 +2,8 @@ import type { SessionEntry, ToolResultMessage } from "@/types/session";
 import { MessageEntryView } from "./MessageEntryView";
 import { AudioPlayer } from "./AudioPlayer";
 import { buildUploadUrl } from "@/lib/uploadUrl";
+import { MemoryActivityChip } from "./MemoryActivityChip";
+import type { MemoryActivity } from "@/types/chat";
 
 interface SessionEntryRendererProps {
   entry: SessionEntry;
@@ -82,6 +84,9 @@ export function SessionEntryRenderer({ entry, toolResults }: SessionEntryRendere
             </div>
           );
         }
+      }
+      if (entry.customType === "memory_activity" && entry.data) {
+        return <MemoryActivityChip activity={entry.data as MemoryActivity} />;
       }
       return null;
     }

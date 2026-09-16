@@ -73,6 +73,9 @@ export interface SessionSearchResultDTO {
   timestamp: number;
 }
 
+export type MemoryKind = "profile" | "situational";
+export type MemoryStatus = "active" | "superseded" | "forgotten";
+
 export interface MemoryItem {
   id: string;
   text: string;
@@ -80,4 +83,32 @@ export interface MemoryItem {
   source: string;
   created_at: number;
   score: number;
+  // Optional: absent when talking to an agent that predates automatic memory.
+  kind?: MemoryKind;
+  status?: MemoryStatus;
+  superseded_by?: string;
+  updated_at?: number;
+}
+
+interface MemoryChange {
+  id: string;
+  text: string;
+}
+
+/**
+ * What automatic memory did around a turn. Arrives live as `memory_recalled` /
+ * `memory_written`, and in history as a `memory_activity` custom entry.
+ */
+export interface MemoryActivity {
+  phase: "recall" | "write";
+  // recall
+  memories?: { id: string; text: string; kind: string; p: number }[];
+  ms?: number;
+  // write
+  saved?: (MemoryChange & { kind: string })[];
+  superseded?: (MemoryChange & { replaced: MemoryChange })[];
+  duplicates?: MemoryChange[];
+  forgotten?: MemoryChange[];
+  flagged?: MemoryChange[];
+  unresolvedForget?: boolean;
 }

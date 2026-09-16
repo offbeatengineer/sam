@@ -10,6 +10,7 @@ import { MemoryRecallCard } from "./MemoryRecallCard";
 import { SessionSearchCard } from "./SessionSearchCard";
 import { SessionReadCard } from "./SessionReadCard";
 import { KitCreateCard } from "./KitCreateCard";
+import { MemoryActivityChip } from "./MemoryActivityChip";
 import type { StreamingTurn } from "@/stores/sessionStore";
 
 interface StreamingTurnViewProps {
@@ -40,6 +41,10 @@ export function StreamingTurnView({ turn }: StreamingTurnViewProps) {
               </ReactMarkdown>
             </div>
           );
+        }
+
+        if (item.kind === "memory") {
+          return <MemoryActivityChip key={`st-memory-${i}`} activity={item.activity} />;
         }
 
         if (item.kind === "tool") {
