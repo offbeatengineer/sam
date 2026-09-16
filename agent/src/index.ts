@@ -7,6 +7,7 @@ import { PulseChannel } from "./channels/pulse-channel.js";
 import { AppChannel } from "./channels/app-channel.js";
 import { VocalTranscriber } from "./transcriber.js";
 import { MemoryStore } from "./memory/store.js";
+import { AutoMemory } from "./memory/auto.js";
 import { SessionSearchStore } from "./session-search/store.js";
 import { SessionIndexer } from "./session-search/indexer.js";
 import { ArtifactsServer } from "./artifacts-server.js";
@@ -33,6 +34,16 @@ async function main() {
     MemoryStore.getInstance(config.memory).catch((err) => {
       console.error("[memory] Failed to pre-initialize memory store:", err);
     });
+
+    const typesafe = config.memory.typesafe;
+    if (typesafe?.enabled) {
+      // Deliberately loud: this is the one memory mode that leaves the machine.
+      console.log(
+        typesafe.apiKey
+          ? `[memory] Automatic memory ON (${typesafe.model}): memory texts and recent conversation snippets are sent to ${typesafe.baseUrl} on every turn.`
+          : "[memory] memory.typesafe.enabled is true but TYPESAFE_API_KEY is not set; automatic memory is inactive.",
+      );
+    }
   }
 
   // Start background session search indexing
@@ -141,6 +152,9 @@ async function main() {
     console.log("Shutting down...");
     if (artifactsServer) await artifactsServer.stop();
     if (appChannel) await appChannel.stop();
+    // dispatcher.shutdown() ends in process.exit, so memory writes still in
+    // flight from the last turn have to finish first.
+    await AutoMemory.current()?.drain();
     await dispatcher.shutdown();
   };
   process.on("SIGINT", shutdown);

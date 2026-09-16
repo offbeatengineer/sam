@@ -3,7 +3,8 @@ import { resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import type { MemoryConfig } from "./memory/types.js";
+import type { MemoryConfig, TypeSafeConfig } from "./memory/types.js";
+import { DEFAULT_JEV_MODEL } from "./memory/judgments.js";
 import type { TranscriptionConfig } from "./transcriber.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -13,7 +14,12 @@ const BUNDLED_PROMPTS_DIR = resolve(__dirname, "..", "prompts");
 // Sam home directory
 // ---------------------------------------------------------------------------
 
-export const SAM_DIR = resolve(homedir(), ".sam");
+/**
+ * `SAM_HOME` points a second instance at its own config, sessions, and memory,
+ * so new code can be tried without touching the real ~/.sam. HOME stays as it
+ * is, which keeps the Claude login the agent-sdk backend depends on.
+ */
+export const SAM_DIR = process.env.SAM_HOME ? resolve(process.env.SAM_HOME) : resolve(homedir(), ".sam");
 
 // ---------------------------------------------------------------------------
 // Unified config — mirrors config.yaml 1:1
@@ -154,6 +160,17 @@ model:
 #   modelsPath: ~/.sam/models
 #   embeddingModel: mixedbread-ai/mxbai-embed-xsmall-v1
 #   embeddingDimensions: 384
+#   # Automatic memory: recall before every turn, save/supersede/forget after it.
+#   # PRIVACY: when enabled, memory texts and recent conversation snippets are
+#   # sent to api.typesafe.ai on every turn.
+#   typesafe:
+#     enabled: false
+#     apiKey: ""         # or set TYPESAFE_API_KEY env var
+#     # model: jev-1.13.0  # pinned; thresholds are calibrated per version
+#   # Model that writes memory text on the pi backend (agent-sdk uses Haiku).
+#   writer:
+#     provider: deepseek
+#     id: deepseek-v4-flash
 
 # transcription:
 #   enabled: true
@@ -201,6 +218,30 @@ export function ensureSamDir(): void {
 
 function expandHome(p: string): string {
   return p.startsWith("~/") ? resolve(homedir(), p.slice(2)) : p;
+}
+
+/** Opt-in (`enabled: true`): it sends memory off-machine and costs money. */
+export function parseTypeSafeConfig(raw: any): TypeSafeConfig {
+  const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+  return {
+    enabled: raw?.enabled === true,
+    apiKey: process.env.TYPESAFE_API_KEY ?? raw?.apiKey,
+    model: raw?.model ?? DEFAULT_JEV_MODEL,
+    baseUrl: (raw?.baseUrl ?? "https://api.typesafe.ai").replace(/\/+$/, ""),
+    // Warm requests take ~0.3s; the first one on a cold connection has been seen above 1.5s.
+    timeoutMs: num(raw?.timeoutMs, 2500),
+    writeTimeoutMs: num(raw?.writeTimeoutMs, 10_000),
+    recall: raw?.recall !== false,
+    write: raw?.write !== false,
+    recallThreshold: num(raw?.recallThreshold, 0.5),
+    maxRecalled: num(raw?.maxRecalled, 8),
+    contextMessages: num(raw?.contextMessages, 6),
+    shardTokenBudget: num(raw?.shardTokenBudget, 24_000),
+    maxShards: num(raw?.maxShards, 4),
+    saveScoreThreshold: num(raw?.saveScoreThreshold, 1.3),
+    supersedeConfidence: num(raw?.supersedeConfidence, 0.6),
+    profileRefreshTurns: num(raw?.profileRefreshTurns, 10),
+  };
 }
 
 function parseTranscriptionConfig(raw: any): TranscriptionConfig | undefined {
@@ -301,6 +342,11 @@ export function loadConfig(): SamConfig {
       modelsPath: expandHome(yaml.memory?.modelsPath ?? resolve(SAM_DIR, "models")),
       embeddingModel: yaml.memory?.embeddingModel,
       embeddingDimensions: yaml.memory?.embeddingDimensions,
+      typesafe: parseTypeSafeConfig(yaml.memory?.typesafe),
+      writer: {
+        provider: yaml.memory?.writer?.provider ?? "deepseek",
+        id: yaml.memory?.writer?.id ?? "deepseek-v4-flash",
+      },
     },
     kits: {
       enabled: yaml.kits?.enabled !== false,

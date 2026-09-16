@@ -1,11 +1,8 @@
 import { resolve } from "node:path";
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import { query, type HookCallback, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import type {
-  AgentSessionEvent,
-  PromptOptions,
-} from "@earendil-works/pi-coding-agent";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type {
   AssistantMessage,
   StopReason,
@@ -16,7 +13,7 @@ import { type SamConfig } from "../../config.js";
 import type { SessionKey } from "../../types.js";
 import type { KitsServer } from "../../kits-server.js";
 import { buildCustomTools, buildSystemPromptText } from "../../agent-factory.js";
-import type { SamAgentSession } from "../types.js";
+import type { HiddenContext, SamAgentSession, SamPromptOptions } from "../types.js";
 import {
   buildToolBridge,
   isMcpToolWireName,
@@ -26,6 +23,20 @@ import {
 } from "./tool-bridge.js";
 
 type Listener = (event: AgentSessionEvent) => void;
+
+/**
+ * Deliver per-turn hidden context as `additionalContext` from a
+ * UserPromptSubmit hook. The CLI shows it to the model as harness-provided
+ * context next to the user's message: it never enters sam's JSONL, and unlike a
+ * per-turn systemPrompt it leaves the cached prompt prefix intact.
+ */
+function hiddenContextHook(pending: Promise<HiddenContext | undefined>): HookCallback {
+  return async () => {
+    const context = await pending.catch(() => undefined);
+    if (!context) return {};
+    return { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context.text } };
+  };
+}
 
 /** Map sam's thinking level onto the SDK's effort knob. */
 function effortForThinking(
@@ -217,7 +228,7 @@ class AgentSdkSession implements SamAgentSession {
     this.listeners.clear();
   }
 
-  async prompt(text: string, options?: PromptOptions): Promise<void> {
+  async prompt(text: string, options?: SamPromptOptions): Promise<void> {
     if (this.turnRunning) {
       throw new Error(
         "A turn is already in progress for this conversation (agent-sdk backend serializes turns).",
@@ -249,6 +260,11 @@ class AgentSdkSession implements SamAgentSession {
       ...this.baseOptions,
       abortController: abort,
       ...(this.sdkSessionId ? { resume: this.sdkSessionId } : {}),
+      // Per turn, not in baseOptions: the promise belongs to this prompt. It is
+      // already in flight, so it overlaps the CLI subprocess starting up.
+      ...(options?.hiddenContext
+        ? { hooks: { UserPromptSubmit: [{ hooks: [hiddenContextHook(options.hiddenContext)] }] } }
+        : {}),
     };
 
     let errored: Error | undefined;

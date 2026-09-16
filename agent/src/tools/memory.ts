@@ -120,7 +120,7 @@ export function createMemoryUpdateTool(config?: MemoryConfig): AgentTool {
       const params = raw as UpdateParamsT;
       try {
         const store = await MemoryStore.getInstance(config);
-        const updated = await store.update(params.id, params.text, params.tags);
+        const updated = await store.update(params.id, { text: params.text, tags: params.tags });
         if (updated) {
           return {
             content: [{ type: "text", text: `Successfully updated memory ${params.id}.` }],

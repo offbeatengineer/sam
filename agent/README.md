@@ -272,6 +272,74 @@ results in the client.
 > Tip: prefer `docker compose`? SearXNG ships a ready-to-use compose file at
 > <https://github.com/searxng/searxng-docker>.
 
+### Memory
+
+Sam keeps long-term memories in a local LanceDB table under `~/.sam/memory`.
+By default the model decides when to use them, through the `memory_save`,
+`memory_recall`, `memory_update`, and `memory_forget` tools.
+
+#### Automatic memory (opt-in)
+
+With automatic memory on, Sam stops relying on the model to remember to
+remember:
+
+- **Before every turn**, each saved memory is judged against the conversation,
+  and the relevant ones are handed to the model as background notes. This finds
+  memories that share no words with the message ("find a dinner spot" surfaces
+  "User is vegetarian"), which similarity search does not.
+- **After every turn**, what you said is checked for lasting facts, preferences,
+  and decisions. New ones are saved as one fact per memory, a memory that your
+  new statement makes outdated is replaced, and "forget that..." is honored.
+- Nothing is destroyed. Replaced and forgotten memories stay in the store with
+  a status, and the Memory screen can restore them or delete them for good.
+- The model keeps only `memory_recall`, for explicit deeper searches.
+
+The judgments come from [TypeSafe](https://typesafe.ai)'s Jev model, which is
+fast (about 0.3 s) and cheap (well under $0.001 per turn). Jev only judges; the
+memory text itself is written by a small LLM: Claude Haiku through the Agent SDK
+when `model.backend` is `agent-sdk` (so it draws on your subscription), or the
+`memory.writer` model through pi otherwise.
+
+> **Privacy.** Memory is otherwise fully local. With this on, the text of your
+> active memories and the last few messages of the conversation are sent to
+> `api.typesafe.ai` on every turn. TypeSafe is in early access and had no
+> published data-retention policy when this was written. Memories you have asked
+> Sam to forget are no longer sent.
+
+Enable it in `~/.sam/config.yaml`, and put the key in `agent/.env`:
+
+```yaml
+memory:
+  typesafe:
+    enabled: true
+  # Only used on the pi backend:
+  writer:
+    provider: deepseek
+    id: deepseek-v4-flash
+```
+
+```sh
+TYPESAFE_API_KEY=...
+```
+
+Other `memory.typesafe` settings and their defaults: `model` (`jev-1.13.0`),
+`recall` / `write` (`true`; turn either half off), `timeoutMs` (`2500`),
+`recallThreshold` (`0.5`), `maxRecalled` (`8`), `saveScoreThreshold` (`1.3`),
+`supersedeConfidence` (`0.6`), `shardTokenBudget` (`24000`), `maxShards` (`4`).
+
+If TypeSafe is slow, down, or the key is missing, turns run normally without
+the situational notes; nothing is saved without a judgment. The model is pinned
+because the thresholds were calibrated against it. TypeSafe retires old
+versions, and when that happens Sam falls back to `jev-latest` and logs a
+warning: re-run `bun run eval:memory:all` and update `model`. The same harness
+is the check to run before changing any threshold or question wording; see
+`evals/memory/README.md`.
+
+Known limits: pulse check-ins neither recall nor save; in a shared Discord
+channel every author is recorded as "User"; and when what you say is only
+*probably* an update to an old memory, Sam saves the new fact and leaves the old
+one for you to review rather than replacing it.
+
 ### Prompts
 
 Sam's behaviour is steered by three Markdown prompt files. The agent ships
@@ -377,6 +445,20 @@ Sessions are the single source of truth — the desktop and iOS apps read and
 stream from these same files.
 
 ---
+
+### Running a second, isolated instance
+
+`SAM_HOME` points Sam at a different data directory, with its own config,
+sessions, and memory. Use it to try changes without touching your real data:
+
+```sh
+SAM_HOME=/tmp/sam-dev/.sam bun src/index.ts
+```
+
+Give that instance its own `app.port` in its `config.yaml`. `HOME` is left
+alone, so the Claude login used by the Agent SDK backend still works. Note that
+`bun run dev` restarts on every file change, and a restart runs startup work
+such as schema migrations against whatever data directory it points at.
 
 ## Using Sam
 

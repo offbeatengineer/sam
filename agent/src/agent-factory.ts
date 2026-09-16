@@ -11,7 +11,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { readFileSync, existsSync } from "node:fs";
-import { getSystemPrompt } from "./system-prompt.js";
+import { getSystemPrompt, memoryModeFor, type MemoryMode } from "./system-prompt.js";
 import { SAM_DIR, type SamConfig } from "./config.js";
 import { createWebSearchTool, createWebFetchTool } from "../../extensions/web-tools/src/index.js";
 import { createMemorySaveTool, createMemoryRecallTool, createMemoryUpdateTool, createMemoryForgetTool } from "./tools/memory.js";
@@ -22,6 +22,8 @@ import { createKitTool } from "./tools/kits.js";
 import type { KitsServer } from "./kits-server.js";
 import type { SessionKey } from "./types.js";
 import type { SamAgentSession } from "./backend/types.js";
+import { PiSessionAdapter } from "./backend/pi/session.js";
+import { AutoMemory } from "./memory/auto.js";
 import { resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -79,8 +81,8 @@ function createTmuxSpawnHook(): (context: any) => any {
 
 export type { AgentSession } from "@earendil-works/pi-coding-agent";
 
-function createResourceLoader(cwd: string, systemPromptPath: string, agentsPromptPath: string, skillsDir: string): ResourceLoader {
-  const systemPrompt = getSystemPrompt(cwd, systemPromptPath);
+function createResourceLoader(cwd: string, systemPromptPath: string, agentsPromptPath: string, skillsDir: string, memoryMode: MemoryMode): ResourceLoader {
+  const systemPrompt = getSystemPrompt(cwd, systemPromptPath, memoryMode);
   const runtime = createExtensionRuntime();
 
   const agentsFiles = existsSync(agentsPromptPath)
@@ -125,11 +127,25 @@ export function buildCustomTools(config: SamConfig, cwd: string, kitsServer?: Ki
 
   // Add memory tools if enabled (default: true)
   if (config.memory?.enabled !== false && config.memory) {
+    const memoryMode = memoryModeFor(config);
+    customTools.push({
+      ...createMemoryRecallTool(config.memory),
+      promptSnippet:
+        memoryMode === "tools"
+          ? "Search long-term memory to recall user preferences, past decisions, or saved information."
+          : "Search long-term memory explicitly. Relevant memories already arrive automatically in <memory_context>; use this only for a deeper or more specific search.",
+    });
+    // When writes are automatic the model must not also write: the two would
+    // race to save the same fact. Without automatic writes these tools are the
+    // only way anything gets saved, so they stay.
+    if (memoryMode !== "auto") {
+      customTools.push(
+        { ...createMemorySaveTool(config.memory), promptSnippet: "Save information to long-term memory for recall in future conversations." },
+        { ...createMemoryUpdateTool(config.memory), promptSnippet: "Update an existing memory entry by ID." },
+        { ...createMemoryForgetTool(config.memory), promptSnippet: "Delete a specific memory by ID when information is outdated or incorrect." },
+      );
+    }
     customTools.push(
-      { ...createMemorySaveTool(config.memory), promptSnippet: "Save information to long-term memory for recall in future conversations." },
-      { ...createMemoryRecallTool(config.memory), promptSnippet: "Search long-term memory to recall user preferences, past decisions, or saved information." },
-      { ...createMemoryUpdateTool(config.memory), promptSnippet: "Update an existing memory entry by ID." },
-      { ...createMemoryForgetTool(config.memory), promptSnippet: "Delete a specific memory by ID when information is outdated or incorrect." },
       { ...createSessionSearchTool(config.memory), promptSnippet: "Search past conversation sessions by semantic similarity." },
       { ...createSessionReadTool(config.memory), promptSnippet: "Read messages from a past session by conversation ID." },
     );
@@ -150,7 +166,7 @@ export function buildCustomTools(config: SamConfig, cwd: string, kitsServer?: Ki
  * available skills so the SDK-backed agent keeps sam's personality and skills.
  */
 export function buildSystemPromptText(config: SamConfig): string {
-  const parts: string[] = [getSystemPrompt(config.workspace, config.prompts.system)];
+  const parts: string[] = [getSystemPrompt(config.workspace, config.prompts.system, memoryModeFor(config))];
 
   if (existsSync(config.prompts.agents)) {
     parts.push(readFileSync(config.prompts.agents, "utf-8"));
@@ -198,7 +214,7 @@ async function createPiSession(config: SamConfig, key: SessionKey, kitsServer?: 
     retry: { enabled: true, maxRetries: 3 },
   });
 
-  const resourceLoader = createResourceLoader(cwd, config.prompts.system, config.prompts.agents, config.skills);
+  const resourceLoader = createResourceLoader(cwd, config.prompts.system, config.prompts.agents, config.skills, memoryModeFor(config));
 
   const { session } = await createAgentSession({
     cwd,
@@ -213,7 +229,7 @@ async function createPiSession(config: SamConfig, key: SessionKey, kitsServer?: 
     settingsManager,
   });
 
-  return session;
+  return new PiSessionAdapter(session);
 }
 
 /**
@@ -223,6 +239,13 @@ async function createPiSession(config: SamConfig, key: SessionKey, kitsServer?: 
  * is imported lazily so the default path never loads it.
  */
 export async function createSession(config: SamConfig, key: SessionKey, kitsServer?: KitsServer): Promise<SamAgentSession> {
+  const session = await createBackendSession(config, key, kitsServer);
+  // Wrapping here, above the backend split, gives every channel automatic
+  // memory from one place.
+  return AutoMemory.get(config)?.wrap(session, key) ?? session;
+}
+
+async function createBackendSession(config: SamConfig, key: SessionKey, kitsServer?: KitsServer): Promise<SamAgentSession> {
   if (config.model.backend === "agent-sdk") {
     if (config.model.provider !== "anthropic") {
       console.warn(

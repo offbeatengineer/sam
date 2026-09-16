@@ -2,6 +2,7 @@ import type { ServerWebSocket } from "bun";
 import type { SessionRegistry } from "../session-registry.js";
 import type { AppRequest, AppResponse, ChatAttachment, SessionInfoDTO, SkillInfoDTO } from "../protocol.js";
 import type { SessionKey } from "../types.js";
+import type { SamPromptOptions } from "../backend/types.js";
 import { MemoryStore } from "../memory/store.js";
 import type { MemoryConfig } from "../memory/types.js";
 import type { ArtifactsServer } from "../artifacts-server.js";
@@ -516,6 +517,8 @@ export class AppChannel {
 
       // Process attachments if present
       let promptText = text;
+      // The user's own words, without the labels added for the model below.
+      let userText = text;
       const uploadsDir = join(homedir(), ".sam", "uploads");
       const images: { type: "image"; data: string; mimeType: string; uploadPath?: string }[] = [];
       const audioMeta: { uploadPath: string; mimeType: string }[] = [];
@@ -558,6 +561,7 @@ export class AppChannel {
               promptText = promptText
                 ? `[Audio transcript]: ${result.text}\n\n${promptText}`
                 : `[Audio transcript]: ${result.text}`;
+              userText = userText ? `${result.text}\n\n${userText}` : result.text;
             } else {
               this.sendTo(ws, { type: "error", conversationId, error: result.message });
             }
@@ -570,7 +574,10 @@ export class AppChannel {
         session.sessionManager.appendCustomEntry("audio_attachment", audio);
       }
 
-      const promptOptions: any = { streamingBehavior: "followUp" };
+      const promptOptions: SamPromptOptions = {
+        streamingBehavior: "followUp",
+        memory: { userText, origin: "app" },
+      };
       if (images.length > 0) {
         promptOptions.images = images;
       }
@@ -904,6 +911,7 @@ export class AppChannel {
           const { memories, total } = await store.list({
             limit: request.limit,
             offset: request.offset,
+            status: request.status,
           });
           this.sendTo(ws, { type: "memory_list_result", requestId, memories, total });
           break;
@@ -920,7 +928,7 @@ export class AppChannel {
         }
 
         case "memory_save": {
-          const id = await store.save(request.text, request.tags, request.source);
+          const id = await store.save(request.text, request.tags, request.source, { kind: request.kind });
           this.sendTo(ws, {
             type: "memory_save_result",
             requestId,
@@ -932,7 +940,14 @@ export class AppChannel {
         }
 
         case "memory_update": {
-          const success = await store.update(request.id, request.text, request.tags);
+          let success = true;
+          if (request.text !== undefined || request.tags !== undefined || request.kind !== undefined) {
+            success = await store.update(request.id, { text: request.text, tags: request.tags, kind: request.kind });
+          }
+          // Restore / retire a memory from the management UI.
+          if (success && request.status !== undefined) {
+            success = await store.setStatus(request.id, request.status);
+          }
           this.sendTo(ws, { type: "memory_update_result", requestId, success });
           break;
         }
@@ -1147,6 +1162,12 @@ export class AppChannel {
 
       if (event.type === "turn_start") {
         contentIndex = 0;
+        return;
+      }
+
+      // Emitted by the automatic-memory decorator, not by the backend.
+      if (event.type === "memory_recalled" || event.type === "memory_written") {
+        this.sendTo(ws, { ...event, conversationId });
         return;
       }
 

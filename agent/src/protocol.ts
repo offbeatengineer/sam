@@ -2,6 +2,10 @@
 // App ↔ Sam WebSocket protocol
 // ---------------------------------------------------------------------------
 
+import type { MemoryRecalledEvent, MemoryWrittenEvent } from "./memory/auto.js";
+import type { RecallResult } from "./memory/store.js";
+import type { MemoryKind, MemoryStatus } from "./memory/types.js";
+
 /** Attachment reference included in a chat request (file already uploaded via POST /upload) */
 export interface ChatAttachment {
   type: "image" | "audio";
@@ -23,10 +27,10 @@ export type AppRequest =
   | { type: "unarchive_session"; requestId: string; sessionPath: string }
   | { type: "list_archived_sessions"; requestId: string }
   // Memory management
-  | { type: "memory_list"; requestId: string; limit?: number; offset?: number }
+  | { type: "memory_list"; requestId: string; limit?: number; offset?: number; status?: "active" | "all" }
   | { type: "memory_search"; requestId: string; query: string; limit?: number; tags?: string[] }
-  | { type: "memory_save"; requestId: string; text: string; tags?: string[]; source?: string }
-  | { type: "memory_update"; requestId: string; id: string; text: string; tags?: string[] }
+  | { type: "memory_save"; requestId: string; text: string; tags?: string[]; source?: string; kind?: MemoryKind }
+  | { type: "memory_update"; requestId: string; id: string; text?: string; tags?: string[]; kind?: MemoryKind; status?: MemoryStatus }
   | { type: "memory_delete"; requestId: string; id: string }
   // Skill management
   | { type: "list_skills"; requestId: string }
@@ -71,6 +75,9 @@ export type AppResponse =
   | { type: "memory_update_result"; requestId: string; success: boolean }
   | { type: "memory_delete_result"; requestId: string; success: boolean }
   | { type: "memory_error"; requestId: string; error: string }
+  // Automatic memory activity for a turn. Unsolicited: no requestId.
+  | (MemoryRecalledEvent & { conversationId: string })
+  | (MemoryWrittenEvent & { conversationId: string })
   // Session mutation
   | { type: "rename_session_result"; requestId: string; success: boolean }
   | { type: "archive_session_result"; requestId: string; success: boolean }
@@ -133,12 +140,5 @@ export interface SessionSearchResultDTO {
   timestamp: number;
 }
 
-/** Memory item returned in protocol responses */
-export interface MemoryResult {
-  id: string;
-  text: string;
-  tags: string[];
-  source: string;
-  created_at: number;
-  score: number;
-}
+/** Memory item returned in protocol responses. Store results go over the wire as-is. */
+export type MemoryResult = RecallResult;
