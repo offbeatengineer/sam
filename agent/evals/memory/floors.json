@@ -8,7 +8,7 @@
   "gate.false_forget": { "max": 1 },
   "knowledge.correct": { "min": 11, "of": 12 },
   "knowledge.false_save": { "max": 0 },
-  "knowledge_guard.correct": { "min": 13, "of": 15 },
+  "knowledge_guard.correct": { "min": 21, "of": 23 },
   "knowledge_guard.missed": { "max": 0 },
   "update.outdated_found": { "min": 4, "of": 7 },
   "update.false_supersede": { "max": 0 },

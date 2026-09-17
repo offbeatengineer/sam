@@ -3,7 +3,7 @@ import { resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import type { MemoryConfig, TypeSafeConfig } from "./memory/types.js";
+import { DEFAULT_KNOWLEDGE_NOTE_CHARS, type MemoryConfig, type TypeSafeConfig } from "./memory/types.js";
 import { DEFAULT_JEV_MODEL } from "./memory/judgments.js";
 import type { TranscriptionConfig } from "./transcriber.js";
 
@@ -247,6 +247,7 @@ export function parseTypeSafeConfig(raw: any): TypeSafeConfig {
       ? raw.knowledgeTools.filter((t: unknown): t is string => typeof t === "string")
       : "all",
     knowledgeMaterialTokens: num(raw?.knowledgeMaterialTokens, 100_000),
+    knowledgeNoteChars: Math.max(200, num(raw?.knowledgeNoteChars, DEFAULT_KNOWLEDGE_NOTE_CHARS)),
   };
 }
 

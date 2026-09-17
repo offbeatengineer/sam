@@ -1,4 +1,4 @@
-import { aliasShard, estimateTokens, pickRecalled, recallQuestions, shardMemories, type Turn } from "./judgments.js";
+import { aliasShard, estimateTokens, memoryTextLimit, pickRecalled, recallQuestions, shardMemories, type Turn } from "./judgments.js";
 import type { ActiveMemory } from "./store.js";
 import { TypeSafeRequestError, TypeSafeUnavailableError, type TypeSafeClient } from "./typesafe.js";
 import type { MemoryKind, MemoryOrigin, TypeSafeConfig } from "./types.js";
@@ -28,10 +28,15 @@ export interface RecallOutcome {
 const REQUEST_OVERHEAD_TOKENS = 200;
 
 export class MemoryRecaller {
+  /** How much of each memory a request carries; sized so a reference note is never cut. */
+  private readonly textLimit: number;
+
   constructor(
     private readonly client: TypeSafeClient,
     private readonly cfg: TypeSafeConfig,
-  ) {}
+  ) {
+    this.textLimit = memoryTextLimit(cfg.knowledgeNoteChars);
+  }
 
   /**
    * Which situational memories should inform the next response? Never throws
@@ -49,7 +54,7 @@ export class MemoryRecaller {
 
     const deadline = Date.now() + this.cfg.timeoutMs;
     const reserved = estimateTokens(JSON.stringify(conversation)) + REQUEST_OVERHEAD_TOKENS;
-    let shards = shardMemories(situational, reserved, this.cfg.shardTokenBudget);
+    let shards = shardMemories(situational, reserved, this.cfg.shardTokenBudget, this.textLimit);
     if (shards.length > this.cfg.maxShards) {
       // `situational` arrives newest first, so the oldest memories are the ones left out.
       const judged = shards.slice(0, this.cfg.maxShards).reduce((n, s) => n + s.length, 0);
@@ -95,7 +100,7 @@ export class MemoryRecaller {
     deadline: number,
     maySplit: boolean,
   ): Promise<{ picked: { id: string; p: number }[]; tokens: number; model: string }> {
-    const { memories, toId } = aliasShard(shard);
+    const { memories, toId } = aliasShard(shard, this.textLimit);
     try {
       const result = await this.client.ask({ conversation, memories }, recallQuestions([...toId.keys()]), {
         timeoutMs: Math.max(1, deadline - Date.now()),
@@ -135,7 +140,12 @@ function reasonFor(err: unknown): RecallOutcome["reason"] {
 // The block the model sees
 // ---------------------------------------------------------------------------
 
-const MAX_CONTEXT_CHARS = 6000;
+/**
+ * Ceiling for the whole block. Reference notes are paragraphs, so a full set of
+ * recalled notes can be large; typically one to three are recalled, and the
+ * least relevant are left out whole before anything is cut.
+ */
+const MAX_CONTEXT_CHARS = 32_000;
 
 export interface MemoryContextInput {
   /** Always-on memories; pass only on turns where the profile block is due. */
@@ -155,9 +165,24 @@ const day = (ts: number) => new Date(ts).toISOString().slice(0, 10);
  * and a wrong note must be easy for the model to ignore.
  */
 export function formatMemoryContext(input: MemoryContextInput): string | undefined {
+  let recalled = [...(input.recalled ?? [])].sort((a, b) => b.p - a.p);
+  let text = render(input, recalled);
+  let dropped = 0;
+  while (text !== undefined && text.length > MAX_CONTEXT_CHARS && recalled.length > 0) {
+    recalled = recalled.slice(0, -1);
+    dropped++;
+    text = render(input, recalled);
+  }
+  if (dropped > 0) console.warn(`[memory] context over ${MAX_CONTEXT_CHARS} chars; left out the ${dropped} least relevant note${dropped === 1 ? "" : "s"}`);
+  if (text === undefined) return undefined;
+  // Profile and notices are never dropped, so with nothing left to drop a cut is the last resort.
+  return text.length <= MAX_CONTEXT_CHARS ? text : `${text.slice(0, MAX_CONTEXT_CHARS - 20)}\n</memory_context>`;
+}
+
+function render(input: MemoryContextInput, picked: RecalledMemory[]): string | undefined {
   const profile = input.profile ?? [];
-  const recalled = (input.recalled ?? []).filter((m) => m.kind !== "knowledge");
-  const knowledge = (input.recalled ?? []).filter((m) => m.kind === "knowledge");
+  const recalled = picked.filter((m) => m.kind !== "knowledge");
+  const knowledge = picked.filter((m) => m.kind === "knowledge");
   const notices = input.notices ?? [];
 
   if (profile.length === 0 && recalled.length === 0 && knowledge.length === 0 && notices.length === 0) {
@@ -190,7 +215,5 @@ export function formatMemoryContext(input: MemoryContextInput): string | undefin
     lines.push("", "Memory changes since the user's previous message:", ...notices.map((n) => `- ${n}`));
   }
   lines.push("", "Do not mention these notes unless asked what you remember. memory_recall can search deeper.", "</memory_context>");
-
-  const text = lines.join("\n");
-  return text.length <= MAX_CONTEXT_CHARS ? text : `${text.slice(0, MAX_CONTEXT_CHARS - 20)}\n</memory_context>`;
+  return lines.join("\n");
 }

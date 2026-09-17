@@ -8,6 +8,13 @@ export type MemoryKind = "profile" | "situational" | "knowledge";
 export type MemoryStatus = "active" | "superseded" | "forgotten";
 
 /**
+ * Cap on a reference note, in characters (~500 English words). Not a technical
+ * limit: it trades note detail against what each recalled note costs per turn
+ * and how many notes fit one Jev request.
+ */
+export const DEFAULT_KNOWLEDGE_NOTE_CHARS = 4000;
+
+/**
  * Automatic memory driven by TypeSafe System One ("Jev") judgments. Opt-in:
  * when enabled, memory texts and recent conversation snippets are sent to
  * api.typesafe.ai on every turn.
@@ -52,6 +59,8 @@ export interface TypeSafeConfig {
   knowledgeTools: "all" | string[];
   /** Estimated-token budget for the tool results handed to the knowledge writer. */
   knowledgeMaterialTokens: number;
+  /** Hard cap on one reference note; the writer's word guidance and the merge threshold derive from it. */
+  knowledgeNoteChars: number;
 }
 
 /** Model used by the pi-ai fact writer (the agent-sdk backend uses Haiku). */

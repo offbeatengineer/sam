@@ -62,6 +62,7 @@ model:
 #     # knowledge: true     # also keep reference notes of what Sam explained or looked up (needs write)
 #     # knowledgeTools: all # or a list, e.g. [web_fetch, web_search], of tools whose results the writer may read
 #     # knowledgeMaterialTokens: 100000  # budget for the tool results handed to the writer model
+#     # knowledgeNoteChars: 4000  # cap on one reference note (~500 words); one note per subject, revised over time
 #
 #   # Model that writes memory text on the pi backend. The agent-sdk backend
 #   # uses Claude Haiku through your subscription instead.

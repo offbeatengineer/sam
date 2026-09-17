@@ -10,8 +10,8 @@ import { formatMemoryContext, MemoryRecaller, type RecallOutcome } from "./recal
 import { MemoryStore, type ActiveMemory } from "./store.js";
 import { TypeSafeClient } from "./typesafe.js";
 import type { MemoryConfig, TypeSafeConfig } from "./types.js";
-import { MemoryWritePipeline, type WriteReport } from "./write-pipeline.js";
-import { createFactWriter } from "./writer.js";
+import { MemoryWritePipeline, noticesFor, type WriteReport } from "./write-pipeline.js";
+import { createFactWriter, type KnownNote } from "./writer.js";
 
 // ---------------------------------------------------------------------------
 // Automatic memory: recall before every turn and save / supersede / forget
@@ -107,8 +107,8 @@ class AutoMemorySession implements SamAgentSession {
   private lastOrigin: TurnMemoryInfo["origin"] = "app";
   /** What memory did since the user's last message; shown to the model once. */
   private notices: string[] = [];
-  /** Reference notes recalled into the current turn, so an answer built on them is not saved as a copy. */
-  private recalledKnowledge: string[] = [];
+  /** Reference notes recalled into the current turn: the writer revises them rather than saving a copy. */
+  private recalledKnowledge: KnownNote[] = [];
 
   constructor(
     private readonly inner: SamAgentSession,
@@ -222,12 +222,7 @@ class AutoMemorySession implements SamAgentSession {
     console.log(`[memory] write ${this.label}: ${parts.join(", ")}`);
 
     // So the model can answer "did you remember that?" truthfully next turn.
-    this.notices.push(
-      ...report.saved.map((m) => `${m.kind === "knowledge" ? "Saved reference note" : "Saved"}: ${m.text}`),
-      ...report.superseded.map((m) => `Updated: "${m.replaced.text}" is now "${m.text}"`),
-      ...report.forgotten.map((m) => `Forgot, as the user asked: ${m.text}`),
-      ...(report.unresolvedForget ? ["The user asked to forget something, but no saved note matched it, so nothing was removed."] : []),
-    );
+    this.notices.push(...noticesFor(report));
 
     try {
       this.inner.sessionManager.appendCustomEntry(MEMORY_ACTIVITY_ENTRY, { phase: "write", ...report });
@@ -253,7 +248,7 @@ class AutoMemorySession implements SamAgentSession {
         ? await this.auto.recaller.recall(this.conversation(info.userText), situational)
         : { status: "skipped", picked: [], ms: 0, tokens: 0, shards: 0 };
 
-      this.recalledKnowledge = outcome.picked.filter((m) => m.kind === "knowledge").map((m) => m.text);
+      this.recalledKnowledge = outcome.picked.filter((m) => m.kind === "knowledge").map(({ id, text: t }) => ({ id, text: t }));
       const profileDue = this.profileDue(turn, profile);
       const notices = this.notices;
       this.notices = [];

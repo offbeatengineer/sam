@@ -146,6 +146,20 @@ details.forget = forgets.filter(({ c, matched }) => JSON.stringify(matched.slice
 
 // --- report against floors ---
 const floors = JSON.parse(readFileSync(new URL("./floors.json", import.meta.url), "utf8")) as Record<string, { min?: number; max?: number; of?: number }>;
+// The `of` counts are kept by hand; a suite that grew without its floor moving would print a misleading x/of.
+const suiteSizes: Record<string, number> = {
+  "gate.correct": SAVE.length,
+  "knowledge.correct": KNOWLEDGE.length,
+  "knowledge_guard.correct": KNOWLEDGE_GUARD.length,
+  "duplicate.shortlisted": DUPLICATE.length,
+  "duplicate.found": DUPLICATE.length,
+  "instruction.correct": INSTRUCTION.length,
+  "profile.correct": PROFILE.length,
+  "forget.correct": FORGET.length,
+};
+for (const [key, size] of Object.entries(suiteSizes)) {
+  if (floors[key]?.of !== undefined && floors[key].of !== size) console.warn(`floors.json: ${key} says of ${floors[key].of}, but the suite has ${size} cases`);
+}
 let failed = 0;
 console.log(`\nmodel served: ${servedModel}${servedModel !== DEFAULT_JEV_MODEL ? `   (floors were calibrated on ${DEFAULT_JEV_MODEL})` : ""}\n`);
 for (const [key, value] of Object.entries(metrics)) {

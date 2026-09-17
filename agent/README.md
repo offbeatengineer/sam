@@ -346,7 +346,9 @@ Other `memory.typesafe` settings and their defaults: `model` (`jev-1.13.0`),
 `knowledge` (`true`), `knowledgeScoreThreshold` (`1.5`), `knowledgeTools`
 (`all`, or a list of tool names), `knowledgeMaterialTokens` (`100000`, the
 budget for tool results handed to the writer; larger results are cut to fit,
-smallest sources kept whole first).
+smallest sources kept whole first), `knowledgeNoteChars` (`4000`, the cap on
+one reference note, about 500 words; a note covers one subject, and a later
+exchange on the same subject revises it rather than adding a second note).
 
 If TypeSafe is slow, down, or the key is missing, turns run normally without
 the situational notes; nothing is saved without a judgment. The model is pinned

@@ -24,7 +24,7 @@ superseding a memory that is not outdated, storing an instruction, forgetting so
 the user did not ask to forget.
 
 Measured on 2026-09-17 with `jev-1.13.0`, in the production form (`conversation` state,
-aliased ids, short Nouls):
+aliased ids, short Nouls); the guard row re-measured on 2026-09-18 with the paragraph cases:
 
 | Judgment | Result |
 | --- | --- |
@@ -32,7 +32,7 @@ aliased ids, short Nouls):
 | Recall forced across 3 shards | 20/20 core, 4-5 irrelevant picks |
 | Save gate | 18/18, no false forget requests |
 | Knowledge gate (reply + tool calls, no tool results) | 12/12 (skip <= 1.06, save >= 1.96), 0 false saves |
-| Reference-note guards (orders to the assistant, claims about the user) | 14/15, 0 hostile notes let through; the one false reject is a how-to phrased as a command |
+| Reference-note guards (orders to the assistant, claims about the user) | 22/23, 0 hostile notes let through; the one false reject is a how-to phrased as a command (G02). The 8 paragraph notes, with the order or the claim about the user buried mid-paragraph, all judged right (hostile ones at 0.78-0.95 instruction / 0.91-0.93 about-user, benign ones at or below 0.06) |
 | Outdated memories superseded | 5/7, 0 wrong supersedes, 0/11 traps |
 | Restatements caught as duplicates | 5/5 |
 | Instruction-shaped facts rejected | 8/8 (0 missed) |
@@ -59,6 +59,7 @@ when this was written (2026-09-17).
 Needs `TYPESAFE_API_KEY` in `agent/.env`. From `agent/`:
 
 ```sh
+bun run eval:memory:writer     # live note writer: one note per subject, English, revision, merge; a few cents
 bun run eval:memory:smoke      # one question, checks the key and prints the model version
 bun run eval:memory:recall     # A: automatic recall, 16 messages x 60 memories
 bun run eval:memory:baseline   # A': same cases through Sam's current retriever (local, free)
@@ -76,6 +77,7 @@ memory enabled. Raw answers are dumped to `results/` (gitignored).
 | File | What it is |
 | --- | --- |
 | `run.ts`, `floors.json` | The regression harness above and its pass/fail bounds |
+| `writer.ts` | The production note writer (Haiku or the `memory.writer` model) on the knowledge cases: note count, length, language, a revision, a merge. Not floored: model output varies |
 | `typesafe.ts` | `ask()` for the exploratory scripts, backed by the production client |
 | `data.ts` | 60 memories plus labeled recall / save / update / forget / instruction / profile / duplicate cases |
 | `recall.ts` | One request per message: a Noul per memory, a Choice over all ids, a gate Noul |

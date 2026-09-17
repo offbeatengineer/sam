@@ -7,6 +7,8 @@ import {
   decideRelations,
   estimateTokens,
   knowledgeGateState,
+  MAX_MEMORY_CHARS,
+  memoryTextLimit,
   pickRecalled,
   recallQuestions,
   shardMemories,
@@ -59,9 +61,19 @@ describe("aliasing", () => {
     expect(toId.get("m1")).toBe(input[1].id);
   });
 
-  test("long memories are truncated", () => {
-    const { memories } = aliasShard([{ id: uuid(1), text: "x".repeat(2000) }]);
-    expect(memories.m0.length).toBeLessThanOrEqual(400);
+  test("long memories are truncated, at a length that keeps a whole reference note", () => {
+    const long = [{ id: uuid(1), text: "x".repeat(6000) }];
+    expect(aliasShard(long).memories.m0.length).toBeLessThanOrEqual(MAX_MEMORY_CHARS);
+    expect(aliasShard(long).memories.m0.length).toBeGreaterThan(4000);
+    expect(aliasShard(long, 500).memories.m0.length).toBeLessThanOrEqual(500);
+    expect(shardMemories(long, 0, 24_000, 500)).toHaveLength(1);
+  });
+
+  test("the per-memory limit follows the configured note cap but never shrinks below the default", () => {
+    expect(memoryTextLimit(4000)).toBe(MAX_MEMORY_CHARS);
+    expect(memoryTextLimit(8000)).toBe(8200);
+    expect(memoryTextLimit(1000)).toBe(MAX_MEMORY_CHARS);
+    expect(memoryTextLimit(undefined)).toBe(MAX_MEMORY_CHARS);
   });
 });
 
@@ -91,7 +103,18 @@ describe("deciders", () => {
       toId,
       0.6,
     );
-    expect(d).toEqual({ supersede: [uuid(0)], flagged: [uuid(1)], duplicates: [uuid(2)], isInstruction: false, profileScope: true, aboutUser: false });
+    expect(d).toEqual({ supersede: [uuid(0)], flagged: [uuid(1)], duplicates: [uuid(2)], consistent: [], isInstruction: false, profileScope: true, aboutUser: false });
+  });
+
+  test("relations: a confident 'consistent' is reported for merging, a weak one is not", () => {
+    const d = decideRelations(
+      { "relation::m0": { choice: "consistent", confidence: 0.8 }, "relation::m1": { choice: "consistent", confidence: 0.4 } },
+      toId,
+      0.6,
+    );
+    expect(d.consistent).toEqual([uuid(0)]);
+    expect(d.supersede).toEqual([]);
+    expect(d.duplicates).toEqual([]);
   });
 
   test("relations: instruction-shaped facts are marked", () => {
@@ -132,11 +155,25 @@ describe("memory context", () => {
     expect(text.endsWith("</memory_context>")).toBe(true);
   });
 
-  test("oversized context is cut but stays well-formed", () => {
-    const recalled = Array.from({ length: 80 }, (_, i) => ({ id: uuid(i), text: "User ".padEnd(300, "x"), kind: "situational" as const, p: 0.9, created_at: 0 }));
-    const text = formatMemoryContext({ recalled })!;
-    expect(text.length).toBeLessThanOrEqual(6000);
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ id: uuid(i), text: `User ${String(i).padStart(3, "0")} `.padEnd(300, "x"), kind: "situational" as const, p: 0.99 - i * 0.004, created_at: 0 }));
+
+  test("oversized context leaves out the least relevant notes whole, never cutting a note", () => {
+    const text = formatMemoryContext({ recalled: many(200) })!;
+    expect(text.length).toBeLessThanOrEqual(32_000);
     expect(text.endsWith("</memory_context>")).toBe(true);
+    expect(text).toContain(`- ${many(1)[0].text} (saved 1970-01-01)`);
+    expect(text).not.toContain("User 199 ");
+    for (const line of text.split("\n").filter((l) => l.startsWith("- User"))) expect(line.endsWith("(saved 1970-01-01)")).toBe(true);
+  });
+
+  test("profile and notices survive an oversized recall", () => {
+    const profile = Array.from({ length: 5 }, (_, i) => ({ ...base, id: uuid(500 + i), text: `User profile fact ${i}.`, kind: "profile" as const }));
+    const notices = ["Saved: one.", "Saved: two.", "Saved: three."];
+    const text = formatMemoryContext({ profile, recalled: many(200), notices })!;
+    expect(text.length).toBeLessThanOrEqual(32_000);
+    for (const p of profile) expect(text).toContain(p.text);
+    for (const n of notices) expect(text).toContain(n);
   });
 
   test("knowledge gets its own section, with its source and a warning", () => {

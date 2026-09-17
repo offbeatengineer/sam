@@ -37,16 +37,26 @@ export function truncate(s: string, max: number): string {
 
 /** State entry plus one short Noul per memory (measured ~57 tokens at ~20-token texts). */
 const PER_MEMORY_OVERHEAD_TOKENS = 45;
-export const MAX_MEMORY_CHARS = 400;
+/**
+ * How much of a memory a request carries. Above the default reference-note cap
+ * (`knowledgeNoteChars`, 4000) with slack, so a judgment never sees a cut note;
+ * user facts are a sentence and never come near it.
+ */
+export const MAX_MEMORY_CHARS = 4200;
+
+/** The per-memory text limit for a configured note cap: never below the default, so notes written under a larger cap stay whole. */
+export function memoryTextLimit(noteChars: number | undefined): number {
+  return Math.max(MAX_MEMORY_CHARS, (noteChars ?? 0) + 200);
+}
 
 /**
  * Split the store into evenly loaded shards that each fit one request.
  * `reservedTokens` covers the conversation and any shard-independent questions.
  */
-export function shardMemories<T extends MemoryText>(mems: T[], reservedTokens: number, budget: number): T[][] {
+export function shardMemories<T extends MemoryText>(mems: T[], reservedTokens: number, budget: number, maxChars = MAX_MEMORY_CHARS): T[][] {
   if (mems.length === 0) return [];
   const room = Math.max(1000, budget - reservedTokens);
-  const costs = mems.map((m) => estimateTokens(truncate(m.text, MAX_MEMORY_CHARS)) + PER_MEMORY_OVERHEAD_TOKENS);
+  const costs = mems.map((m) => estimateTokens(truncate(m.text, maxChars)) + PER_MEMORY_OVERHEAD_TOKENS);
   const total = costs.reduce((a, b) => a + b, 0);
   const shardCount = Math.max(1, Math.ceil(total / room));
   const target = total / shardCount;
@@ -69,12 +79,12 @@ export function shardMemories<T extends MemoryText>(mems: T[], reservedTokens: n
  * Real ids are 36-char UUIDs and each appears twice per memory (state key and
  * question text). Short per-request aliases keep the measured shard capacity.
  */
-export function aliasShard(shard: MemoryText[]): { memories: Record<string, string>; toId: Map<string, string> } {
+export function aliasShard(shard: MemoryText[], maxChars = MAX_MEMORY_CHARS): { memories: Record<string, string>; toId: Map<string, string> } {
   const memories: Record<string, string> = {};
   const toId = new Map<string, string>();
   shard.forEach((m, i) => {
     const alias = `m${i}`;
-    memories[alias] = truncate(m.text, MAX_MEMORY_CHARS);
+    memories[alias] = truncate(m.text, maxChars);
     toId.set(alias, m.id);
   });
   return { memories, toId };
@@ -338,6 +348,8 @@ export interface RelationDecision {
   /** Judged outdated, but not confidently. Measured false flags sat near 0.4, real ones >= 0.65. */
   flagged: string[];
   duplicates: string[];
+  /** Same subject, both true at once, judged confidently. Knowledge track only acts on it: a merge candidate. */
+  consistent: string[];
   isInstruction: boolean;
   profileScope: boolean;
   /** Knowledge track only: the note claims something about the user, which a note may not. */
@@ -349,6 +361,7 @@ export function decideRelations(answers: Record<string, JevAnswer>, toId: Map<st
     supersede: [],
     flagged: [],
     duplicates: [],
+    consistent: [],
     isInstruction: (answers.is_instruction?.noul ?? 0) >= IS_INSTRUCTION_THRESHOLD,
     profileScope: (answers.profile_scope?.noul ?? 0) >= PROFILE_SCOPE_THRESHOLD,
     aboutUser: (answers.about_user?.noul ?? 0) >= ABOUT_USER_THRESHOLD,
@@ -358,6 +371,7 @@ export function decideRelations(answers: Record<string, JevAnswer>, toId: Map<st
     const confidence = a?.confidence ?? 0;
     if (a?.choice === "outdated") (confidence >= supersedeConfidence ? decision.supersede : decision.flagged).push(id);
     else if (a?.choice === "duplicate" && confidence >= DUPLICATE_CONFIDENCE) decision.duplicates.push(id);
+    else if (a?.choice === "consistent" && confidence >= supersedeConfidence) decision.consistent.push(id);
   }
   return decision;
 }
