@@ -57,6 +57,9 @@ export function MemoryDetail() {
 
   const isActive = !memory.status || memory.status === "active";
   const isProfile = memory.kind === "profile";
+  // Reference notes come from Sam's research, not from the user, so they cannot be made always-on.
+  const isKnowledge = memory.kind === "knowledge";
+  const originUrl = memory.origin?.url && /^https?:\/\//i.test(memory.origin.url) ? memory.origin.url : undefined;
 
   const handleToggleProfile = () => {
     const kind = isProfile ? "situational" : "profile";
@@ -185,7 +188,21 @@ export function MemoryDetail() {
           </div>
 
           {/* When it applies */}
-          {isActive && memory.kind !== undefined && (
+          {isActive && isKnowledge && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Applies
+              </label>
+              <p className="text-sm">
+                Reference note
+                <span className="block text-xs text-muted-foreground">
+                  Kept from something Sam explained or looked up. Sam sees it only when it is relevant, and treats it as
+                  possibly outdated.
+                </span>
+              </p>
+            </div>
+          )}
+          {isActive && memory.kind !== undefined && !isKnowledge && (
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Applies
@@ -214,6 +231,14 @@ export function MemoryDetail() {
                 Source:{" "}
                 <span className="text-foreground">{memory.source}</span>
               </div>
+              {originUrl && (
+                <div className="break-all">
+                  From:{" "}
+                  <button type="button" className="text-foreground underline" onClick={() => window.open(originUrl, "_blank")}>
+                    {originUrl}
+                  </button>
+                </div>
+              )}
               <div>
                 Created:{" "}
                 <span className="text-foreground">

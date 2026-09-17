@@ -73,7 +73,18 @@ export interface SessionSearchResultDTO {
   timestamp: number;
 }
 
-export type MemoryKind = "profile" | "situational";
+/** "knowledge" is a reference note Sam kept from research; it never becomes a profile memory. */
+export type MemoryKind = "profile" | "situational" | "knowledge";
+
+/** Where a reference note came from. */
+export interface MemoryOrigin {
+  url?: string;
+  tool?: string;
+  channelId?: string;
+  conversationId?: string;
+  timestamp?: number;
+}
+
 export type MemoryStatus = "active" | "superseded" | "forgotten";
 
 export interface MemoryItem {
@@ -88,6 +99,7 @@ export interface MemoryItem {
   status?: MemoryStatus;
   superseded_by?: string;
   updated_at?: number;
+  origin?: MemoryOrigin;
 }
 
 interface MemoryChange {
