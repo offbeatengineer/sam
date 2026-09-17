@@ -1,21 +1,17 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import { createWebSearchTool } from "./web-search.js";
+import { createWebSearchTool, resolveWebSearchEnv } from "./web-search.js";
 import { createWebFetchTool, formatBytes, formatDuration } from "./web-fetch.js";
 
 // Re-export factory functions for programmatic use
-export { createWebSearchTool } from "./web-search.js";
+export { createWebSearchTool, resolveWebSearchEnv } from "./web-search.js";
 export { createWebFetchTool } from "./web-fetch.js";
-export type { WebSearchConfig } from "./web-search.js";
+export type { WebSearchConfig, WebSearchProviderName } from "./web-search.js";
 
 // Pi extension entry point
 export default function webToolsExtension(pi: ExtensionAPI) {
-  const provider = process.env.WEB_SEARCH_PROVIDER as "brave" | "searxng" | undefined;
-  const apiKey = process.env.BRAVE_API_KEY;
-  const searxngUrl = process.env.SEARXNG_URL;
-
-  const searchTool = createWebSearchTool({ provider, apiKey, searxngUrl });
+  const searchTool = createWebSearchTool(resolveWebSearchEnv());
   const fetchTool = createWebFetchTool();
 
   pi.registerTool({

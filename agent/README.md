@@ -21,8 +21,9 @@ long-term memory, skills, and project kits.
   pi-ai knows about
 - Optional: a **Discord bot token** if you want to chat with Sam from Discord
 - Optional: a **web search provider** if you want Sam to search the web —
-  either a hosted [Brave Search](https://brave.com/search/api/) API key or a
-  self-hosted [SearXNG](https://github.com/searxng/searxng) instance
+  a hosted [Brave Search](https://brave.com/search/api/) or
+  [Tavily](https://tavily.com) API key, or a self-hosted
+  [SearXNG](https://github.com/searxng/searxng) instance
 
 ---
 
@@ -188,7 +189,17 @@ and bridges Sam's own tools in-process.
 
 ### Web search
 
-Sam's `web_search` tool supports two providers. Pick one.
+Sam's `web_search` tool supports three providers. Pick one, either with
+environment variables in `agent/.env` or under `tools.webSearch` in
+`~/.sam/config.yaml`. A `provider` set in `config.yaml` wins over
+`WEB_SEARCH_PROVIDER`, so a variable exported in your shell cannot quietly
+override it; API keys and the SearXNG URL work the usual way round, with the
+environment variable winning. With no provider named anywhere, Sam uses
+whichever API key it finds (Brave first).
+
+Besides the query, Sam can limit a search to the last day, week, month or year
+and to a list of domains. Tavily also lets it pick a `news` or `finance`
+category; the other providers do not have one, so Sam is not offered it there.
 
 **Option A — Brave Search (hosted, paid tier available)**
 
@@ -200,7 +211,33 @@ WEB_SEARCH_PROVIDER=brave
 BRAVE_API_KEY=your-key
 ```
 
-**Option B — SearXNG (self-hosted, free)**
+**Option B — Tavily (hosted, free monthly credits)**
+
+[Tavily](https://tavily.com) is a search API built for AI agents: results come
+back as clean text snippets rather than page descriptions. Get a key at
+<https://app.tavily.com>.
+
+```env
+WEB_SEARCH_PROVIDER=tavily
+TAVILY_API_KEY=tvly-your-key
+```
+
+Or in `~/.sam/config.yaml`:
+
+```yaml
+tools:
+  webSearch:
+    provider: tavily
+    apiKey: tvly-your-key   # or TAVILY_API_KEY in agent/.env
+    tavily:
+      searchDepth: basic    # "advanced" returns more relevant snippets
+```
+
+A `basic` search costs one Tavily credit and an `advanced` one costs two.
+Repeated searches within 15 minutes are served from Sam's cache and cost
+nothing.
+
+**Option C — SearXNG (self-hosted, free)**
 
 [SearXNG](https://github.com/searxng/searxng) is a privacy-respecting
 metasearch engine you run yourself. It aggregates results from Google, Bing,

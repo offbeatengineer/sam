@@ -6,6 +6,7 @@ import { parse as parseYaml } from "yaml";
 import { DEFAULT_KNOWLEDGE_NOTE_CHARS, type MemoryConfig, type TypeSafeConfig } from "./memory/types.js";
 import { DEFAULT_JEV_MODEL } from "./memory/judgments.js";
 import type { TranscriptionConfig } from "./transcriber.js";
+import { resolveWebSearchEnv, type WebSearchConfig } from "../../extensions/web-tools/src/web-search.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BUNDLED_PROMPTS_DIR = resolve(__dirname, "..", "prompts");
@@ -54,11 +55,7 @@ export interface SamConfig {
   };
   transcription?: TranscriptionConfig;
   tools?: {
-    webSearch?: {
-      provider?: "brave" | "searxng";
-      apiKey?: string;
-      searxngUrl?: string;
-    };
+    webSearch?: WebSearchConfig;
   };
   artifacts?: {
     enabled: boolean;
@@ -150,9 +147,11 @@ model:
 
 # tools:
 #   webSearch:
-#     provider: brave  # "brave" or "searxng"
-#     apiKey: ""       # Brave: API key (or set BRAVE_API_KEY env var)
+#     provider: brave  # "brave", "tavily" or "searxng" (or set WEB_SEARCH_PROVIDER env var)
+#     apiKey: ""       # Brave / Tavily: API key (or set BRAVE_API_KEY / TAVILY_API_KEY env var)
 #     searxngUrl: ""   # SearXNG: base URL (or set SEARXNG_URL env var), e.g. http://localhost:8888
+#     tavily:
+#       searchDepth: basic  # "basic" (1 credit per search) or "advanced" (2 credits, more relevant snippets)
 
 # memory:
 #   enabled: true
@@ -337,11 +336,7 @@ export function loadConfig(): SamConfig {
     },
     transcription: parseTranscriptionConfig(yaml.transcription),
     tools: {
-      webSearch: {
-        provider: yaml.tools?.webSearch?.provider,
-        apiKey: process.env.BRAVE_API_KEY ?? yaml.tools?.webSearch?.apiKey,
-        searxngUrl: process.env.SEARXNG_URL ?? yaml.tools?.webSearch?.searxngUrl,
-      },
+      webSearch: resolveWebSearchEnv(yaml.tools?.webSearch),
     },
     memory: {
       enabled: yaml.memory?.enabled !== false,

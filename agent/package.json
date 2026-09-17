@@ -17,7 +17,7 @@
     "start": "bun src/index.ts",
     "dev": "watchexec --project-origin . -w src -w prompts -r -- bun --env-file=.env src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src",
+    "test": "bun test src && bun run --cwd ../extensions/web-tools test",
     "eval:memory:smoke": "bun --env-file=.env evals/memory/smoke.ts",
     "eval:memory:recall": "bun --env-file=.env evals/memory/recall.ts",
     "eval:memory:baseline": "bun evals/memory/baseline.ts",
