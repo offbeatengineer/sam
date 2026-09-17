@@ -60,7 +60,18 @@ struct MemoryDetailView: View {
                 }
             }
 
-            if isActive && memory.kind != nil {
+            if isActive && memory.isKnowledge {
+                Section {
+                    LabeledContent("Type", value: "Reference note")
+                    if let url = memory.originURL {
+                        Link(destination: url) {
+                            LabeledContent("From", value: url.host ?? url.absoluteString)
+                        }
+                    }
+                } footer: {
+                    Text("Kept from something Sam explained or looked up. Sam sees it only when it is relevant, and treats it as possibly outdated.")
+                }
+            } else if isActive && memory.kind != nil {
                 Section {
                     Toggle("Always apply", isOn: Binding(
                         get: { isProfile },

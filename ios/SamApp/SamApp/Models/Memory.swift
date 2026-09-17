@@ -1,5 +1,14 @@
 import Foundation
 
+/// Where a reference note came from.
+struct MemoryOrigin: Codable, Hashable {
+    var url: String? = nil
+    var tool: String? = nil
+    var channelId: String? = nil
+    var conversationId: String? = nil
+    var timestamp: Double? = nil
+}
+
 struct MemoryItem: Codable, Identifiable, Hashable {
     let id: String
     let text: String
@@ -9,11 +18,13 @@ struct MemoryItem: Codable, Identifiable, Hashable {
     let score: Double
     // Optional so that decoding still works against an agent that predates automatic memory.
     /// "profile" memories apply to every conversation; "situational" ones only when relevant.
+    /// "knowledge" is a reference note Sam kept from research; it never becomes a profile memory.
     var kind: String? = nil
     /// "active", "superseded" (replaced by a newer memory), or "forgotten".
     var status: String? = nil
     var superseded_by: String? = nil
     var updated_at: Double? = nil
+    var origin: MemoryOrigin? = nil
 
     var createdDate: Date {
         Date(timeIntervalSince1970: created_at / 1000)
@@ -21,6 +32,13 @@ struct MemoryItem: Codable, Identifiable, Hashable {
 
     var isActive: Bool { status == nil || status == "active" }
     var isProfile: Bool { kind == "profile" }
+    var isKnowledge: Bool { kind == "knowledge" }
+    /// Only web links are offered for opening.
+    var originURL: URL? {
+        guard let raw = origin?.url, let url = URL(string: raw),
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
+        return url
+    }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
