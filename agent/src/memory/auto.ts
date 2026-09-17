@@ -4,6 +4,7 @@ import type { HiddenContext, SamAgentSession, SamPromptOptions, TurnMemoryInfo }
 import type { SamConfig } from "../config.js";
 import { extractMessages } from "../session-search/extract.js";
 import { sessionKeyToString, stripMessageHeader, type SessionKey } from "../types.js";
+import { extractExchange } from "./exchange.js";
 import { truncate, type Turn } from "./judgments.js";
 import { formatMemoryContext, MemoryRecaller, type RecallOutcome } from "./recaller.js";
 import { MemoryStore, type ActiveMemory } from "./store.js";
@@ -100,11 +101,14 @@ class AutoMemorySession implements SamAgentSession {
   private turns = 0;
   private profileSentAtTurn = -1;
   private profileSentHash = "";
-  /** Transcript messages already handed to the write pipeline. */
+  /** Session entries already handed to the write pipeline. Entries, not messages, so tool results are covered too. */
   private cursor: number;
+  private readonly origin: { channelId: string; conversationId: string };
   private lastOrigin: TurnMemoryInfo["origin"] = "app";
   /** What memory did since the user's last message; shown to the model once. */
   private notices: string[] = [];
+  /** Reference notes recalled into the current turn, so an answer built on them is not saved as a copy. */
+  private recalledKnowledge: string[] = [];
 
   constructor(
     private readonly inner: SamAgentSession,
@@ -112,8 +116,9 @@ class AutoMemorySession implements SamAgentSession {
     private readonly auto: AutoMemory,
   ) {
     this.label = sessionKeyToString(key);
+    this.origin = { channelId: key.channelId, conversationId: key.conversationId };
     // A resumed conversation's history was handled when it happened.
-    this.cursor = extractMessages(inner.sessionManager.getEntries() as any[]).length;
+    this.cursor = (inner.sessionManager.getEntries() as any[]).length;
     // pi queues a prompt sent mid-turn and returns at once, so there
     // `await prompt()` is not the end of the turn; `agent_end` is.
     inner.subscribe((event: any) => {
@@ -172,12 +177,15 @@ class AutoMemorySession implements SamAgentSession {
     const pipeline = this.auto.pipeline;
     if (!pipeline) return;
     try {
-      const messages = extractMessages(this.inner.sessionManager.getEntries() as any[]);
-      if (messages.length <= this.cursor) return;
-      const firstNew = this.cursor;
-      this.cursor = messages.length;
+      const entries = this.inner.sessionManager.getEntries() as any[];
+      if (entries.length <= this.cursor) return;
+      const firstNewEntry = this.cursor;
+      this.cursor = entries.length;
       // Pulse prompts are not the user's words; skip them but keep the cursor moving.
       if (this.lastOrigin === "pulse") return;
+
+      const firstNew = extractMessages(entries.slice(0, firstNewEntry)).length;
+      const messages = extractMessages(entries);
 
       const start = Math.max(0, firstNew - this.auto.cfg.contextMessages);
       const targetMessages: string[] = [];
@@ -190,7 +198,13 @@ class AutoMemorySession implements SamAgentSession {
       });
       if (targetMessages.length === 0) return;
 
-      pipeline.enqueue({ label: this.label, conversation, targetMessages }, (report) => this.onWritten(report));
+      const exchange = this.auto.cfg.knowledge
+        ? extractExchange(entries, firstNewEntry, this.auto.cfg.knowledgeTools)
+        : undefined;
+      pipeline.enqueue(
+        { label: this.label, conversation, targetMessages, exchange, origin: this.origin, knownNotes: this.recalledKnowledge },
+        (report) => this.onWritten(report),
+      );
     } catch (err) {
       console.warn(`[memory] could not schedule a memory write for ${this.label}:`, err);
     }
@@ -209,7 +223,7 @@ class AutoMemorySession implements SamAgentSession {
 
     // So the model can answer "did you remember that?" truthfully next turn.
     this.notices.push(
-      ...report.saved.map((m) => `Saved: ${m.text}`),
+      ...report.saved.map((m) => `${m.kind === "knowledge" ? "Saved reference note" : "Saved"}: ${m.text}`),
       ...report.superseded.map((m) => `Updated: "${m.replaced.text}" is now "${m.text}"`),
       ...report.forgotten.map((m) => `Forgot, as the user asked: ${m.text}`),
       ...(report.unresolvedForget ? ["The user asked to forget something, but no saved note matched it, so nothing was removed."] : []),
@@ -239,6 +253,7 @@ class AutoMemorySession implements SamAgentSession {
         ? await this.auto.recaller.recall(this.conversation(info.userText), situational)
         : { status: "skipped", picked: [], ms: 0, tokens: 0, shards: 0 };
 
+      this.recalledKnowledge = outcome.picked.filter((m) => m.kind === "knowledge").map((m) => m.text);
       const profileDue = this.profileDue(turn, profile);
       const notices = this.notices;
       this.notices = [];

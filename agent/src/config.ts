@@ -241,6 +241,12 @@ export function parseTypeSafeConfig(raw: any): TypeSafeConfig {
     saveScoreThreshold: num(raw?.saveScoreThreshold, 1.3),
     supersedeConfidence: num(raw?.supersedeConfidence, 0.6),
     profileRefreshTurns: num(raw?.profileRefreshTurns, 10),
+    knowledge: raw?.knowledge !== false,
+    knowledgeScoreThreshold: num(raw?.knowledgeScoreThreshold, 1.5),
+    knowledgeTools: Array.isArray(raw?.knowledgeTools)
+      ? raw.knowledgeTools.filter((t: unknown): t is string => typeof t === "string")
+      : "all",
+    knowledgeMaterialTokens: num(raw?.knowledgeMaterialTokens, 100_000),
   };
 }
 

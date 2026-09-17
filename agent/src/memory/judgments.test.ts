@@ -3,8 +3,10 @@ import {
   aliasShard,
   decideForget,
   decideGate,
+  decideKnowledgeGate,
   decideRelations,
   estimateTokens,
+  knowledgeGateState,
   pickRecalled,
   recallQuestions,
   shardMemories,
@@ -89,7 +91,7 @@ describe("deciders", () => {
       toId,
       0.6,
     );
-    expect(d).toEqual({ supersede: [uuid(0)], flagged: [uuid(1)], duplicates: [uuid(2)], isInstruction: false, profileScope: true });
+    expect(d).toEqual({ supersede: [uuid(0)], flagged: [uuid(1)], duplicates: [uuid(2)], isInstruction: false, profileScope: true, aboutUser: false });
   });
 
   test("relations: instruction-shaped facts are marked", () => {
@@ -133,8 +135,54 @@ describe("memory context", () => {
   test("oversized context is cut but stays well-formed", () => {
     const recalled = Array.from({ length: 80 }, (_, i) => ({ id: uuid(i), text: "User ".padEnd(300, "x"), kind: "situational" as const, p: 0.9, created_at: 0 }));
     const text = formatMemoryContext({ recalled })!;
-    expect(text.length).toBeLessThanOrEqual(4000);
+    expect(text.length).toBeLessThanOrEqual(6000);
     expect(text.endsWith("</memory_context>")).toBe(true);
+  });
+
+  test("knowledge gets its own section, with its source and a warning", () => {
+    const text = formatMemoryContext({
+      recalled: [
+        { id: uuid(2), text: "User is vegetarian.", kind: "situational", p: 0.9, created_at: base.created_at },
+        {
+          id: uuid(3),
+          text: "Apple Watch Series 11 starts at $399 as of 2026-09-17.",
+          kind: "knowledge",
+          p: 0.8,
+          created_at: base.created_at,
+          origin: { url: "https://www.apple.com/watch/", conversationId: "c1" },
+        },
+        { id: uuid(4), text: "User asked what a monad is.", kind: "knowledge", p: 0.7, created_at: base.created_at },
+      ],
+    })!;
+    const [userPart, referencePart] = text.split("Reference notes from earlier research");
+    expect(userPart).toContain("User is vegetarian.");
+    expect(userPart).not.toContain("Apple Watch");
+    expect(referencePart).toContain("may be outdated");
+    expect(referencePart).toContain("$399 as of 2026-09-17. (source: https://www.apple.com/watch/, saved 2026-03-02)");
+    expect(referencePart).toContain("User asked what a monad is. (saved 2026-03-02)");
+    expect(text).not.toContain("c1");
+  });
+
+  test("only knowledge recalled -> still injected", () => {
+    const text = formatMemoryContext({ recalled: [{ id: uuid(1), text: "X.", kind: "knowledge", p: 0.9, created_at: 0 }], judgedNoneRelevant: true })!;
+    expect(text).toContain("Reference notes");
+    expect(text).not.toContain("Possibly relevant to this message");
+  });
+});
+
+describe("knowledge gate", () => {
+  test("the Score decides, and a missing answer never saves", () => {
+    expect(decideKnowledgeGate({ knowledge_value: { score: 1.8 } } as any, 1.3)).toEqual({ save: true, value: 1.8 });
+    expect(decideKnowledgeGate({ knowledge_value: { score: 0.9 } } as any, 1.3).save).toBe(false);
+    expect(decideKnowledgeGate({}, 1.3)).toEqual({ save: false, value: 0 });
+  });
+
+  test("the state is bounded whatever the turn held", () => {
+    const state = knowledgeGateState(["q".repeat(5000)], "a".repeat(50_000), Array.from({ length: 100 }, (_, i) => `bash ${i}`));
+    expect(state.user_request.length).toBeLessThanOrEqual(2000);
+    expect(state.assistant_reply.length).toBeLessThanOrEqual(6000);
+    expect(state.tool_calls).toHaveLength(30);
+    expect(estimateTokens(JSON.stringify(state))).toBeLessThan(8000);
   });
 });
 

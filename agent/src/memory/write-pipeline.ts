@@ -1,13 +1,17 @@
+import { fitSources, type Exchange } from "./exchange.js";
 import {
   aliasShard,
   decideForget,
   decideGate,
+  decideKnowledgeGate,
   decideRelations,
   estimateTokens,
   forgetShortlist,
   forgetStage1Questions,
   forgetStage2Questions,
   gateQuestions,
+  knowledgeGateQuestions,
+  knowledgeGateState,
   relationStage1Questions,
   relationStage2Questions,
   shardMemories,
@@ -17,7 +21,7 @@ import {
 } from "./judgments.js";
 import type { ActiveMemory, MemoryStore } from "./store.js";
 import type { JevQuestion, JevResult, TypeSafeClient } from "./typesafe.js";
-import type { TypeSafeConfig } from "./types.js";
+import type { MemoryOrigin, TypeSafeConfig } from "./types.js";
 import type { CandidateFact, MemoryFactWriter } from "./writer.js";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +29,12 @@ import type { CandidateFact, MemoryFactWriter } from "./writer.js";
 // LLM write it down, and reconcile it with what is already stored. Nothing is
 // written without a Jev judgment, and nothing is destroyed: outdated memories
 // are superseded and "forget" is a status, both reversible from the UI.
+//
+// Two separate tracks share this pipeline. Facts about the user come only from
+// the user's own messages. Knowledge (what the assistant explained or looked
+// up) comes from assistant and tool output, which nobody vetted, so it is kept
+// as its own kind: reconciled only against other knowledge, never a profile
+// memory, never able to replace something the user said.
 // ---------------------------------------------------------------------------
 
 export interface MemoryChange {
@@ -33,7 +43,7 @@ export interface MemoryChange {
 }
 
 export interface WriteReport {
-  saved: (MemoryChange & { kind: string })[];
+  saved: (MemoryChange & { kind: string; origin?: MemoryOrigin })[];
   superseded: (MemoryChange & { replaced: MemoryChange })[];
   duplicates: MemoryChange[];
   forgotten: MemoryChange[];
@@ -47,15 +57,26 @@ export interface WriteJob {
   conversation: Turn[];
   /** New user messages since the last job for this conversation. */
   targetMessages: string[];
+  /** The whole turn, tool results included; absent when knowledge memory is off. */
+  exchange?: Exchange;
+  /** Where the turn happened, recorded on knowledge memories so they can be traced back. */
+  origin?: Pick<MemoryOrigin, "channelId" | "conversationId">;
+  /** Knowledge memories recalled into this turn; the writer must not save them again. */
+  knownNotes?: string[];
 }
 
 const MAX_GATE_MESSAGE_CHARS = 4000;
 const MAX_PROFILE_MEMORIES = 20;
 const STAGE_OVERHEAD_TOKENS = 400;
+/** A reply this short with no tool use has nothing in it to learn from; skip the request. */
+const MIN_KNOWLEDGE_REPLY_CHARS = 80;
 
 /** Last line of defense behind the writer's own rule against recording secrets. */
 const SECRET_PATTERN =
   /\b(sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b|\b(password|passwd|passphrase|api[ _-]?key|secret|token)\b\s*(is|=|:)\s*\S+/i;
+/** Reference notes legitimately say "a token is ...", so there only an assignment counts. */
+const KNOWLEDGE_SECRET_PATTERN =
+  /\b(sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b|\b(password|passwd|passphrase|api[ _-]?key|secret|token)\b\s*[=:]\s*\S+/i;
 
 export function isEmptyReport(r: WriteReport): boolean {
   return (
@@ -125,7 +146,51 @@ export class MemoryWritePipeline {
       for (const fact of facts) await this.reconcile(fact, report);
     }
 
+    await this.knowledge(job, report);
+
     return report;
+  }
+
+  /** Keep what the user learned this turn. Never throws: the user-fact report above must still be delivered. */
+  private async knowledge(job: WriteJob, report: WriteReport): Promise<void> {
+    const exchange = job.exchange;
+    if (!this.cfg.knowledge || !exchange || exchange.userMessages.length === 0) return;
+    const reply = exchange.assistantReply;
+    if (!reply || (reply.length < MIN_KNOWLEDGE_REPLY_CHARS && exchange.toolCalls.length === 0)) return;
+
+    try {
+      const result = await this.ask(
+        knowledgeGateState(exchange.userMessages, reply, exchange.toolCalls),
+        knowledgeGateQuestions(),
+      );
+      const decision = decideKnowledgeGate(result.answers, this.cfg.knowledgeScoreThreshold);
+      console.log(
+        `[memory] knowledge gate ${decision.value.toFixed(2)} ${decision.save ? "save" : "skip"} ` +
+          `(${exchange.toolCalls.length} tool call${exchange.toolCalls.length === 1 ? "" : "s"}) ` +
+          `"${truncate(exchange.userMessages[0].replace(/\s+/g, " "), 60)}"`,
+      );
+      if (!decision.save) return;
+
+      const sources = fitSources(exchange.sources, this.cfg.knowledgeMaterialTokens);
+      const facts = await this.writer.writeKnowledge({
+        userMessages: exchange.userMessages,
+        assistantReply: reply,
+        sources,
+        knownNotes: job.knownNotes,
+        today: new Date().toISOString().slice(0, 10),
+      });
+      console.log(
+        `[memory] knowledge writer (${this.writer.name}) read ${sources.length} source${sources.length === 1 ? "" : "s"} ` +
+          `-> ${facts.length} note${facts.length === 1 ? "" : "s"}`,
+      );
+      for (const fact of facts) {
+        const origin: MemoryOrigin = { ...job.origin, timestamp: exchange.timestamp || Date.now(), ...dropUndefined(fact.origin) };
+        // The kind is ours to set, whatever the writer returned.
+        await this.reconcile({ ...fact, kind: "knowledge" }, report, origin);
+      }
+    } catch (err) {
+      console.warn(`[memory] knowledge from ${job.label} not saved:`, errText(err));
+    }
   }
 
   private async gate(job: WriteJob, message: string) {
@@ -147,15 +212,21 @@ export class MemoryWritePipeline {
     }
   }
 
-  /** Insert, skip as duplicate, or insert and supersede, depending on how the fact relates to the store. */
-  private async reconcile(fact: CandidateFact, report: WriteReport): Promise<void> {
-    if (SECRET_PATTERN.test(fact.text)) {
+  /**
+   * Insert, skip as duplicate, or insert and supersede, depending on how the fact relates to the store.
+   * A fact is only compared with its own track (knowledge with knowledge, the user's facts with the
+   * user's facts), so text from a web page can never retire something the user said.
+   */
+  private async reconcile(fact: CandidateFact, report: WriteReport, origin?: MemoryOrigin): Promise<void> {
+    const isKnowledge = fact.kind === "knowledge";
+    if ((isKnowledge ? KNOWLEDGE_SECRET_PATTERN : SECRET_PATTERN).test(fact.text)) {
       console.warn("[memory] dropped a candidate fact that looks like a secret");
       return;
     }
 
     const store = await this.store();
-    const active = await store.listActive();
+    const all = await store.listActive();
+    const active = all.filter((m) => (m.kind === "knowledge") === isKnowledge);
     const byId = new Map(active.map((m) => [m.id, m]));
     const state = { new_statement: fact.text };
 
@@ -164,7 +235,7 @@ export class MemoryWritePipeline {
       const stage1 = await this.acrossShards(active, state, relationStage1Questions);
       const shortlist = shortlistFromStage1(stage1).map((id) => byId.get(id)!).filter(Boolean);
       const { memories, toId } = aliasShard(shortlist);
-      const stage2 = await this.ask({ ...state, memories }, relationStage2Questions([...toId.keys()]));
+      const stage2 = await this.ask({ ...state, memories }, relationStage2Questions([...toId.keys()], isKnowledge ? "knowledge" : "user"));
       decision = decideRelations(stage2.answers, toId, this.cfg.supersedeConfidence);
     } catch (err) {
       // Without the relation judgment a save could duplicate or contradict the store.
@@ -174,6 +245,10 @@ export class MemoryWritePipeline {
 
     if (decision.isInstruction) {
       console.warn(`[memory] rejected an instruction-shaped fact: "${truncate(fact.text, 80)}"`);
+      return;
+    }
+    if (decision.aboutUser) {
+      console.warn(`[memory] rejected a reference note that makes claims about the user: "${truncate(fact.text, 80)}"`);
       return;
     }
 
@@ -187,9 +262,13 @@ export class MemoryWritePipeline {
       report.duplicates.push(change(currentId));
     } else {
       const profileCount = active.filter((m) => m.kind === "profile").length;
-      const kind = fact.kind === "profile" && decision.profileScope && profileCount < MAX_PROFILE_MEMORIES ? "profile" : "situational";
-      currentId = await store.save(fact.text, fact.tags, "auto", { kind });
-      if (decision.supersede.length === 0) report.saved.push({ id: currentId, text: fact.text, kind });
+      const kind = isKnowledge
+        ? "knowledge"
+        : fact.kind === "profile" && decision.profileScope && profileCount < MAX_PROFILE_MEMORIES
+          ? "profile"
+          : "situational";
+      currentId = await store.save(fact.text, fact.tags, "auto", { kind, origin: isKnowledge ? origin : undefined });
+      if (decision.supersede.length === 0) report.saved.push({ id: currentId, text: fact.text, kind, origin: isKnowledge ? origin : undefined });
     }
 
     for (const oldId of decision.supersede) {
@@ -253,6 +332,10 @@ export class MemoryWritePipeline {
   private ask(state: unknown, questions: Record<string, JevQuestion>): Promise<JevResult> {
     return this.client.ask(state, questions, { timeoutMs: this.cfg.writeTimeoutMs, retries: 3 });
   }
+}
+
+function dropUndefined<T extends object>(o: T | undefined): Partial<T> {
+  return Object.fromEntries(Object.entries(o ?? {}).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
 function errText(err: unknown): string {

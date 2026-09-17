@@ -59,6 +59,9 @@ model:
 #     # recall: true        # automatic recall before each turn
 #     # write: true         # automatic save/replace/forget; false keeps the write tools
 #     # timeoutMs: 2500     # a turn never waits longer than this for recall
+#     # knowledge: true     # also keep reference notes of what Sam explained or looked up (needs write)
+#     # knowledgeTools: all # or a list, e.g. [web_fetch, web_search], of tools whose results the writer may read
+#     # knowledgeMaterialTokens: 100000  # budget for the tool results handed to the writer model
 #
 #   # Model that writes memory text on the pi backend. The agent-sdk backend
 #   # uses Claude Haiku through your subscription instead.

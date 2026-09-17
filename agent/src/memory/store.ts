@@ -3,7 +3,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { lazyImport } from "./lazy-install.js";
 import { getSharedEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
-import type { MemoryConfig, MemoryKind, MemoryStatus } from "./types.js";
+import type { MemoryConfig, MemoryKind, MemoryOrigin, MemoryStatus } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AGENT_DIR = resolve(__dirname, "..", "..");
@@ -17,13 +17,15 @@ export interface Memory {
   tags: string;
   source: string;
   created_at: number;
-  /** "profile" memories apply to every turn; "situational" ones are judged per turn. */
+  /** "profile" memories apply to every turn; "situational" and "knowledge" ones are judged per turn. */
   kind: string;
   /** Memories are superseded or forgotten, not deleted, so a wrong judgment is recoverable. */
   status: string;
   /** Id of the memory that replaced this one; "" when none. */
   superseded_by: string;
   updated_at: number;
+  /** JSON of a MemoryOrigin for knowledge memories; "" otherwise. */
+  origin: string;
 }
 
 export interface RecallResult {
@@ -37,6 +39,7 @@ export interface RecallResult {
   status: MemoryStatus;
   superseded_by: string;
   updated_at: number;
+  origin?: MemoryOrigin;
 }
 
 /** What the automatic-memory judgments work on: every active memory, without vectors. */
@@ -49,10 +52,11 @@ const ADDED_COLUMNS = [
   // '' rather than NULL: an all-null column breaks Arrow type inference on JS inserts.
   { name: "superseded_by", valueSql: "''" },
   { name: "updated_at", valueSql: "created_at" },
+  { name: "origin", valueSql: "''" },
 ];
 
 /** Everything except `vector`, which is 1.5 KB per row and only needed for search. */
-const READ_COLUMNS = ["id", "text", "tags", "source", "created_at", "kind", "status", "superseded_by", "updated_at"];
+const READ_COLUMNS = ["id", "text", "tags", "source", "created_at", "kind", "status", "superseded_by", "updated_at", "origin"];
 
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -75,6 +79,16 @@ function encodeTags(tags?: string[]): string {
   return clean.length > 0 ? `,${clean.join(",")},` : "";
 }
 
+function parseOrigin(raw: unknown): MemoryOrigin | undefined {
+  if (typeof raw !== "string" || raw === "") return undefined;
+  try {
+    const o = JSON.parse(raw);
+    return o && typeof o === "object" ? (o as MemoryOrigin) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function toResult(r: any, score: number): RecallResult {
   return {
     id: r.id,
@@ -83,10 +97,11 @@ function toResult(r: any, score: number): RecallResult {
     source: r.source,
     created_at: r.created_at,
     score,
-    kind: r.kind === "profile" ? "profile" : "situational",
+    kind: r.kind === "profile" || r.kind === "knowledge" ? r.kind : "situational",
     status: r.status === "superseded" || r.status === "forgotten" ? r.status : "active",
     superseded_by: r.superseded_by ?? "",
     updated_at: r.updated_at ?? r.created_at,
+    origin: parseOrigin(r.origin),
   };
 }
 
@@ -155,6 +170,7 @@ export class MemoryStore {
         status: "",
         superseded_by: "",
         updated_at: 0,
+        origin: "",
       };
 
       table = await db.createTable(TABLE_NAME, [seedRecord]);
@@ -184,7 +200,7 @@ export class MemoryStore {
     await table.addColumns(missing);
   }
 
-  async save(text: string, tags?: string[], source?: string, opts?: { kind?: MemoryKind }): Promise<string> {
+  async save(text: string, tags?: string[], source?: string, opts?: { kind?: MemoryKind; origin?: MemoryOrigin }): Promise<string> {
     const id = randomUUID();
     const vector = await this.embedder.embed(text);
     const now = Date.now();
@@ -200,6 +216,7 @@ export class MemoryStore {
       status: "active",
       superseded_by: "",
       updated_at: now,
+      origin: opts?.origin ? JSON.stringify(opts.origin) : "",
     };
 
     await this.table.add([record]);
@@ -284,7 +301,11 @@ export class MemoryStore {
         values.vector = await this.embedder.embed(patch.text);
       }
       if (patch.tags !== undefined) values.tags = encodeTags(patch.tags);
-      if (patch.kind !== undefined) values.kind = patch.kind;
+      if (patch.kind !== undefined && patch.kind !== "knowledge") {
+        // Knowledge comes from outside the user's own words. It stays knowledge, so
+        // no client, old or new, can promote it into the always-on profile block.
+        if ((await this.get(id))?.kind !== "knowledge") values.kind = patch.kind;
+      }
       return await this.applyUpdate(id, values);
     } catch {
       return false;

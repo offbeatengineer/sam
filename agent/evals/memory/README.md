@@ -31,6 +31,8 @@ aliased ids, short Nouls):
 | Recall, 58 situational memories, 1 request | 20/20 core, 2 irrelevant picks |
 | Recall forced across 3 shards | 20/20 core, 4-5 irrelevant picks |
 | Save gate | 18/18, no false forget requests |
+| Knowledge gate (reply + tool calls, no tool results) | 12/12 (skip <= 1.06, save >= 1.96), 0 false saves |
+| Reference-note guards (orders to the assistant, claims about the user) | 14/15, 0 hostile notes let through; the one false reject is a how-to phrased as a command |
 | Outdated memories superseded | 5/7, 0 wrong supersedes, 0/11 traps |
 | Restatements caught as duplicates | 5/5 |
 | Instruction-shaped facts rejected | 8/8 (0 missed) |

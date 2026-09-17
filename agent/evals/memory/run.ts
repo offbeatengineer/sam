@@ -8,12 +8,15 @@ import {
   aliasShard,
   decideForget,
   decideGate,
+  decideKnowledgeGate,
   decideRelations,
   DEFAULT_JEV_MODEL,
   forgetShortlist,
   forgetStage1Questions,
   forgetStage2Questions,
   gateQuestions,
+  knowledgeGateQuestions,
+  knowledgeGateState,
   relationStage1Questions,
   relationStage2Questions,
   shortlistFromStage1,
@@ -21,7 +24,7 @@ import {
 import { MemoryRecaller } from "../../src/memory/recaller.js";
 import type { ActiveMemory } from "../../src/memory/store.js";
 import { TypeSafeClient } from "../../src/memory/typesafe.js";
-import { DUPLICATE, FORGET, INSTRUCTION, MEMORIES, PROFILE, RECALL, SAVE, UPDATE } from "./data.js";
+import { DUPLICATE, FORGET, INSTRUCTION, KNOWLEDGE, KNOWLEDGE_GUARD, MEMORIES, PROFILE, RECALL, SAVE, UPDATE } from "./data.js";
 import { evalConfig } from "./typesafe.js";
 
 const PROFILE_IDS = new Set(["M13", "M14"]); // always-on in production, so never judged per turn
@@ -70,6 +73,26 @@ const gates = await pool(SAVE, 6, async (c) => ({ c, d: decideGate((await ask({ 
 metrics["gate.correct"] = gates.filter(({ c, d }) => d.save === c.save).length;
 metrics["gate.false_forget"] = gates.filter(({ d }) => d.forget).length;
 details.gate = gates.filter(({ c, d }) => d.save !== c.save).map(({ c, d }) => ({ id: c.id, msg: c.msg, value: d.value }));
+
+// --- knowledge gate: the production state, which holds the reply and the tool calls but no tool results ---
+const knowledge = await pool(KNOWLEDGE, 6, async (c) => ({ c, d: decideKnowledgeGate((await ask(knowledgeGateState([c.request], c.reply, c.calls), knowledgeGateQuestions())).answers, cfg.knowledgeScoreThreshold) }));
+metrics["knowledge.correct"] = knowledge.filter(({ c, d }) => d.save === c.save).length;
+// The costly direction: a note saved from a turn that taught nothing, which then rides along on every recall.
+metrics["knowledge.false_save"] = knowledge.filter(({ c, d }) => d.save && !c.save).length;
+details.knowledge = knowledge.map(({ c, d }) => ({ id: c.id, note: c.note, expect: c.save, value: Number(d.value.toFixed(2)) })).filter((r) => (r.value >= cfg.knowledgeScoreThreshold) !== r.expect);
+details.knowledge_scores = knowledge.map(({ c, d }) => `${c.id}:${d.value.toFixed(2)}`);
+
+// --- knowledge guards: the stage-2 request of the knowledge track, against an empty store ---
+const guards = await pool(KNOWLEDGE_GUARD, 5, async (c) => {
+  const answers = (await ask({ new_statement: c.fact, memories: {} }, relationStage2Questions([], "knowledge"))).answers;
+  const d = decideRelations(answers, new Map(), cfg.supersedeConfidence);
+  return { c, rejected: d.isInstruction || d.aboutUser, instruction: answers.is_instruction?.noul ?? 0, aboutUser: answers.about_user?.noul ?? 0 };
+});
+metrics["knowledge_guard.correct"] = guards.filter(({ c, rejected }) => rejected === c.reject).length;
+// The costly direction: a planted order or a claim about the user that gets stored.
+metrics["knowledge_guard.missed"] = guards.filter(({ c, rejected }) => c.reject && !rejected).length;
+details.knowledge_guard = guards.filter(({ c, rejected }) => rejected !== c.reject).map(({ c, instruction, aboutUser }) => ({ id: c.id, instruction: Number(instruction.toFixed(2)), aboutUser: Number(aboutUser.toFixed(2)) }));
+details.knowledge_guard_scores = guards.map(({ c, instruction, aboutUser }) => `${c.id}:${instruction.toFixed(2)}/${aboutUser.toFixed(2)}`);
 
 // --- relation: stage 1 shortlist, stage 2 decision, exactly as the write pipeline does ---
 async function relate(statement: string) {

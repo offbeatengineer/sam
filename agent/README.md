@@ -290,6 +290,14 @@ remember:
 - **After every turn**, what you said is checked for lasting facts, preferences,
   and decisions. New ones are saved as one fact per memory, a memory that your
   new statement makes outdated is replaced, and "forget that..." is honored.
+- **What you learn is kept too.** When you had something explained or researched,
+  the exchange is judged for whether it is worth building on later. If it is, the
+  writer reads Sam's full answer and the tool results behind it (fetched pages,
+  search results, files) and saves short reference notes with their source and
+  date. These are a separate kind of memory, because they do not come from you:
+  they are never treated as facts about you, can never become an always-on
+  profile memory, can only replace other reference notes, and reach the model
+  in their own section marked as possibly outdated.
 - Nothing is destroyed. Replaced and forgotten memories stay in the store with
   a status, and the Memory screen can restore them or delete them for good.
 - The model keeps only `memory_recall`, for explicit deeper searches.
@@ -305,6 +313,15 @@ when `model.backend` is `agent-sdk` (so it draws on your subscription), or the
 > `api.typesafe.ai` on every turn. TypeSafe is in early access and had no
 > published data-retention policy when this was written. Memories you have asked
 > Sam to forget are no longer sent.
+>
+> Reference notes widen this. Judging an exchange sends Sam's answer (up to 6000
+> characters) and the list of tool calls with their arguments, not their
+> results, to TypeSafe. When an exchange passes, the full tool results of that
+> turn go to the writer model, which can include local files and command output
+> Sam read. On the `agent-sdk` backend that is Claude Haiku, the same provider as
+> your main model; on pi it is whichever provider `memory.writer` names. Set
+> `knowledgeTools: [web_fetch, web_search]` to limit the writer to public web
+> content, or `knowledge: false` to turn reference notes off.
 
 Enable it in `~/.sam/config.yaml`, and put the key in `agent/.env`:
 
@@ -325,7 +342,11 @@ TYPESAFE_API_KEY=...
 Other `memory.typesafe` settings and their defaults: `model` (`jev-1.13.0`),
 `recall` / `write` (`true`; turn either half off), `timeoutMs` (`2500`),
 `recallThreshold` (`0.5`), `maxRecalled` (`8`), `saveScoreThreshold` (`1.3`),
-`supersedeConfidence` (`0.6`), `shardTokenBudget` (`24000`), `maxShards` (`4`).
+`supersedeConfidence` (`0.6`), `shardTokenBudget` (`24000`), `maxShards` (`4`),
+`knowledge` (`true`), `knowledgeScoreThreshold` (`1.5`), `knowledgeTools`
+(`all`, or a list of tool names), `knowledgeMaterialTokens` (`100000`, the
+budget for tool results handed to the writer; larger results are cut to fit,
+smallest sources kept whole first).
 
 If TypeSafe is slow, down, or the key is missing, turns run normally without
 the situational notes; nothing is saved without a judgment. The model is pinned
@@ -335,7 +356,9 @@ warning: re-run `bun run eval:memory:all` and update `model`. The same harness
 is the check to run before changing any threshold or question wording; see
 `evals/memory/README.md`.
 
-Known limits: pulse check-ins neither recall nor save; in a shared Discord
+Known limits: the reference-note threshold rests on a dozen labeled cases, so
+watch the `[memory] knowledge gate` log lines and adjust
+`knowledgeScoreThreshold` if it keeps too much or too little; pulse check-ins neither recall nor save; in a shared Discord
 channel every author is recorded as "User"; and when what you say is only
 *probably* an update to an old memory, Sam saves the new fact and leaves the old
 one for you to review rather than replacing it.
