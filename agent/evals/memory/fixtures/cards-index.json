@@ -1,0 +1,480 @@
+{
+  "models": {
+    "grouping": "claude-sonnet-5",
+    "cards": "claude-haiku-4-5"
+  },
+  "assignments": {
+    "M01": "personal/home",
+    "M02": "family/relatives",
+    "M03": "personal/food-preferences",
+    "M04": "family/lin",
+    "M25": "personal/profile",
+    "M26": "family/lin",
+    "M27": "personal/food-preferences",
+    "M28": "personal/food-preferences",
+    "M60": "family/lin",
+    "F000": "work/colleagues",
+    "F001": "work/colleagues",
+    "F002": "work/colleagues",
+    "F003": "work/colleagues",
+    "F004": "work/colleagues",
+    "F005": "work/colleagues",
+    "F006": "work/colleagues",
+    "F007": "work/colleagues",
+    "F008": "work/colleagues",
+    "F009": "work/colleagues",
+    "F010": "work/colleagues",
+    "F011": "work/colleagues",
+    "F012": "work/colleagues",
+    "F013": "work/colleagues",
+    "F014": "work/colleagues",
+    "F015": "work/colleagues",
+    "F016": "work/colleagues",
+    "F017": "work/colleagues",
+    "F018": "work/colleagues",
+    "F019": "work/colleagues",
+    "F020": "work/colleagues",
+    "F021": "work/colleagues",
+    "F022": "work/colleagues",
+    "F023": "work/colleagues",
+    "F024": "work/colleagues",
+    "F025": "work/colleagues",
+    "F026": "work/colleagues",
+    "F027": "work/colleagues",
+    "F028": "work/colleagues",
+    "F029": "work/colleagues",
+    "M09": "work/northwind-pay",
+    "M10": "work/northwind-pay",
+    "M44": "work/northwind-pay",
+    "M43": "work/northwind-pay",
+    "F060": "work/services",
+    "F061": "work/services",
+    "F062": "work/services",
+    "F063": "work/services",
+    "F064": "work/services",
+    "F065": "work/services",
+    "F066": "work/services",
+    "F067": "work/services",
+    "F068": "work/services",
+    "F069": "work/services",
+    "F070": "work/services",
+    "F071": "work/services",
+    "F072": "work/services",
+    "F073": "work/services",
+    "F074": "work/services",
+    "F075": "work/services",
+    "F076": "work/services",
+    "F077": "work/services",
+    "F078": "work/services",
+    "F079": "work/services",
+    "F080": "work/services",
+    "F081": "work/services",
+    "F082": "work/services",
+    "F083": "work/services",
+    "F084": "work/services",
+    "F085": "work/services",
+    "F086": "work/services",
+    "F087": "work/services",
+    "F088": "work/services",
+    "F089": "work/services",
+    "M05": "tech/preferences",
+    "M06": "tech/preferences",
+    "M08": "tech/preferences",
+    "M23": "tech/preferences",
+    "M24": "tech/preferences",
+    "M29": "tech/hardware",
+    "M30": "tech/hardware",
+    "M36": "tech/preferences",
+    "M57": "tech/preferences",
+    "F140": "tech/tools-evaluated",
+    "F141": "tech/tools-evaluated",
+    "F142": "tech/tools-evaluated",
+    "F143": "tech/tools-evaluated",
+    "F144": "tech/tools-evaluated",
+    "F145": "tech/tools-evaluated",
+    "F146": "tech/tools-evaluated",
+    "F147": "tech/tools-evaluated",
+    "F148": "tech/tools-evaluated",
+    "F149": "tech/tools-evaluated",
+    "F150": "tech/tools-evaluated",
+    "F151": "tech/tools-evaluated",
+    "F152": "tech/tools-evaluated",
+    "F153": "tech/tools-evaluated",
+    "F154": "tech/tools-evaluated",
+    "F155": "tech/tools-evaluated",
+    "F156": "tech/tools-evaluated",
+    "F157": "tech/tools-evaluated",
+    "F158": "tech/tools-evaluated",
+    "F159": "tech/tools-evaluated",
+    "F160": "tech/tools-evaluated",
+    "F161": "tech/tools-evaluated",
+    "F162": "tech/tools-evaluated",
+    "F163": "tech/tools-evaluated",
+    "F164": "tech/tools-evaluated",
+    "M07": "sam-project/architecture",
+    "M21": "sam-project/architecture",
+    "M22": "sam-project/architecture",
+    "M38": "sam-project/architecture",
+    "M39": "sam-project/architecture",
+    "M40": "sam-project/architecture",
+    "M41": "sam-project/architecture",
+    "M42": "sam-project/architecture",
+    "M37": "sam-project/testing",
+    "M53": "sam-project/workflow",
+    "M51": "sam-project/collaborators",
+    "M52": "sam-project/collaborators",
+    "M11": "health/fitness",
+    "M12": "health/fitness",
+    "M31": "health/medical",
+    "M59": "health/medical",
+    "M32": "health/routines",
+    "M15": "pets/mochi",
+    "M16": "pets/mochi",
+    "M17": "learning/japanese",
+    "M35": "learning/reading",
+    "M55": "learning/blogging",
+    "M56": "learning/blogging",
+    "F030": "leisure/reading-log",
+    "F031": "leisure/reading-log",
+    "F032": "leisure/reading-log",
+    "F033": "leisure/reading-log",
+    "F034": "leisure/reading-log",
+    "F035": "leisure/reading-log",
+    "F036": "leisure/reading-log",
+    "F037": "leisure/reading-log",
+    "F038": "leisure/reading-log",
+    "F039": "leisure/reading-log",
+    "F040": "leisure/reading-log",
+    "F041": "leisure/reading-log",
+    "F042": "leisure/reading-log",
+    "F043": "leisure/reading-log",
+    "F044": "leisure/reading-log",
+    "F045": "leisure/reading-log",
+    "F046": "leisure/reading-log",
+    "F047": "leisure/reading-log",
+    "F048": "leisure/reading-log",
+    "F049": "leisure/reading-log",
+    "F050": "leisure/reading-log",
+    "F051": "leisure/reading-log",
+    "F052": "leisure/reading-log",
+    "F053": "leisure/reading-log",
+    "F054": "leisure/reading-log",
+    "F055": "leisure/reading-log",
+    "F056": "leisure/reading-log",
+    "F057": "leisure/reading-log",
+    "F058": "leisure/reading-log",
+    "F059": "leisure/reading-log",
+    "M48": "leisure/music",
+    "M18": "travel/trips",
+    "F090": "travel/trips",
+    "F091": "travel/trips",
+    "F092": "travel/trips",
+    "F093": "travel/trips",
+    "F094": "travel/trips",
+    "F095": "travel/trips",
+    "F096": "travel/trips",
+    "F097": "travel/trips",
+    "F098": "travel/trips",
+    "F099": "travel/trips",
+    "F100": "travel/trips",
+    "F101": "travel/trips",
+    "F102": "travel/trips",
+    "F103": "travel/trips",
+    "F104": "travel/trips",
+    "F105": "travel/trips",
+    "F106": "travel/trips",
+    "F107": "travel/trips",
+    "F108": "travel/trips",
+    "F109": "travel/trips",
+    "F110": "travel/trips",
+    "F111": "travel/trips",
+    "F112": "travel/trips",
+    "F113": "travel/trips",
+    "F114": "travel/trips",
+    "F115": "travel/trips",
+    "F116": "travel/trips",
+    "F117": "travel/trips",
+    "F118": "travel/trips",
+    "F119": "travel/trips",
+    "M45": "travel/preferences",
+    "M46": "travel/preferences",
+    "M47": "travel/preferences",
+    "F120": "family/extended",
+    "F121": "family/extended",
+    "F122": "family/extended",
+    "F123": "family/extended",
+    "F124": "family/extended",
+    "F125": "family/extended",
+    "F126": "family/extended",
+    "F127": "family/extended",
+    "F128": "family/extended",
+    "F129": "family/extended",
+    "F130": "family/extended",
+    "F131": "family/extended",
+    "F132": "family/extended",
+    "F133": "family/extended",
+    "F134": "family/extended",
+    "F135": "family/extended",
+    "F136": "family/extended",
+    "F137": "family/extended",
+    "F138": "family/extended",
+    "F139": "family/extended",
+    "M33": "family/parents",
+    "M34": "family/parents",
+    "M19": "finance/budget",
+    "M20": "finance/investing",
+    "M50": "finance/goals",
+    "F165": "finance/subscriptions",
+    "F166": "finance/subscriptions",
+    "F167": "finance/subscriptions",
+    "F168": "finance/subscriptions",
+    "F169": "finance/subscriptions",
+    "F170": "finance/subscriptions",
+    "F171": "finance/subscriptions",
+    "F172": "finance/subscriptions",
+    "F173": "finance/subscriptions",
+    "F174": "finance/subscriptions",
+    "F175": "finance/subscriptions",
+    "F176": "finance/subscriptions",
+    "F177": "finance/subscriptions",
+    "F178": "finance/subscriptions",
+    "F179": "finance/subscriptions",
+    "F180": "finance/subscriptions",
+    "F181": "finance/subscriptions",
+    "F182": "finance/subscriptions",
+    "F183": "finance/subscriptions",
+    "F184": "finance/subscriptions",
+    "F185": "finance/subscriptions",
+    "F186": "finance/subscriptions",
+    "F187": "finance/subscriptions",
+    "F188": "finance/subscriptions",
+    "F189": "finance/subscriptions",
+    "M49": "personal/food-preferences",
+    "M54": "personal/profile",
+    "M58": "personal/car"
+  },
+  "subjects": [
+    {
+      "path": "personal/home",
+      "holds": "Lives in Shanghai, Jing'an district.",
+      "matters_when": "recommending restaurants or shops, discussing commute or local travel, neighborhood amenities, delivery or service arrangements, local events, directions, weather considerations, visiting recommendat…"
+    },
+    {
+      "path": "work/colleagues",
+      "holds": "30 colleagues at Northwind Pay across 6 teams: ledger, risk, onboarding, payouts, fraud, data platform. Names and team assignments.",
+      "matters_when": "finding contact for specific team or person, cross-team collaboration, meeting scheduling, team projects, colleague recommendations, internal communication, organizational questions"
+    },
+    {
+      "path": "family/relatives",
+      "holds": "Sister Mei lives in Vancouver.",
+      "matters_when": "visiting relatives, travel planning to Canada, phone calls with family, gifts for Mei, time zone considerations, family events, sister's news or updates"
+    },
+    {
+      "path": "personal/food-preferences",
+      "holds": "Vegetarian; lactose intolerant; drinks oat-milk flat whites (no sugar); favorite cuisine is Sichuan but prefers mild spice.",
+      "matters_when": "restaurant recommendations, meal planning, grocery shopping, coffee orders, recipe suggestions, dining out, food delivery, catering, dietary restrictions checking, party/event food planning"
+    },
+    {
+      "path": "family/lin",
+      "holds": "Partner Lin: severe shellfish allergy; birthday September 30; prefers specialty loose-leaf tea as gifts.",
+      "matters_when": "restaurant recommendations, meal planning, food shopping, dinner reservations, gift ideas for Lin, party planning with food, seafood or shellfish recipes, allergy-safe cooking, birthday planning for …"
+    },
+    {
+      "path": "tech/preferences",
+      "holds": "TypeScript, Bun runtime/package manager, Zed editor, dark mode preferred; imperative commit messages with scope prefix; GitHub: offbeatengineer; test coverage …",
+      "matters_when": "setting up new projects, code review, commit history review, package installation, editor recommendations, app setup, writing agent code, testing strategy, GitHub interactions"
+    },
+    {
+      "path": "sam-project/architecture",
+      "holds": "Sam agent backend uses LanceDB at ~/.sam/memory; desktop client built with GPUI (Rust) on port 9223; pulse feature disabled; Claude Max plan for billing; Claud…",
+      "matters_when": "Sam architecture questions, setting up Sam locally, deploying to staging, configuring billing integrations, desktop client performance, memory storage queries, GitHub Actions workflows, choosing betw…"
+    },
+    {
+      "path": "work/northwind-pay",
+      "holds": "Staff engineer at Northwind Pay (fintech). Manager: Priya, weekly 1:1 Tuesdays 10am. Team uses Linear (not Jira). Dislikes early meetings.",
+      "matters_when": "scheduling meetings, calendar planning, issue tracking setup, team workflow discussion, communication with Priya, scheduling 1:1s, work schedule changes, meeting time preferences"
+    },
+    {
+      "path": "health/fitness",
+      "holds": "Training for Shanghai half marathon (November); left patellar tendinitis; avoiding high-impact workouts.",
+      "matters_when": "workout recommendations, running training plans, exercise suggestions, injury recovery advice, marathon preparation, activity level discussions, physical therapy, sports gear purchases"
+    },
+    {
+      "path": "leisure/reading-log",
+      "holds": "Reading log 2019-2024 with ratings for 10 titles read multiple times: Dune, Sapiens, Snow Crash, The Three-Body Problem, Thinking in Systems, Deep Work, Pirane…",
+      "matters_when": "book recommendations, whether user has read a title, reading preferences, favorite genres or books, re-reading patterns, book lists, reading habits, literacy discussions, gift ideas, book club select…"
+    },
+    {
+      "path": "pets/mochi",
+      "holds": "Corgi named Mochi. Needs vet checkup every six months; last visit March 2026.",
+      "matters_when": "scheduling vet appointments, pet health questions, dog care advice, Mochi's symptoms or behavior, budgeting for pet expenses, reminder to book checkups"
+    },
+    {
+      "path": "learning/japanese",
+      "holds": "Learning Japanese at roughly JLPT N4 level.",
+      "matters_when": "language learning resources, JLPT preparation, Japanese media recommendations, translation requests, study schedule planning, travel to Japan, Japanese grammar or vocabulary questions"
+    },
+    {
+      "path": "travel/trips",
+      "holds": "Extensive travel history: conferences (Lisbon 2017, Singapore 2021), friend's weddings (Seoul 2018, Hanoi 2022), team offsites (Chengdu 2019, Oslo 2023), long …",
+      "matters_when": "Planning trips or vacations, recommending destinations, discussing travel preferences, visa requirements, time zone considerations, making plans around work conferences or travel patterns, gift ideas…"
+    },
+    {
+      "path": "finance/budget",
+      "holds": "Monthly dining out budget: approximately 2000 RMB.",
+      "matters_when": "restaurant recommendations, meal planning, expense tracking, spending decisions on dining, evaluating restaurant prices, budgeting advice, tracking discretionary spending"
+    },
+    {
+      "path": "finance/investing",
+      "holds": "User holds index funds via Interactive Brokers; does not day trade.",
+      "matters_when": "investment advice, portfolio recommendations, brokerage account questions, tax-loss harvesting, trading strategy discussion, market timing, stock picking, transaction fees"
+    },
+    {
+      "path": "work/services",
+      "holds": "30 microservices at Northwind Pay: names, versions (v1-v4), implementation languages, and responsible owners. Services include ledger-api, kyc-gateway, fx-rate…",
+      "matters_when": "Northwind Pay service status or questions, microservice outages, technical decisions about specific services, code review or architecture discussions, cross-team coordination, finding service owners …"
+    },
+    {
+      "path": "personal/profile",
+      "holds": "Birthday: April 12. Timezone: Asia/Shanghai (UTC+8).",
+      "matters_when": "scheduling messages or events, calculating age, timezone-aware meeting times, birthday reminders, international communication, time conversions for calls or deadlines"
+    },
+    {
+      "path": "tech/hardware",
+      "holds": "Home office: standing desk, 32-inch 4K monitor. MacBook: M3 Max with 64GB RAM.",
+      "matters_when": "laptop upgrades, monitor recommendations, ergonomic setup advice, software performance discussions, desk accessories, workspace optimization, video conferencing setup, display resolution needs"
+    },
+    {
+      "path": "health/medical",
+      "holds": "Penicillin allergy; LASIK surgery performed in 2024, no longer wears glasses.",
+      "matters_when": "prescribing antibiotics, recommending medical treatments, eye care advice, suggesting glasses or contacts, allergic reaction symptoms, medication interactions, travel planning with medications"
+    },
+    {
+      "path": "health/routines",
+      "holds": "Daily 15-minute morning meditation practice using Waking Up app.",
+      "matters_when": "morning schedule, meditation or mindfulness recommendations, app subscriptions, mental health or stress management, travel plans affecting mornings, productivity routines, wellness advice"
+    },
+    {
+      "path": "family/parents",
+      "holds": "Parents live in Harbin, visit during Spring Festival. User wants Sunday evening call reminders.",
+      "matters_when": "scheduling calls or reminders, Spring Festival planning, travel plans during lunar new year, gifts for parents, video call setup, timezone-related tasks"
+    },
+    {
+      "path": "learning/reading",
+      "holds": "Reading \"The Pragmatic Programmer\"; goal to finish by end of September 2026.",
+      "matters_when": "book recommendations, reading time management, progress on current books, deadline approaching, book completion, study plans, learning goals, time-blocking for reading"
+    },
+    {
+      "path": "sam-project/testing",
+      "holds": "Discord server \"sam-lab\" for Sam testing.",
+      "matters_when": "setting up Sam tests, Discord invites or server management, troubleshooting Sam issues, coordinating with testers, accessing test results or logs"
+    },
+    {
+      "path": "family/extended",
+      "holds": "Extended network: 20 contacts including cousins, aunts, uncles, college roommates, former colleagues. Distributed across professions (architect, nurse, teacher…",
+      "matters_when": "Planning travel or visits, asking for professional advice, job referrals or career guidance, recommendations for services (legal, medical, culinary), finding accommodation abroad, connecting contacts…"
+    },
+    {
+      "path": "travel/preferences",
+      "holds": "Preferred airline: ANA with Star Alliance Gold status. Always wants aisle seat. Passport expires January 2027.",
+      "matters_when": "Flight booking, seat selection, airline choice recommendations, loyalty program benefits, passport renewal reminders, international travel eligibility, trip planning with expiration deadline"
+    },
+    {
+      "path": "tech/tools-evaluated",
+      "holds": "Recurring evaluation history: Nx, Deno, Pulumi, Temporal, Bazel, Turborepo, Kafka Streams, dbt, Earthly, Nomad—multiple trials across 2020-2025, all rejected.",
+      "matters_when": "recommending tools or frameworks, suggesting build systems or orchestration platforms, evaluating new technologies, migrating infrastructure or build setup"
+    },
+    {
+      "path": "leisure/music",
+      "holds": "Plays bass guitar in a weekend cover band.",
+      "matters_when": "scheduling weekend plans, equipment recommendations, gift ideas, music events, band practice coordination, audio gear purchases, live performance opportunities, song requests"
+    },
+    {
+      "path": "finance/goals",
+      "holds": "Saving for apartment down payment; target date end of 2027.",
+      "matters_when": "budget planning, investment decisions, major purchases, salary negotiations, bonus allocation, housing search timelines, mortgage pre-approval, financial advice, expense reduction, side income opport…"
+    },
+    {
+      "path": "sam-project/collaborators",
+      "holds": "Tom is a product designer collaborating on Sam project; prefers Figma links over screenshots for design review.",
+      "matters_when": "sharing Sam UI designs, requesting design feedback, sending Tom design files, discussing design tools, coordinating on Sam's interface"
+    },
+    {
+      "path": "sam-project/workflow",
+      "holds": "User wants weekly summaries of Sam-related work every Friday afternoon.",
+      "matters_when": "Friday afternoon scheduling, Sam project status updates, weekly summary generation, meeting preparation for Sam work, progress tracking on Sam project, email drafts about Sam work"
+    },
+    {
+      "path": "learning/blogging",
+      "holds": "Technical blog at offbeatengineer.dev, published monthly. Built with Astro, deployed on Cloudflare Pages.",
+      "matters_when": "Blog post writing, technical content planning, website maintenance, Astro framework help, Cloudflare configuration, publishing schedule, blog design updates, domain management, analytics or traffic q…"
+    },
+    {
+      "path": "finance/subscriptions",
+      "holds": "Subscription services with renewal dates: 1Password, Spotify, iCloud+, Notion, Fastmail, Strava, Kagi, Readwise, Setapp, Backblaze. Renewals monthly by: Januar…",
+      "matters_when": "budgeting, expense tracking, upcoming payments, subscription reviews, contract renewals, cost optimization, calendar planning, account management"
+    },
+    {
+      "path": "personal/car",
+      "holds": "Tesla Model 3; charges at home overnight.",
+      "matters_when": "trip planning and range estimates, charging infrastructure questions, EV maintenance and service, electricity costs, battery health concerns, road trip logistics, charging time calculations"
+    }
+  ],
+  "domains": [
+    {
+      "path": "personal",
+      "holds": "4 subjects: home location (Shanghai, Jing'an), food preferences (vegetarian, lactose-intolerant, oat-milk flat whites), profile (birthday April 12, Asia/Shangh…",
+      "matters_when": "restaurant or shop recommendations, commute or local travel, neighborhood amenities, delivery or service arrangements, local events, directions, weather, visiting recommendations, meal planning, groc…"
+    },
+    {
+      "path": "work",
+      "holds": "Staff engineer at Northwind Pay (fintech). 30 colleagues across 6 teams (ledger, risk, onboarding, payouts, fraud, data platform). Manager Priya, weekly 1:1 Tu…",
+      "matters_when": "scheduling meetings or 1:1s, team workflow or issue tracking, finding colleague or service owner, cross-team collaboration, meeting time preferences, Northwind Pay service questions, microservice out…"
+    },
+    {
+      "path": "family",
+      "holds": "Sister Mei in Vancouver; Partner Lin with shellfish allergy, birthday Sept 30, prefers loose-leaf tea; Parents in Harbin visit during Spring Festival; Extended…",
+      "matters_when": "Restaurant recommendations, meal planning, gift ideas, birthday planning, visiting relatives, travel to Canada or China, Spring Festival scheduling, calling family, professional advice or job referra…"
+    },
+    {
+      "path": "tech",
+      "holds": "Development preferences: TypeScript, Bun, Zed, dark mode, imperative commits with scope, GitHub: offbeatengineer. Hardware: M3 Max MacBook 64GB, 32\" 4K monitor…",
+      "matters_when": "Project setup or recommendations, code review, commit standards, package managers, editor suggestions, laptop or monitor upgrades, workspace optimization, build systems, infrastructure tools, framewo…"
+    },
+    {
+      "path": "sam-project",
+      "holds": "Architecture: LanceDB at ~/.sam/memory, GPUI desktop client (port 9223), pulse disabled, Claude Max plan. Testing: Discord \"sam-lab\" server. Collaborators: Tom…",
+      "matters_when": "Sam architecture or local setup, staging deployment, billing config, desktop performance, memory storage, GitHub workflows, Sam testing or Discord server, design review/Figma feedback, Friday afterno…"
+    },
+    {
+      "path": "health",
+      "holds": "Three subject areas: fitness (half marathon training, patellar tendinitis, impact restrictions), medical (penicillin allergy, post-LASIK 2024), routines (daily…",
+      "matters_when": "workout or exercise recommendations, running training, injury or pain management, medication or antibiotic suggestions, eye care or vision corrections, medical treatments, morning schedules, meditati…"
+    },
+    {
+      "path": "leisure",
+      "holds": "Reading log 2019-2024 with ratings for 10+ titles including Dune, Sapiens, Snow Crash, The Three-Body Problem, Thinking in Systems, Deep Work, Piranesi; plays …",
+      "matters_when": "book recommendations, whether user has read a title, reading preferences, favorite genres, re-reading patterns, book lists, reading habits, gift ideas, book club selections, scheduling weekend plans,…"
+    },
+    {
+      "path": "pets",
+      "holds": "One pet: Corgi named Mochi. Requires veterinary checkup every six months; last visit March 2026.",
+      "matters_when": "scheduling vet appointments, pet health questions, dog care advice, Mochi's symptoms or behavior, budgeting for pet expenses, reminders to book checkups"
+    },
+    {
+      "path": "learning",
+      "holds": "Japanese (JLPT N4 level), \"The Pragmatic Programmer\" (goal: end Sept 2026), technical blog at offbeatengineer.dev (monthly, Astro/Cloudflare Pages)",
+      "matters_when": "language learning resources, JLPT preparation, Japanese media or translation, study scheduling, travel to Japan, grammar/vocabulary questions, book recommendations, reading progress, approaching dead…"
+    },
+    {
+      "path": "travel",
+      "holds": "Extensive travel history across conferences, weddings, and work offsites in multiple continents; preferred airline ANA with Star Alliance Gold status, aisle se…",
+      "matters_when": "Flight booking and seat selection, airline recommendations, loyalty program benefits, passport renewal reminders, international travel eligibility, trip planning and destination suggestions, visa req…"
+    },
+    {
+      "path": "finance",
+      "holds": "Monthly dining budget ~2000 RMB; index fund holdings via Interactive Brokers; apartment down payment savings goal (target: end 2027); 10 active subscriptions (…",
+      "matters_when": "restaurant & meal recommendations, dining expense tracking, investment or portfolio advice, brokerage questions, budget planning, major purchase decisions, salary or bonus discussions, subscription r…"
+    }
+  ]
+}

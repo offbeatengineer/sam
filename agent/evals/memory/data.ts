@@ -83,6 +83,21 @@ export const RECALL: RecallCase[] = [
   { id: "R16", kind: "none", msg: "Write a haiku about autumn.", core: [], ok: ["M13", "M14"] },
 ];
 
+// Implicit cases whose core memory is likely to sit in a subject the message does not name
+// (a dessert request vs. a health note). Written before any index was generated; used by the
+// progressive-disclosure experiments (cards.ts, facts.ts), not by the regression harness.
+export const RECALL_CROSS_SUBJECT: RecallCase[] = [
+  { id: "X01", kind: "implicit", msg: "Can you recommend a dessert recipe for tonight?", core: ["M28"], ok: ["M03", "M27"] },
+  { id: "X02", kind: "implicit", msg: "Plan a hike for Saturday morning.", core: ["M12"], ok: ["M11", "M15", "M01", "M58", "M32", "M44"] },
+  { id: "X03", kind: "implicit", msg: "Draft an out-of-office message for the second half of February.", core: ["M18"], ok: ["M09", "M10", "M54"] },
+  { id: "X04", kind: "implicit", msg: "What's a good time to call Mei this week?", core: ["M02"], ok: ["M54", "M01", "M44", "M10"] },
+  { id: "X05", kind: "implicit", msg: "I need to sort out my documents before the trip. What should I check?", core: ["M47", "M18"], ok: ["M45", "M01"] },
+  { id: "X06", kind: "implicit", msg: "Is now a good time to buy some NVDA call options?", core: ["M20"], ok: ["M50"] },
+  { id: "X07", kind: "implicit", msg: "Can we do the design review over a call at 8:30 tomorrow morning?", core: ["M44"], ok: ["M51", "M52", "M54", "M10"] },
+  { id: "X08", kind: "implicit", msg: "Should I drive or take the train to Hangzhou this weekend?", core: ["M58"], ok: ["M01", "M15"] },
+  { id: "X09", kind: "implicit", msg: "My eyes have been really dry lately, probably from screens.", core: ["M59"], ok: ["M29", "M36"] },
+];
+
 export interface SaveCase { id: string; msg: string; save: boolean; note: string }
 export const SAVE: SaveCase[] = [
   { id: "S01", msg: "I just moved to Berlin last month, still getting used to the winters.", save: true, note: "life fact" },

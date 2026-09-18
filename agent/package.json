@@ -24,6 +24,10 @@
     "eval:memory:write": "bun --env-file=.env evals/memory/save_update.ts",
     "eval:memory:scale": "bun --env-file=.env evals/memory/scale.ts",
     "eval:memory:edge": "bun --env-file=.env evals/memory/edge.ts",
+    "eval:memory:cards": "bun --env-file=.env evals/memory/cards.ts",
+    "eval:memory:notes": "bun --env-file=.env evals/memory/notes.ts",
+    "eval:memory:grow": "bun --env-file=.env evals/memory/grow.ts",
+    "eval:memory:facts": "bun --env-file=.env evals/memory/facts.ts",
     "eval:memory:all": "bun --env-file=.env evals/memory/run.ts",
     "eval:memory:writer": "bun --env-file=.env evals/memory/writer.ts"
   },

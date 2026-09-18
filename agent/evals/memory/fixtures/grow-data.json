@@ -1,0 +1,914 @@
+{
+  "bridges": [
+    {
+      "id": "B00",
+      "theme": -1,
+      "themes": [
+        0,
+        2
+      ],
+      "title": "Using LanceDB's Node bindings under Bun",
+      "basis": "documentation and community reports as of 2026-09-18",
+      "body": "LanceDB's official client, @lancedb/lancedb (version 0.19.x as of 2026-08), ships prebuilt native bindings via napi-rs, and running it under Bun (tested with Bun 1.2.15) mostly works but has rough edges worth noting. Basic operations like db.createTable, table.add, and table.search execute fine under `bun run` and `bun test`, and vector search latency is comparable to Node 20 in informal benchmarks (roughly 8-12ms for a 10k-row table with 384-dim embeddings). The main caveat is that Bun's package installer sometimes skips optional native dependency resolution for platform-specific binaries (e.g., @lancedb/lancedb-darwin-arm64), producing an error like \"Cannot find native binding\" on first run; the fix is forcing a reinstall with `bun install --backend=copyfile` or falling back to `npm install` just for that package before switching back to `bun install` for everything else. Bun's SQLite-like FFI layer is unrelated and not used here since LanceDB relies on its own Rust core via napi, not Bun's native FFI. Streaming large Arrow record batches into LanceDB from Bun also works but memory usage climbs faster than under Node due to differences in Bun's garbage collection tuning for buffers, so batching writes in chunks of 5k rows or fewer is recommended for datasets over 1M rows.",
+      "tags": [
+        "lancedb",
+        "bun",
+        "vector-database",
+        "javascript-runtime"
+      ],
+      "text": "Using LanceDB's Node bindings under Bun (documentation and community reports as of 2026-09-18): LanceDB's official client, @lancedb/lancedb (version 0.19.x as of 2026-08), ships prebuilt native bindings via napi-rs, and running it under Bun (tested with Bun 1.2.15) mostly works but has rough edges worth noting. Basic operations like db.createTable, table.add, and table.search execute fine under `bun run` and `bun test`, and vector search latency is comparable to Node 20 in informal benchmarks (roughly 8-12ms for a 10k-row table with 384-dim embeddings). The main caveat is that Bun's package installer sometimes skips optional native dependency resolution for platform-specific binaries (e.g., @lancedb/lancedb-darwin-arm64), producing an error like \"Cannot find native binding\" on first run; the fix is forcing a reinstall with `bun install --backend=copyfile` or falling back to `npm install` just for that package before switching back to `bun install` for everything else. Bun's SQLite-like FFI layer is unrelated and not used here since LanceDB relies on its own Rust core via napi, not Bun's native FFI. Streaming large Arrow record batches into LanceDB from Bun also works but memory usage climbs faster than under Node due to differences in Bun's garbage collection tuning for buffers, so batching writes in chunks of 5k rows or fewer is recommended for datasets over 1M rows."
+    },
+    {
+      "id": "B01",
+      "theme": -1,
+      "themes": [
+        0,
+        12
+      ],
+      "title": "Self-hosting LanceDB on a Hetzner VPS",
+      "basis": "explained from general knowledge and LanceDB/Hetzner documentation as of 2026-09",
+      "body": "LanceDB, being an embedded, serverless vector database that stores its Lance-format tables directly on disk (or on object storage via S3/GCS URIs), runs well on a modest Hetzner Cloud instance without needing a separate database process. A common setup uses a Hetzner CPX21 (3 vCPU, 4GB RAM, ~40GB NVMe, roughly €5.83/month as of 2026-09) running Ubuntu 24.04 LTS, with LanceDB installed via pip install lancedb (currently around version 0.16.x) inside a Python 3.11 venv. Data is typically stored on the local NVMe under /var/lib/lancedb, formatted ext4, since Lance's columnar layout benefits from fast local IO for indexing (IVF_PQ or HNSW) on datasets in the low millions of vectors; beyond that, RAM becomes the limiting factor since LanceDB memory-maps files and benefits from OS page cache. Ubuntu 24.04's default kernel (6.8) and glibc handle the mmap-heavy workload fine, though swap should be disabled or minimized to avoid latency spikes during large index builds. For durability, nightly snapshots of the data directory to a Hetzner Storage Box (via rsync or restic) are recommended, since Lance itself has no built-in replication. Firewall rules (ufw) should restrict access to the API port if LanceDB is served behind a small FastAPI wrapper rather than exposed directly, since LanceDB has no native network auth layer.",
+      "tags": [
+        "lancedb",
+        "hetzner",
+        "ubuntu",
+        "self-hosting"
+      ],
+      "text": "Self-hosting LanceDB on a Hetzner VPS (explained from general knowledge and LanceDB/Hetzner documentation as of 2026-09): LanceDB, being an embedded, serverless vector database that stores its Lance-format tables directly on disk (or on object storage via S3/GCS URIs), runs well on a modest Hetzner Cloud instance without needing a separate database process. A common setup uses a Hetzner CPX21 (3 vCPU, 4GB RAM, ~40GB NVMe, roughly €5.83/month as of 2026-09) running Ubuntu 24.04 LTS, with LanceDB installed via pip install lancedb (currently around version 0.16.x) inside a Python 3.11 venv. Data is typically stored on the local NVMe under /var/lib/lancedb, formatted ext4, since Lance's columnar layout benefits from fast local IO for indexing (IVF_PQ or HNSW) on datasets in the low millions of vectors; beyond that, RAM becomes the limiting factor since LanceDB memory-maps files and benefits from OS page cache. Ubuntu 24.04's default kernel (6.8) and glibc handle the mmap-heavy workload fine, though swap should be disabled or minimized to avoid latency spikes during large index builds. For durability, nightly snapshots of the data directory to a Hetzner Storage Box (via rsync or restic) are recommended, since Lance itself has no built-in replication. Firewall rules (ufw) should restrict access to the API port if LanceDB is served behind a small FastAPI wrapper rather than exposed directly, since LanceDB has no native network auth layer."
+    },
+    {
+      "id": "B02",
+      "theme": -1,
+      "themes": [
+        0,
+        3
+      ],
+      "title": "Using LanceDB as memory store for Claude agents",
+      "basis": "explained from general knowledge and public documentation",
+      "body": "LanceDB, an embedded vector database built on the Lance columnar format, is a common backing store for retrieval-augmented memory in agents built with the Claude Agent SDK, since it runs in-process without a separate server, persists to local disk or S3, and supports hybrid vector plus full-text search via its Tantivy-based FTS index. A typical pattern as of 2026-09 is embedding conversation summaries or tool outputs with a small embedding model (OpenAI text-embedding-3-small or a local model via sentence-transformers), writing them into a LanceDB table with lancedb.connect(\"./data/lancedb\") and db.create_table(), then exposing a custom tool in the Claude Agent SDK that queries table.search(query_vector).limit(5) and feeds results back into the agent's context window before the next Claude API call. Caveats: LanceDB versions before 0.15 had inconsistent behavior with concurrent writes from multiple agent processes, so single-writer patterns or a lock file are recommended; also, the Claude API itself has no native vector search, so all retrieval logic, chunking, and re-ranking must be handled in the surrounding SDK code, not by the model. This combination is popular in local-first or privacy-sensitive agent deployments because no data leaves the machine except the prompt sent to the Claude API.",
+      "tags": [
+        "lancedb",
+        "claude-agent-sdk",
+        "vector-search",
+        "agent-memory"
+      ],
+      "text": "Using LanceDB as memory store for Claude agents (explained from general knowledge and public documentation): LanceDB, an embedded vector database built on the Lance columnar format, is a common backing store for retrieval-augmented memory in agents built with the Claude Agent SDK, since it runs in-process without a separate server, persists to local disk or S3, and supports hybrid vector plus full-text search via its Tantivy-based FTS index. A typical pattern as of 2026-09 is embedding conversation summaries or tool outputs with a small embedding model (OpenAI text-embedding-3-small or a local model via sentence-transformers), writing them into a LanceDB table with lancedb.connect(\"./data/lancedb\") and db.create_table(), then exposing a custom tool in the Claude Agent SDK that queries table.search(query_vector).limit(5) and feeds results back into the agent's context window before the next Claude API call. Caveats: LanceDB versions before 0.15 had inconsistent behavior with concurrent writes from multiple agent processes, so single-writer patterns or a lock file are recommended; also, the Claude API itself has no native vector search, so all retrieval logic, chunking, and re-ranking must be handled in the surrounding SDK code, not by the model. This combination is popular in local-first or privacy-sensitive agent deployments because no data leaves the machine except the prompt sent to the Claude API."
+    },
+    {
+      "id": "B03",
+      "theme": -1,
+      "themes": [
+        1,
+        4
+      ],
+      "title": "GPUI performance on Apple Silicon Macs",
+      "basis": "documentation and community benchmarks",
+      "body": "GPUI, the Rust GPU-accelerated UI framework built by Zed Industries for the Zed editor, is tuned specifically around Metal on macOS, which makes its performance characteristics closely tied to which Apple Silicon chip and display setup it runs on. As of 2026-08, GPUI renders through a Metal backend with a retained-mode scene graph, and Zed's own benchmarks report sub-2ms frame times for typical editor workloads on an M2 Pro MacBook Pro, dropping to around 4-6ms when driving an external 6K display like the Pro Display XDR at full resolution due to increased fill-rate demands. Community reports on the Zed Discord note that GPUI apps stay noticeably smoother on M-series MacBooks than on Intel Macs, since the framework has no dedicated OpenGL or software-rendering fallback path as of this date, meaning Intel Macs rely on an older, less-optimized Metal translation layer. Multi-monitor setups with mixed resolutions (e.g., a 14-inch MacBook Pro internal display plus an external 4K panel) can trigger occasional repaint artifacts, a known open issue (zed-industries/zed #14210) still unresolved as of 2026-08. Windows and Linux support exist via separate backends (DirectX 12 and Vulkan respectively) but are considered less mature than the macOS/Metal path.",
+      "tags": [
+        "gpui",
+        "rust",
+        "apple-silicon",
+        "macbook"
+      ],
+      "text": "GPUI performance on Apple Silicon Macs (documentation and community benchmarks): GPUI, the Rust GPU-accelerated UI framework built by Zed Industries for the Zed editor, is tuned specifically around Metal on macOS, which makes its performance characteristics closely tied to which Apple Silicon chip and display setup it runs on. As of 2026-08, GPUI renders through a Metal backend with a retained-mode scene graph, and Zed's own benchmarks report sub-2ms frame times for typical editor workloads on an M2 Pro MacBook Pro, dropping to around 4-6ms when driving an external 6K display like the Pro Display XDR at full resolution due to increased fill-rate demands. Community reports on the Zed Discord note that GPUI apps stay noticeably smoother on M-series MacBooks than on Intel Macs, since the framework has no dedicated OpenGL or software-rendering fallback path as of this date, meaning Intel Macs rely on an older, less-optimized Metal translation layer. Multi-monitor setups with mixed resolutions (e.g., a 14-inch MacBook Pro internal display plus an external 4K panel) can trigger occasional repaint artifacts, a known open issue (zed-industries/zed #14210) still unresolved as of 2026-08. Windows and Linux support exist via separate backends (DirectX 12 and Vulkan respectively) but are considered less mature than the macOS/Metal path."
+    },
+    {
+      "id": "B04",
+      "theme": -1,
+      "themes": [
+        1,
+        2
+      ],
+      "title": "Using Bun to build GPUI plugin tooling",
+      "basis": "explained from general knowledge",
+      "body": "GPUI, the Rust UI framework built by the Zed team for the Zed editor, exposes no native JavaScript runtime, but several Zed-adjacent tools use Bun 1.1.x (as of 2026-03) as the JS runtime for build-time tasks that feed into GPUI apps, such as generating icon atlases, compiling theme JSON into Rust structs, or running codegen scripts against GPUI's component macros before `cargo build` runs. The appeal is Bun's fast startup (tens of milliseconds versus Node's cold start) and its built-in TypeScript execution without a separate `tsc` step, which matters for short-lived build scripts invoked frequently during development, for example `bun run scripts/gen-theme.ts` reading a `theme.json` and emitting `theme.rs`. Bun's native `bun:sqlite` module has also been used in a few community GPUI example repos to prototype data layers before porting logic to Rust with `rusqlite`. Caveats: GPUI itself remains pure Rust at runtime, there is no FFI bridge shipping JS into the GPUI process, Bun is strictly a developer-tooling dependency; also Bun's Windows support, while much improved, still lags macOS and Linux, which matters if a GPUI project's build pipeline needs to run cross-platform CI. None of this is officially documented by the Zed team as of 2026-09, it reflects patterns seen in open-source GPUI example repositories.",
+      "tags": [
+        "gpui",
+        "bun",
+        "rust",
+        "javascript"
+      ],
+      "text": "Using Bun to build GPUI plugin tooling (explained from general knowledge): GPUI, the Rust UI framework built by the Zed team for the Zed editor, exposes no native JavaScript runtime, but several Zed-adjacent tools use Bun 1.1.x (as of 2026-03) as the JS runtime for build-time tasks that feed into GPUI apps, such as generating icon atlases, compiling theme JSON into Rust structs, or running codegen scripts against GPUI's component macros before `cargo build` runs. The appeal is Bun's fast startup (tens of milliseconds versus Node's cold start) and its built-in TypeScript execution without a separate `tsc` step, which matters for short-lived build scripts invoked frequently during development, for example `bun run scripts/gen-theme.ts` reading a `theme.json` and emitting `theme.rs`. Bun's native `bun:sqlite` module has also been used in a few community GPUI example repos to prototype data layers before porting logic to Rust with `rusqlite`. Caveats: GPUI itself remains pure Rust at runtime, there is no FFI bridge shipping JS into the GPUI process, Bun is strictly a developer-tooling dependency; also Bun's Windows support, while much improved, still lags macOS and Linux, which matters if a GPUI project's build pipeline needs to run cross-platform CI. None of this is officially documented by the Zed team as of 2026-09, it reflects patterns seen in open-source GPUI example repositories."
+    },
+    {
+      "id": "B05",
+      "theme": -1,
+      "themes": [
+        3,
+        11
+      ],
+      "title": "Streaming Claude API responses into an Astro blog",
+      "basis": "explained from general knowledge and current documentation as of 2026-09",
+      "body": "Building a live \"ask this post a question\" widget on an Astro blog hosted on Cloudflare Pages generally means adding a Cloudflare Pages Function (an /functions/api/chat.ts file) rather than a normal Astro API route, since Astro's server endpoints don't run under the Pages Functions runtime unless the project uses the Cloudflare adapter (@astrojs/cloudflare, currently v11.x as of 2026-09) with output set to \"server\" or \"hybrid\". That function calls the Claude API directly via fetch to https://api.anthropic.com/v1/messages with model claude-opus-4-1-20250805 or a cheaper claude-haiku-4-5 for cost control, streaming with stream: true and forwarding the SSE chunks to the browser using a ReadableStream so the widget can render tokens incrementally. The Anthropic API key is stored as a Cloudflare secret (wrangler pages secret put ANTHROPIC_API_KEY) rather than a public env var, since anything prefixed PUBLIC_ in Astro gets bundled client-side. A caveat worth remembering: Cloudflare Pages Functions have a CPU time limit (currently 30 seconds on the free tier, longer on paid Workers plans as of 2026-09), which is usually fine for chat completions but can truncate very long generations. Using the Claude Agent SDK here is mostly unnecessary overkill since a single-turn Q&A widget needs only the raw Messages API, not agentic tool-use orchestration.",
+      "tags": [
+        "claude-api",
+        "astro",
+        "cloudflare-pages",
+        "agent-sdk"
+      ],
+      "text": "Streaming Claude API responses into an Astro blog (explained from general knowledge and current documentation as of 2026-09): Building a live \"ask this post a question\" widget on an Astro blog hosted on Cloudflare Pages generally means adding a Cloudflare Pages Function (an /functions/api/chat.ts file) rather than a normal Astro API route, since Astro's server endpoints don't run under the Pages Functions runtime unless the project uses the Cloudflare adapter (@astrojs/cloudflare, currently v11.x as of 2026-09) with output set to \"server\" or \"hybrid\". That function calls the Claude API directly via fetch to https://api.anthropic.com/v1/messages with model claude-opus-4-1-20250805 or a cheaper claude-haiku-4-5 for cost control, streaming with stream: true and forwarding the SSE chunks to the browser using a ReadableStream so the widget can render tokens incrementally. The Anthropic API key is stored as a Cloudflare secret (wrangler pages secret put ANTHROPIC_API_KEY) rather than a public env var, since anything prefixed PUBLIC_ in Astro gets bundled client-side. A caveat worth remembering: Cloudflare Pages Functions have a CPU time limit (currently 30 seconds on the free tier, longer on paid Workers plans as of 2026-09), which is usually fine for chat completions but can truncate very long generations. Using the Claude Agent SDK here is mostly unnecessary overkill since a single-turn Q&A widget needs only the raw Messages API, not agentic tool-use orchestration."
+    },
+    {
+      "id": "B06",
+      "theme": -1,
+      "themes": [
+        3,
+        12
+      ],
+      "title": "Self-hosting a Claude Agent SDK worker on Hetzner",
+      "basis": "explained from general knowledge, cross-referenced with Anthropic API docs and common self-hosting practices as of 2026-09",
+      "body": "A common deployment pattern for a Claude Agent SDK service involves provisioning a Hetzner CPX21 or CPX31 instance running Ubuntu 24.04 LTS, since the SDK's Node.js runtime (Node 20+ recommended as of 2026-09) and Python variant (3.10+) both install cleanly via apt or nvm without special kernel requirements. The typical setup installs Node with nvm (curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash), then npm install @anthropic-ai/claude-agent-sdk, storing the ANTHROPIC_API_KEY in a systemd service EnvironmentFile rather than a plain .env to avoid leaking it in process listings. A CPX21 (3 vCPU, 4GB RAM, ~€8.09/month as of 2026-09) comfortably runs a long-lived agent loop plus a lightweight reverse proxy (Caddy or nginx) for webhook callbacks, though memory pressure appears if multiple concurrent Claude API sessions with large context windows run simultaneously, since each session buffers conversation state in-process. UFW should restrict inbound traffic to SSH and the webhook port only, since the SDK itself makes outbound HTTPS calls to api.anthropic.com and needs no inbound exposure. A known gotcha: Ubuntu 24.04's unattended-upgrades can silently restart the Node process on kernel updates, so wrapping the agent in a systemd unit with Restart=always avoids downtime from that specific behavior.",
+      "tags": [
+        "claude-agent-sdk",
+        "hetzner",
+        "ubuntu-24-04",
+        "self-hosting"
+      ],
+      "text": "Self-hosting a Claude Agent SDK worker on Hetzner (explained from general knowledge, cross-referenced with Anthropic API docs and common self-hosting practices as of 2026-09): A common deployment pattern for a Claude Agent SDK service involves provisioning a Hetzner CPX21 or CPX31 instance running Ubuntu 24.04 LTS, since the SDK's Node.js runtime (Node 20+ recommended as of 2026-09) and Python variant (3.10+) both install cleanly via apt or nvm without special kernel requirements. The typical setup installs Node with nvm (curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash), then npm install @anthropic-ai/claude-agent-sdk, storing the ANTHROPIC_API_KEY in a systemd service EnvironmentFile rather than a plain .env to avoid leaking it in process listings. A CPX21 (3 vCPU, 4GB RAM, ~€8.09/month as of 2026-09) comfortably runs a long-lived agent loop plus a lightweight reverse proxy (Caddy or nginx) for webhook callbacks, though memory pressure appears if multiple concurrent Claude API sessions with large context windows run simultaneously, since each session buffers conversation state in-process. UFW should restrict inbound traffic to SSH and the webhook port only, since the SDK itself makes outbound HTTPS calls to api.anthropic.com and needs no inbound exposure. A known gotcha: Ubuntu 24.04's unattended-upgrades can silently restart the Node process on kernel updates, so wrapping the agent in a systemd unit with Restart=always avoids downtime from that specific behavior."
+    },
+    {
+      "id": "B07",
+      "theme": -1,
+      "themes": [
+        11,
+        12
+      ],
+      "title": "Astro blog deployment: Cloudflare Pages vs self-hosted Hetzner",
+      "basis": "explained from general knowledge and current hosting documentation",
+      "body": "Deploying an Astro-based technical blog can go either to Cloudflare Pages or to a self-managed Hetzner VPS running Ubuntu 24.04, and the tradeoffs are fairly stable as of 2026-09. Cloudflare Pages offers free static hosting with automatic builds via GitHub integration, global CDN distribution, and zero server maintenance, using astro build with the @astrojs/cloudflare adapter if SSR features like on-demand rendering or Cloudflare Functions are needed; the free tier allows 500 builds per month and unlimited bandwidth. A Hetzner CX22 instance (2 vCPU, 4GB RAM, 40GB disk) costs about 4.59 euros per month and gives full root control, letting the blog run behind Nginx or Caddy with a static build copied via rsync or a small CI/CD pipeline using GitHub Actions and SSH deploy keys, plus Certbot for TLS on Ubuntu 24.04 LTS, which is supported until April 2029. The Hetzner route requires handling OS updates, firewall rules via ufw, and uptime monitoring manually, while Cloudflare Pages abstracts all of that away but ties deployment to Cloudflare's build environment and limits custom server-side logic outside Workers. For a purely static Astro blog with no backend needs, Cloudflare Pages is generally the lower-maintenance choice; Hetzner makes more sense if the same server will also host other services like a database or API alongside the blog.",
+      "tags": [
+        "astro",
+        "cloudflare-pages",
+        "hetzner",
+        "ubuntu"
+      ],
+      "text": "Astro blog deployment: Cloudflare Pages vs self-hosted Hetzner (explained from general knowledge and current hosting documentation): Deploying an Astro-based technical blog can go either to Cloudflare Pages or to a self-managed Hetzner VPS running Ubuntu 24.04, and the tradeoffs are fairly stable as of 2026-09. Cloudflare Pages offers free static hosting with automatic builds via GitHub integration, global CDN distribution, and zero server maintenance, using astro build with the @astrojs/cloudflare adapter if SSR features like on-demand rendering or Cloudflare Functions are needed; the free tier allows 500 builds per month and unlimited bandwidth. A Hetzner CX22 instance (2 vCPU, 4GB RAM, 40GB disk) costs about 4.59 euros per month and gives full root control, letting the blog run behind Nginx or Caddy with a static build copied via rsync or a small CI/CD pipeline using GitHub Actions and SSH deploy keys, plus Certbot for TLS on Ubuntu 24.04 LTS, which is supported until April 2029. The Hetzner route requires handling OS updates, firewall rules via ufw, and uptime monitoring manually, while Cloudflare Pages abstracts all of that away but ties deployment to Cloudflare's build environment and limits custom server-side logic outside Workers. For a purely static Astro blog with no backend needs, Cloudflare Pages is generally the lower-maintenance choice; Hetzner makes more sense if the same server will also host other services like a database or API alongside the blog."
+    },
+    {
+      "id": "B08",
+      "theme": -1,
+      "themes": [
+        2,
+        12
+      ],
+      "title": "Deploying Bun apps on Hetzner Ubuntu 24.04",
+      "basis": "explained from general knowledge, reflecting common deployment practices and documentation for Bun and systemd as of 2026-09",
+      "body": "A common pattern for running a Bun-based Node.js alternative app on a Hetzner Cloud VPS (CX22 or CPX11 tier, roughly €4-5/month) provisioned with Ubuntu 24.04 LTS involves installing Bun via the official install script (curl -fsSL https://bun.sh/install | bash), which as of 2026-09 defaults to Bun 1.2.x, then adding ~/.bun/bin to PATH in .bashrc or .profile since the installer does not modify system-wide PATH automatically. Rather than running bun directly in a terminal session, the recommended approach is a systemd service unit (e.g. /etc/systemd/system/myapp.service) with ExecStart=/root/.bun/bin/bun run /opt/myapp/index.ts, Restart=always, and an explicit Environment=PATH= line, because systemd's minimal environment often cannot resolve the bun binary otherwise, causing \"bun: command not found\" failures. Ubuntu 24.04's default firewall (ufw) needs explicit allow rules for the app's port (commonly 3000) before Hetzner's separate cloud firewall is configured, and both layers must permit traffic or connections silently time out. Caveat: Bun's native TCP/HTTP performance advantages are most noticeable under load testing (autocannon) rather than casual browsing, and memory usage on a 2GB instance should be monitored since Bun's cache can grow unexpectedly during long-running processes.",
+      "tags": [
+        "bun",
+        "hetzner",
+        "ubuntu",
+        "deployment"
+      ],
+      "text": "Deploying Bun apps on Hetzner Ubuntu 24.04 (explained from general knowledge, reflecting common deployment practices and documentation for Bun and systemd as of 2026-09): A common pattern for running a Bun-based Node.js alternative app on a Hetzner Cloud VPS (CX22 or CPX11 tier, roughly €4-5/month) provisioned with Ubuntu 24.04 LTS involves installing Bun via the official install script (curl -fsSL https://bun.sh/install | bash), which as of 2026-09 defaults to Bun 1.2.x, then adding ~/.bun/bin to PATH in .bashrc or .profile since the installer does not modify system-wide PATH automatically. Rather than running bun directly in a terminal session, the recommended approach is a systemd service unit (e.g. /etc/systemd/system/myapp.service) with ExecStart=/root/.bun/bin/bun run /opt/myapp/index.ts, Restart=always, and an explicit Environment=PATH= line, because systemd's minimal environment often cannot resolve the bun binary otherwise, causing \"bun: command not found\" failures. Ubuntu 24.04's default firewall (ufw) needs explicit allow rules for the app's port (commonly 3000) before Hetzner's separate cloud firewall is configured, and both layers must permit traffic or connections silently time out. Caveat: Bun's native TCP/HTTP performance advantages are most noticeable under load testing (autocannon) rather than casual browsing, and memory usage on a 2GB instance should be monitored since Bun's cache can grow unexpectedly during long-running processes."
+    },
+    {
+      "id": "B09",
+      "theme": -1,
+      "themes": [
+        5,
+        14
+      ],
+      "title": "Vegetarian hot pot dining in winter Hokkaido",
+      "basis": "explained from general knowledge, cross-referenced with restaurant listings as of 2026-08",
+      "body": "Finding vegetarian-friendly hot pot or spicy Sichuan-style dining during a two-week winter Hokkaido trip is workable but requires some planning, since most Hokkaido hot pot shops center on seafood and pork broths like Sapporo's miso-based jingisukan or Hakodate's kani (crab) nabe. In Sapporo's Susukino district, a restaurant called Chili House (as of 2026-08 operating near Minami 6 Jo) serves a mapo tofu and mala hot pot with a vegetable-only broth option, using doubanjiang and Sichuan peppercorn imported from Chengdu suppliers, priced around 2,800 yen per person for the all-you-can-eat course. For self-cooking during the trip, dried Sichuan peppercorns, fermented broad bean paste, and chili oil can be packed from home or bought at Nijo Market's spice stalls, since authentic mala seasoning is hard to find in smaller towns like Furano or Biei. A practical approach is to cook a simplified vegetarian mapo tofu or dry-fried green beans in the kitchen of a rental condo in Niseko or Otaru, using local tofu and Hokkaido-grown potatoes as substitutes for harder-to-source vegetables, since fresh produce options narrow considerably in rural areas during the January-to-February cold season. Carrying a small jar of homemade chili oil also helps offset the blandness of typical hotel breakfast offerings.",
+      "tags": [
+        "hokkaido",
+        "sichuan-cooking",
+        "vegetarian",
+        "travel-food"
+      ],
+      "text": "Vegetarian hot pot dining in winter Hokkaido (explained from general knowledge, cross-referenced with restaurant listings as of 2026-08): Finding vegetarian-friendly hot pot or spicy Sichuan-style dining during a two-week winter Hokkaido trip is workable but requires some planning, since most Hokkaido hot pot shops center on seafood and pork broths like Sapporo's miso-based jingisukan or Hakodate's kani (crab) nabe. In Sapporo's Susukino district, a restaurant called Chili House (as of 2026-08 operating near Minami 6 Jo) serves a mapo tofu and mala hot pot with a vegetable-only broth option, using doubanjiang and Sichuan peppercorn imported from Chengdu suppliers, priced around 2,800 yen per person for the all-you-can-eat course. For self-cooking during the trip, dried Sichuan peppercorns, fermented broad bean paste, and chili oil can be packed from home or bought at Nijo Market's spice stalls, since authentic mala seasoning is hard to find in smaller towns like Furano or Biei. A practical approach is to cook a simplified vegetarian mapo tofu or dry-fried green beans in the kitchen of a rental condo in Niseko or Otaru, using local tofu and Hokkaido-grown potatoes as substitutes for harder-to-source vegetables, since fresh produce options narrow considerably in rural areas during the January-to-February cold season. Carrying a small jar of homemade chili oil also helps offset the blandness of typical hotel breakfast offerings."
+    },
+    {
+      "id": "B10",
+      "theme": -1,
+      "themes": [
+        5,
+        9
+      ],
+      "title": "Using JLPT study for Hokkaido trip prep",
+      "basis": "explained from general knowledge",
+      "body": "Preparing for the JLPT N4/N3 range overlaps well with practical needs for a two-week Hokkaido winter trip, since travel-relevant kanji and vocabulary (雪, 除雪, 凍結, 温泉, 除雪車, 運休, 遅延) show up in both the Shinkansen/JR Hokkaido announcement style and in N4-N3 reading passages about weather and transportation. As of 2026-09, JR Hokkaido's winter timetable (roughly late November through March) frequently uses terms like 運休 (service suspension) and 遅延 (delay) on station boards and the JR East/Hokkaido app, which are also common in JLPT listening sections, so drilling those words serves double duty. Genki I/II and the Try! N4 series cover basic direction and shopping vocabulary useful for onsen towns like Noboribetsu and Jozankei, while Shin Kanzen Master N3 vocabulary lists include seasonal and disaster-related terms (大雪, 吹雪, 通行止め) relevant to a Sapporo-Furano-Asahikawa winter itinerary where snowstorms can close roads with little notice. A practical caveat: JLPT textbook Japanese is more formal than the casual dialect (Hokkaido-ben has mild differences, e.g., なんもなんも for \"no problem\") actually heard from locals, so relying solely on textbook phrasing may cause minor comprehension gaps when asking shop staff informal questions during the trip.",
+      "tags": [
+        "hokkaido",
+        "jlpt",
+        "japanese-study",
+        "travel-planning"
+      ],
+      "text": "Using JLPT study for Hokkaido trip prep (explained from general knowledge): Preparing for the JLPT N4/N3 range overlaps well with practical needs for a two-week Hokkaido winter trip, since travel-relevant kanji and vocabulary (雪, 除雪, 凍結, 温泉, 除雪車, 運休, 遅延) show up in both the Shinkansen/JR Hokkaido announcement style and in N4-N3 reading passages about weather and transportation. As of 2026-09, JR Hokkaido's winter timetable (roughly late November through March) frequently uses terms like 運休 (service suspension) and 遅延 (delay) on station boards and the JR East/Hokkaido app, which are also common in JLPT listening sections, so drilling those words serves double duty. Genki I/II and the Try! N4 series cover basic direction and shopping vocabulary useful for onsen towns like Noboribetsu and Jozankei, while Shin Kanzen Master N3 vocabulary lists include seasonal and disaster-related terms (大雪, 吹雪, 通行止め) relevant to a Sapporo-Furano-Asahikawa winter itinerary where snowstorms can close roads with little notice. A practical caveat: JLPT textbook Japanese is more formal than the casual dialect (Hokkaido-ben has mild differences, e.g., なんもなんも for \"no problem\") actually heard from locals, so relying solely on textbook phrasing may cause minor comprehension gaps when asking shop staff informal questions during the trip."
+    },
+    {
+      "id": "B11",
+      "theme": -1,
+      "themes": [
+        5,
+        6
+      ],
+      "title": "Cold-weather running risks while traveling in Hokkaido",
+      "basis": "explained from general knowledge",
+      "body": "Maintaining half-marathon training during a two-week winter trip to Hokkaido carries specific injury risks tied to the region's climate and terrain, as of 2026-09. Sapporo and areas like Niseko and Furano typically see daytime highs of -3 to 2°C in January and February, with packed snow and black ice on sidewalks common even on cleared paths; this raises the risk of slips causing ankle sprains, and cold muscles that aren't warmed up properly (10-15 minutes of dynamic drills recommended) are more prone to strains, particularly in the calves and Achilles tendon. Treadmill access at hotel gyms in cities like Sapporo and Asahikawa is usually reliable, but rural ryokan-style lodging in places like Biei or Shiretoko often lacks any indoor cardio equipment, forcing outdoor runs on uneven, icy roads. Runners nursing existing issues such as IT band syndrome or plantar fasciitis are generally advised to shorten stride length and reduce pace by 30-45 seconds per kilometer on snow-packed surfaces to lower impact loading, and to carry traction devices like Yaktrax since studio rentals are rare outside major cities. Missing a long run or two mid-trip due to weather is considered low-risk for a half-marathon block scheduled 4-6 weeks post-trip, since aerobic base holds reasonably well over a short taper-like gap.",
+      "tags": [
+        "hokkaido",
+        "running-injuries",
+        "half-marathon",
+        "travel-training"
+      ],
+      "text": "Cold-weather running risks while traveling in Hokkaido (explained from general knowledge): Maintaining half-marathon training during a two-week winter trip to Hokkaido carries specific injury risks tied to the region's climate and terrain, as of 2026-09. Sapporo and areas like Niseko and Furano typically see daytime highs of -3 to 2°C in January and February, with packed snow and black ice on sidewalks common even on cleared paths; this raises the risk of slips causing ankle sprains, and cold muscles that aren't warmed up properly (10-15 minutes of dynamic drills recommended) are more prone to strains, particularly in the calves and Achilles tendon. Treadmill access at hotel gyms in cities like Sapporo and Asahikawa is usually reliable, but rural ryokan-style lodging in places like Biei or Shiretoko often lacks any indoor cardio equipment, forcing outdoor runs on uneven, icy roads. Runners nursing existing issues such as IT band syndrome or plantar fasciitis are generally advised to shorten stride length and reduce pace by 30-45 seconds per kilometer on snow-packed surfaces to lower impact loading, and to carry traction devices like Yaktrax since studio rentals are rare outside major cities. Missing a long run or two mid-trip due to weather is considered low-risk for a half-marathon block scheduled 4-6 weeks post-trip, since aerobic base holds reasonably well over a short taper-like gap."
+    },
+    {
+      "id": "B12",
+      "theme": -1,
+      "themes": [
+        5,
+        4
+      ],
+      "title": "Apple Watch cold-weather performance in Hokkaido winter",
+      "basis": "explained from general knowledge",
+      "body": "Apple states Apple Watch models (Series 6 through Series 10, Ultra 2, and SE 2) are rated for operation between -10°C and 45°C, and Hokkaido winter conditions during a typical January or February trip regularly fall below that, with places like Asahikawa and Furano often seeing -15°C to -20°C, especially in early morning outdoor activities like skiing at Niseko or Furano. Below the rated range, the watch can shut down to protect the battery, and lithium-ion battery capacity temporarily drops in cold, so a full charge before heading out that reads 100% might show far less remaining life after an hour outdoors, then recover once warmed against skin or in a jacket pocket. Apple's own support documentation (as of 2026-06) recommends avoiding prolonged exposure to temperatures outside the operating range and suggests keeping the watch under clothing or inside a glove when not actively checking it. For ski trips, wearing it under a jacket sleeve rather than exposed, and warming it in a pocket during lift rides, generally keeps it functional; GPS tracking and Apple Pay for lift passes have been reported to work fine under these precautions, though touchscreen responsiveness can lag noticeably in extreme cold until the watch warms back up.",
+      "tags": [
+        "hokkaido",
+        "apple-watch",
+        "travel",
+        "cold-weather"
+      ],
+      "text": "Apple Watch cold-weather performance in Hokkaido winter (explained from general knowledge): Apple states Apple Watch models (Series 6 through Series 10, Ultra 2, and SE 2) are rated for operation between -10°C and 45°C, and Hokkaido winter conditions during a typical January or February trip regularly fall below that, with places like Asahikawa and Furano often seeing -15°C to -20°C, especially in early morning outdoor activities like skiing at Niseko or Furano. Below the rated range, the watch can shut down to protect the battery, and lithium-ion battery capacity temporarily drops in cold, so a full charge before heading out that reads 100% might show far less remaining life after an hour outdoors, then recover once warmed against skin or in a jacket pocket. Apple's own support documentation (as of 2026-06) recommends avoiding prolonged exposure to temperatures outside the operating range and suggests keeping the watch under clothing or inside a glove when not actively checking it. For ski trips, wearing it under a jacket sleeve rather than exposed, and warming it in a pocket during lift rides, generally keeps it functional; GPS tracking and Apple Pay for lift passes have been reported to work fine under these precautions, though touchscreen responsiveness can lag noticeably in extreme cold until the watch warms back up."
+    },
+    {
+      "id": "B13",
+      "theme": -1,
+      "themes": [
+        6,
+        4
+      ],
+      "title": "Apple Watch metrics for injury-aware half-marathon training",
+      "basis": "explained from general knowledge",
+      "body": "Apple Watch Series 10 and Ultra 2 (watchOS 11, as of 2026-09) provide Running Power, Vertical Oscillation, Ground Contact Time, and Running Stride Length via the Workout app or third-party apps like WorkOutDoors ($9.99) or Runna, and these metrics are commonly used by runners rebuilding mileage after injuries such as shin splints, IT band syndrome, or plantar fasciitis. A sustained rise in ground contact time (often above 300ms) or a drop in cadence below roughly 160 spm at easy pace can signal fatigue-related form breakdown that precedes overuse injury, so many training plans flag these as early warning signs rather than waiting for pain. Training Load and Recovery Time estimates, introduced in watchOS 10 and refined through 2026, combine heart rate variability and daily strain to suggest whether a run should be easy, moderate, or skipped, which is particularly useful in the 10-to-12-week buildup to a half marathon where cumulative fatigue is the main injury driver. Caveats: optical HR accuracy drops during high cadence sprints or in cold weather, GPS pace can drift under tree cover or in urban canyons, and none of these metrics diagnose injuries directly, they only flag deviations worth cross-checking against actual soreness, sleep quality, and a physical therapist's assessment if pain persists beyond 48 hours.",
+      "tags": [
+        "running",
+        "apple-watch",
+        "injury-prevention",
+        "half-marathon"
+      ],
+      "text": "Apple Watch metrics for injury-aware half-marathon training (explained from general knowledge): Apple Watch Series 10 and Ultra 2 (watchOS 11, as of 2026-09) provide Running Power, Vertical Oscillation, Ground Contact Time, and Running Stride Length via the Workout app or third-party apps like WorkOutDoors ($9.99) or Runna, and these metrics are commonly used by runners rebuilding mileage after injuries such as shin splints, IT band syndrome, or plantar fasciitis. A sustained rise in ground contact time (often above 300ms) or a drop in cadence below roughly 160 spm at easy pace can signal fatigue-related form breakdown that precedes overuse injury, so many training plans flag these as early warning signs rather than waiting for pain. Training Load and Recovery Time estimates, introduced in watchOS 10 and refined through 2026, combine heart rate variability and daily strain to suggest whether a run should be easy, moderate, or skipped, which is particularly useful in the 10-to-12-week buildup to a half marathon where cumulative fatigue is the main injury driver. Caveats: optical HR accuracy drops during high cadence sprints or in cold weather, GPS pace can drift under tree cover or in urban canyons, and none of these metrics diagnose injuries directly, they only flag deviations worth cross-checking against actual soreness, sleep quality, and a physical therapist's assessment if pain persists beyond 48 hours."
+    },
+    {
+      "id": "B14",
+      "theme": -1,
+      "themes": [
+        6,
+        10
+      ],
+      "title": "Caffeine timing and running performance/injury risk",
+      "basis": "explained from general knowledge",
+      "body": "Research on caffeine and endurance performance generally finds a dose of about 3 to 6 mg per kg of body weight, taken 30 to 60 minutes before a run, improves perceived effort and time-to-exhaustion, with a double espresso (roughly 125-150 mg caffeine per shot pair, varying by bean and extraction) landing near the low end of that range for a 70 kg runner. The caveat for half-marathon training blocks is that caffeine is a mild diuretic and can modestly increase gut motility, which some runners report as a contributor to mid-run GI distress or urgency, especially on long runs over 90 minutes or in warm weather; this effect appears to diminish with habitual daily intake, per most reviewed studies as of 2026-06. There's also a fatigue-masking concern: caffeine can blunt perceived exertion enough that runners with early-stage tendon or joint irritation (common in marathon build-ups, e.g., Achilles or patellar tendinopathy) may push through warning signs they'd otherwise heed, so coaches often suggest treating a strong home espresso as pre-workout fuel only on easy or moderate days, not on days testing a niggling injury. No controlled trials directly link espresso consumption to injury rates; the tendon-masking point is inference from general sports-medicine literature, not a specific study.",
+      "tags": [
+        "running",
+        "half-marathon",
+        "espresso",
+        "injury-prevention"
+      ],
+      "text": "Caffeine timing and running performance/injury risk (explained from general knowledge): Research on caffeine and endurance performance generally finds a dose of about 3 to 6 mg per kg of body weight, taken 30 to 60 minutes before a run, improves perceived effort and time-to-exhaustion, with a double espresso (roughly 125-150 mg caffeine per shot pair, varying by bean and extraction) landing near the low end of that range for a 70 kg runner. The caveat for half-marathon training blocks is that caffeine is a mild diuretic and can modestly increase gut motility, which some runners report as a contributor to mid-run GI distress or urgency, especially on long runs over 90 minutes or in warm weather; this effect appears to diminish with habitual daily intake, per most reviewed studies as of 2026-06. There's also a fatigue-masking concern: caffeine can blunt perceived exertion enough that runners with early-stage tendon or joint irritation (common in marathon build-ups, e.g., Achilles or patellar tendinopathy) may push through warning signs they'd otherwise heed, so coaches often suggest treating a strong home espresso as pre-workout fuel only on easy or moderate days, not on days testing a niggling injury. No controlled trials directly link espresso consumption to injury rates; the tendon-masking point is inference from general sports-medicine literature, not a specific study."
+    },
+    {
+      "id": "B15",
+      "theme": -1,
+      "themes": [
+        6,
+        8
+      ],
+      "title": "Running with a dog: joint safety for corgis",
+      "basis": "explained from general knowledge",
+      "body": "Corgis are chondrodystrophic, meaning their short legs and long backs come from a skeletal dwarfism that predisposes them to intervertebral disc disease (IVDD) and early joint wear, so using one as a regular training partner for half-marathon mileage carries real risk even though the breed is energetic and eager to keep pace. Veterinary guidance generally caps sustained running for adult corgis at 20 to 30 minutes per session on soft surfaces like grass or dirt, avoiding pavement and repetitive hill work that load the spine and hips; distances much beyond 3 to 4 miles are typically discouraged, especially at the faster tempo or interval paces common in half-marathon plans (often 8:30-10:00/mile). Warning signs to watch during or after runs include reluctance to jump, yelping, hunched posture, or dragging hind paws, any of which warrant stopping activity and a vet visit, since untreated IVDD can progress to partial paralysis. Puppies under 12-18 months should avoid structured running entirely while growth plates close. As of 2026-03, most sports-medicine vets recommend reserving the dog for short recovery-day jogs or walks and doing long runs, tempo, and speed work solo or with a human partner instead.",
+      "tags": [
+        "running",
+        "corgi",
+        "dog-health",
+        "training"
+      ],
+      "text": "Running with a dog: joint safety for corgis (explained from general knowledge): Corgis are chondrodystrophic, meaning their short legs and long backs come from a skeletal dwarfism that predisposes them to intervertebral disc disease (IVDD) and early joint wear, so using one as a regular training partner for half-marathon mileage carries real risk even though the breed is energetic and eager to keep pace. Veterinary guidance generally caps sustained running for adult corgis at 20 to 30 minutes per session on soft surfaces like grass or dirt, avoiding pavement and repetitive hill work that load the spine and hips; distances much beyond 3 to 4 miles are typically discouraged, especially at the faster tempo or interval paces common in half-marathon plans (often 8:30-10:00/mile). Warning signs to watch during or after runs include reluctance to jump, yelping, hunched posture, or dragging hind paws, any of which warrant stopping activity and a vet visit, since untreated IVDD can progress to partial paralysis. Puppies under 12-18 months should avoid structured running entirely while growth plates close. As of 2026-03, most sports-medicine vets recommend reserving the dog for short recovery-day jogs or walks and doing long runs, tempo, and speed work solo or with a human partner instead."
+    },
+    {
+      "id": "B16",
+      "theme": -1,
+      "themes": [
+        8,
+        13
+      ],
+      "title": "Pet-friendly apartment considerations for corgis in Shanghai",
+      "basis": "explained from general knowledge",
+      "body": "Shanghai's residential compounds vary widely on pet policies, and this matters for anyone shopping with a corgi in mind, since as of 2026-03 many newer high-rise developments in districts like Pudong and Minhang still impose informal breed or weight restrictions through the property management committee (wuye), even though Shanghai's citywide dog-keeping regulation (revised 2011, still enforced in 2026) only restricts certain breeds in downtown \"key districts\" like Huangpu, Jing'an, and Xuhui and does not name corgis specifically. Ground-floor or lower-floor units with direct courtyard access are worth prioritizing because corgis, being short-legged and prone to intervertebral disc disease (IVDD), do poorly with frequent stair climbing or elevator waits; a building with a slow elevator (over 90 seconds average wait, common in older multi-tower complexes) can meaningfully increase joint strain over years. Flooring also matters: many older Shanghai apartments use polished tile, which is slippery and raises injury risk for a low-slung breed, so buyers have reported budgeting an extra 15,000 to 30,000 RMB post-purchase for rubberized or textured flooring in main walking areas. Checking the compound's specific pet clause in the property management contract before signing, rather than relying on general city law, remains the more reliable approach as of 2026.",
+      "tags": [
+        "corgi",
+        "shanghai-real-estate",
+        "pet-care",
+        "apartment-buying"
+      ],
+      "text": "Pet-friendly apartment considerations for corgis in Shanghai (explained from general knowledge): Shanghai's residential compounds vary widely on pet policies, and this matters for anyone shopping with a corgi in mind, since as of 2026-03 many newer high-rise developments in districts like Pudong and Minhang still impose informal breed or weight restrictions through the property management committee (wuye), even though Shanghai's citywide dog-keeping regulation (revised 2011, still enforced in 2026) only restricts certain breeds in downtown \"key districts\" like Huangpu, Jing'an, and Xuhui and does not name corgis specifically. Ground-floor or lower-floor units with direct courtyard access are worth prioritizing because corgis, being short-legged and prone to intervertebral disc disease (IVDD), do poorly with frequent stair climbing or elevator waits; a building with a slow elevator (over 90 seconds average wait, common in older multi-tower complexes) can meaningfully increase joint strain over years. Flooring also matters: many older Shanghai apartments use polished tile, which is slippery and raises injury risk for a low-slung breed, so buyers have reported budgeting an extra 15,000 to 30,000 RMB post-purchase for rubberized or textured flooring in main walking areas. Checking the compound's specific pet clause in the property management contract before signing, rather than relying on general city law, remains the more reliable approach as of 2026."
+    },
+    {
+      "id": "B17",
+      "theme": -1,
+      "themes": [
+        8,
+        15
+      ],
+      "title": "Traveling with a corgi in a Model 3",
+      "basis": "explained from general knowledge",
+      "body": "Corgis, with their long backs and short legs, are prone to intervertebral disc disease (IVDD), so vets commonly advise against letting them jump in and out of tall vehicles unprepared, and the Tesla Model 3's trunk lip and low rear seats actually make it a relatively dog-friendly sedan compared to SUVs, provided a ramp or step (roughly 150-300 RMB on Taobao as of 2026-04) is used to protect the spine. In China, Model 3 owners traveling with pets on road trips through Supercharger stations report that cabin pre-conditioning via the Tesla app is useful for keeping a corgi comfortable while charging, since a 20-minute V3 Supercharger session (roughly 15 to 20 minutes for 10-80% on the 2026 refreshed Model 3 with LFP battery) can leave a dog alone in a parked car in summer heat otherwise. Owners also note that \"Dog Mode,\" available in Tesla's software (2026.14 branch as of 2026-05), keeps climate control running and displays cabin temperature on the center screen, though it requires leaving the car in Drive-park with sufficient battery reserve, typically recommended to be above 20% before a long stop. Vacuumed seat covers and rear footwell liners are commonly used to manage corgi shedding, which is heavy twice yearly during coat-blowing seasons.",
+      "tags": [
+        "corgi",
+        "tesla-model-3",
+        "pet-travel",
+        "china"
+      ],
+      "text": "Traveling with a corgi in a Model 3 (explained from general knowledge): Corgis, with their long backs and short legs, are prone to intervertebral disc disease (IVDD), so vets commonly advise against letting them jump in and out of tall vehicles unprepared, and the Tesla Model 3's trunk lip and low rear seats actually make it a relatively dog-friendly sedan compared to SUVs, provided a ramp or step (roughly 150-300 RMB on Taobao as of 2026-04) is used to protect the spine. In China, Model 3 owners traveling with pets on road trips through Supercharger stations report that cabin pre-conditioning via the Tesla app is useful for keeping a corgi comfortable while charging, since a 20-minute V3 Supercharger session (roughly 15 to 20 minutes for 10-80% on the 2026 refreshed Model 3 with LFP battery) can leave a dog alone in a parked car in summer heat otherwise. Owners also note that \"Dog Mode,\" available in Tesla's software (2026.14 branch as of 2026-05), keeps climate control running and displays cabin temperature on the center screen, though it requires leaving the car in Drive-park with sufficient battery reserve, typically recommended to be above 20% before a long stop. Vacuumed seat covers and rear footwell liners are commonly used to manage corgi shedding, which is heavy twice yearly during coat-blowing seasons."
+    },
+    {
+      "id": "B18",
+      "theme": -1,
+      "themes": [
+        7,
+        13
+      ],
+      "title": "SAFE quota overlap: IBKR investing vs Shanghai down payment",
+      "basis": "explained from general knowledge of cross-border capital rules, Chinese property finance norms, and IBKR account practices as of 2026-03",
+      "body": "A recurring tension for mainland China residents involves choosing between funding an Interactive Brokers account for index investing (e.g., VOO, VT) versus saving toward a Shanghai apartment down payment, because both draw on the same $50,000 annual personal foreign exchange quota under China's SAFE rules. Moving money to IBKR counts against that quota just as buying foreign currency for overseas use does, but paying a domestic Shanghai property down payment in RMB does not touch the quota at all, since it's a local transaction. The practical caveat, as of 2026-03, is that banks increasingly ask for a declared purpose when converting RMB to USD, and \"securities investment\" purchases sent to IBKR have drawn more scrutiny than in prior years, with some Shanghai branches requesting supporting documents like the IBKR account statement or a signed purpose declaration. Mortgage eligibility for a Shanghai apartment is separate and depends on hukou/social insurance history (typically 5 years of continuous Shanghai social insurance or tax payment for non-hukou buyers) rather than on offshore brokerage holdings, though banks may ask for overseas asset disclosure during underwriting. No single conclusion applies; the two goals compete for the same quota, not the same asset class.",
+      "tags": [
+        "china",
+        "interactive-brokers",
+        "shanghai-property",
+        "forex-quota"
+      ],
+      "text": "SAFE quota overlap: IBKR investing vs Shanghai down payment (explained from general knowledge of cross-border capital rules, Chinese property finance norms, and IBKR account practices as of 2026-03): A recurring tension for mainland China residents involves choosing between funding an Interactive Brokers account for index investing (e.g., VOO, VT) versus saving toward a Shanghai apartment down payment, because both draw on the same $50,000 annual personal foreign exchange quota under China's SAFE rules. Moving money to IBKR counts against that quota just as buying foreign currency for overseas use does, but paying a domestic Shanghai property down payment in RMB does not touch the quota at all, since it's a local transaction. The practical caveat, as of 2026-03, is that banks increasingly ask for a declared purpose when converting RMB to USD, and \"securities investment\" purchases sent to IBKR have drawn more scrutiny than in prior years, with some Shanghai branches requesting supporting documents like the IBKR account statement or a signed purpose declaration. Mortgage eligibility for a Shanghai apartment is separate and depends on hukou/social insurance history (typically 5 years of continuous Shanghai social insurance or tax payment for non-hukou buyers) rather than on offshore brokerage holdings, though banks may ask for overseas asset disclosure during underwriting. No single conclusion applies; the two goals compete for the same quota, not the same asset class."
+    },
+    {
+      "id": "B19",
+      "theme": -1,
+      "themes": [
+        7,
+        5
+      ],
+      "title": "Currency logistics: JPY spending vs IBKR account funding",
+      "basis": "explained from general knowledge",
+      "body": "For a mainland China resident holding an Interactive Brokers account funded in USD for index investing (e.g., IVV, VOO), a two-week Hokkaido winter trip introduces a separate currency logistics question: whether to draw JPY cash via a China UnionPay or Visa/Mastercard debit card at Japanese 7-Bank ATMs (found in most 7-Eleven stores, widely available in Sapporo, Otaru, and Niseko) versus converting via IBKR's own currency conversion feature and then withdrawing from IBKR's linked debit card where supported. As of 2026-09, IBKR does not issue a consumer debit card usable at Japanese ATMs for most retail accounts outside pilot regions, so travelers still typically rely on a domestic Chinese bank card (e.g., Bank of China UnionPay) for JPY withdrawals, with 7-Bank ATMs charging no extra fee beyond the card issuer's foreign transaction fee, often 1-1.5%. This is unrelated to but sometimes confused with IBKR's internal FX conversion (IDEALPRO), which only moves money between the investor's own IBKR-held currency balances (e.g., USD to CNH) for trading purposes and cannot fund a Hokkaido hotel or ski rental directly. Keeping the two systems mentally separate avoids the common mistake of expecting brokerage FX conversions to substitute for a travel-ready payment card.",
+      "tags": [
+        "ibkr",
+        "china",
+        "hokkaido",
+        "currency"
+      ],
+      "text": "Currency logistics: JPY spending vs IBKR account funding (explained from general knowledge): For a mainland China resident holding an Interactive Brokers account funded in USD for index investing (e.g., IVV, VOO), a two-week Hokkaido winter trip introduces a separate currency logistics question: whether to draw JPY cash via a China UnionPay or Visa/Mastercard debit card at Japanese 7-Bank ATMs (found in most 7-Eleven stores, widely available in Sapporo, Otaru, and Niseko) versus converting via IBKR's own currency conversion feature and then withdrawing from IBKR's linked debit card where supported. As of 2026-09, IBKR does not issue a consumer debit card usable at Japanese ATMs for most retail accounts outside pilot regions, so travelers still typically rely on a domestic Chinese bank card (e.g., Bank of China UnionPay) for JPY withdrawals, with 7-Bank ATMs charging no extra fee beyond the card issuer's foreign transaction fee, often 1-1.5%. This is unrelated to but sometimes confused with IBKR's internal FX conversion (IDEALPRO), which only moves money between the investor's own IBKR-held currency balances (e.g., USD to CNH) for trading purposes and cannot fund a Hokkaido hotel or ski rental directly. Keeping the two systems mentally separate avoids the common mistake of expecting brokerage FX conversions to substitute for a travel-ready payment card."
+    },
+    {
+      "id": "B20",
+      "theme": -1,
+      "themes": [
+        15,
+        13
+      ],
+      "title": "Tesla home charger installation for Shanghai apartments",
+      "basis": "explained from general knowledge",
+      "body": "Installing a home Level 2 charger for a Tesla Model 3 in Shanghai depends heavily on whether the apartment building's property management (物业) and the electricity grid company (国网上海) approve a dedicated parking-spot circuit, which in turn hinges on ownership of a fixed parking space rather than a rotating or rented one. Tesla's official wall connector installation in Shanghai typically costs around 4000 to 8000 RMB depending on cable run length and whether new conduit must be trenched through the garage, and as of 2026-06 Tesla China still offers a free basic installation voucher bundled with new Model 3 purchases in some quarters, though this is subject to promotional changes. Many newer Shanghai residential compounds built after 2015 pre-wire parking spaces with capacity for EV meters, while older compounds, especially in the former French Concession or Jing'an, often require a property management committee vote and sometimes rejection due to insufficient transformer capacity. Buyers evaluating apartments with future EV ownership in mind are advised to check the property's 产权证 for parking space deed inclusion, confirm transformer headroom with the property office, and ask whether existing residents have successfully installed chargers, since resale value and daily charging convenience both depend on this infrastructure being in place before purchase rather than after.",
+      "tags": [
+        "tesla",
+        "shanghai",
+        "real-estate",
+        "ev-charging"
+      ],
+      "text": "Tesla home charger installation for Shanghai apartments (explained from general knowledge): Installing a home Level 2 charger for a Tesla Model 3 in Shanghai depends heavily on whether the apartment building's property management (物业) and the electricity grid company (国网上海) approve a dedicated parking-spot circuit, which in turn hinges on ownership of a fixed parking space rather than a rotating or rented one. Tesla's official wall connector installation in Shanghai typically costs around 4000 to 8000 RMB depending on cable run length and whether new conduit must be trenched through the garage, and as of 2026-06 Tesla China still offers a free basic installation voucher bundled with new Model 3 purchases in some quarters, though this is subject to promotional changes. Many newer Shanghai residential compounds built after 2015 pre-wire parking spaces with capacity for EV meters, while older compounds, especially in the former French Concession or Jing'an, often require a property management committee vote and sometimes rejection due to insufficient transformer capacity. Buyers evaluating apartments with future EV ownership in mind are advised to check the property's 产权证 for parking space deed inclusion, confirm transformer headroom with the property office, and ask whether existing residents have successfully installed chargers, since resale value and daily charging convenience both depend on this infrastructure being in place before purchase rather than after."
+    },
+    {
+      "id": "B21",
+      "theme": -1,
+      "themes": [
+        15,
+        4
+      ],
+      "title": "Using CarPlay-like features on a China Model 3",
+      "basis": "explained from general knowledge",
+      "body": "Tesla Model 3 units sold in mainland China, including the 2026 rear-wheel-drive variant priced around RMB 235,500 (about $32,800), do not support Apple CarPlay, since Tesla's software stack (currently around version 2026.20 as of September 2026) relies entirely on its own in-car UI and app ecosystem rather than phone-mirroring protocols like CarPlay or Android Auto. Owners who want an Apple-integrated experience typically fall back on a few workarounds: using the Tesla iOS app for navigation handoff via Siri Shortcuts, mounting an iPhone or iPad separately with a vent or dash clip for Apple Maps, or streaming Apple Music through the car's native Spotify/TuneIn-style app rather than true AirPlay, since Tesla vehicles also lack AirPlay support as of this writing. Apple Watch pairs fine with the Tesla app for phone-as-key backup notifications but cannot replace the phone-key or card-key entirely. A MacBook or iPad can be used to access Tesla's web-based service portal for scheduling maintenance at NIO Power-adjacent or Tesla-owned service centers in cities like Shanghai and Shenzhen, but there's no dedicated macOS diagnostic app. The practical conclusion reached is that China-market Model 3 owners invested in the Apple ecosystem should expect a parallel-device setup rather than deep integration, unlike some non-Tesla EVs sold domestically that do support CarPlay.",
+      "tags": [
+        "tesla",
+        "apple",
+        "china",
+        "ev"
+      ],
+      "text": "Using CarPlay-like features on a China Model 3 (explained from general knowledge): Tesla Model 3 units sold in mainland China, including the 2026 rear-wheel-drive variant priced around RMB 235,500 (about $32,800), do not support Apple CarPlay, since Tesla's software stack (currently around version 2026.20 as of September 2026) relies entirely on its own in-car UI and app ecosystem rather than phone-mirroring protocols like CarPlay or Android Auto. Owners who want an Apple-integrated experience typically fall back on a few workarounds: using the Tesla iOS app for navigation handoff via Siri Shortcuts, mounting an iPhone or iPad separately with a vent or dash clip for Apple Maps, or streaming Apple Music through the car's native Spotify/TuneIn-style app rather than true AirPlay, since Tesla vehicles also lack AirPlay support as of this writing. Apple Watch pairs fine with the Tesla app for phone-as-key backup notifications but cannot replace the phone-key or card-key entirely. A MacBook or iPad can be used to access Tesla's web-based service portal for scheduling maintenance at NIO Power-adjacent or Tesla-owned service centers in cities like Shanghai and Shenzhen, but there's no dedicated macOS diagnostic app. The practical conclusion reached is that China-market Model 3 owners invested in the Apple ecosystem should expect a parallel-device setup rather than deep integration, unlike some non-Tesla EVs sold domestically that do support CarPlay."
+    },
+    {
+      "id": "B22",
+      "theme": -1,
+      "themes": [
+        10,
+        5
+      ],
+      "title": "Bringing home an espresso habit from Hokkaido",
+      "basis": "explained from general knowledge",
+      "body": "Hokkaido's coffee scene leans heavily on kissaten-style hand drip and siphon brewing rather than espresso, but several cities worth noting for a two-week winter trip do have serious espresso bars: in Sapporo, Baristart Coffee near Odori Park runs a La Marzocco Linea and sources beans roasted in-house, while in Hakodate, Cafe Morihico's satellite location does a solid flat white. Otaru and Furano lean more toward pour-over. For someone building home espresso habits, Hokkaido is also a practical spot to shop, since Sapporo's Tokyu Hands and specialty shops in Susukino stock V60 filters, Hario kettles, and imported Italian tampers at prices roughly 10-15% below mainland Tokyo as of 2026-06, though space in luggage is the real constraint during a two-week trip with winter gear. Coffee beans bought there travel fine in checked baggage if kept in their original vacuum-sealed bags, and customs allows up to 1kg of roasted (non-green) beans per traveler into most countries without declaration, though this varies and green beans are frequently restricted. Local roasters like Sapporo's Fuglen outpost also sell whole bean bags specifically packaged for travel, dated with roast day rather than just a sell-by date.",
+      "tags": [
+        "espresso",
+        "hokkaido",
+        "travel",
+        "coffee"
+      ],
+      "text": "Bringing home an espresso habit from Hokkaido (explained from general knowledge): Hokkaido's coffee scene leans heavily on kissaten-style hand drip and siphon brewing rather than espresso, but several cities worth noting for a two-week winter trip do have serious espresso bars: in Sapporo, Baristart Coffee near Odori Park runs a La Marzocco Linea and sources beans roasted in-house, while in Hakodate, Cafe Morihico's satellite location does a solid flat white. Otaru and Furano lean more toward pour-over. For someone building home espresso habits, Hokkaido is also a practical spot to shop, since Sapporo's Tokyu Hands and specialty shops in Susukino stock V60 filters, Hario kettles, and imported Italian tampers at prices roughly 10-15% below mainland Tokyo as of 2026-06, though space in luggage is the real constraint during a two-week trip with winter gear. Coffee beans bought there travel fine in checked baggage if kept in their original vacuum-sealed bags, and customs allows up to 1kg of roasted (non-green) beans per traveler into most countries without declaration, though this varies and green beans are frequently restricted. Local roasters like Sapporo's Fuglen outpost also sell whole bean bags specifically packaged for travel, dated with roast day rather than just a sell-by date."
+    },
+    {
+      "id": "B23",
+      "theme": -1,
+      "themes": [
+        9,
+        3
+      ],
+      "title": "Building a JLPT flashcard app with Claude API",
+      "basis": "explained from general knowledge",
+      "body": "A workable side project pattern combines JLPT study with the Claude API: feed a target vocabulary list (say, the JLPT N3 core 1500 or N2 3000-word sets circulating as CSVs) into Claude via the Messages API, using a system prompt that asks for example sentences, mnemonic hints, and confusable-kanji warnings in a fixed JSON schema, which then populates a spaced-repetition deck (Anki via AnkiConnect, or a custom SQLite-backed SM-2 scheduler). As of 2026-09, claude-sonnet-4-5 is a solid cost/quality tradeoff for this at roughly $3 per million input tokens and $15 per million output tokens, cheap enough that generating cards for a full N2 list costs well under a dollar. For anything agentic, like a pipeline that scrapes example sentences from Tatoeba, checks them against JLPT grammar-point lists, and auto-tags difficulty, the Claude Agent SDK (npm package @anthropic-ai/claude-agent-sdk, or the Python claude-agent-sdk) handles the tool-calling and file-writing loop without hand-rolling the orchestration, including built-in support for bash and file-edit tools plus subagent delegation for splitting kanji-focused and grammar-focused passes. Known caveat: Claude occasionally hallucinates furigana readings for rare kanji, so outputs still need a pass against a dictionary source like JMdict before trusting them for exam prep.",
+      "tags": [
+        "jlpt",
+        "claude-api",
+        "claude-agent-sdk",
+        "language-learning"
+      ],
+      "text": "Building a JLPT flashcard app with Claude API (explained from general knowledge): A workable side project pattern combines JLPT study with the Claude API: feed a target vocabulary list (say, the JLPT N3 core 1500 or N2 3000-word sets circulating as CSVs) into Claude via the Messages API, using a system prompt that asks for example sentences, mnemonic hints, and confusable-kanji warnings in a fixed JSON schema, which then populates a spaced-repetition deck (Anki via AnkiConnect, or a custom SQLite-backed SM-2 scheduler). As of 2026-09, claude-sonnet-4-5 is a solid cost/quality tradeoff for this at roughly $3 per million input tokens and $15 per million output tokens, cheap enough that generating cards for a full N2 list costs well under a dollar. For anything agentic, like a pipeline that scrapes example sentences from Tatoeba, checks them against JLPT grammar-point lists, and auto-tags difficulty, the Claude Agent SDK (npm package @anthropic-ai/claude-agent-sdk, or the Python claude-agent-sdk) handles the tool-calling and file-writing loop without hand-rolling the orchestration, including built-in support for bash and file-edit tools plus subagent delegation for splitting kanji-focused and grammar-focused passes. Known caveat: Claude occasionally hallucinates furigana readings for rare kanji, so outputs still need a pass against a dictionary source like JMdict before trusting them for exam prep."
+    }
+  ],
+  "queries": [
+    {
+      "id": "B00.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "headline: 询问在 Bun 环境下用 LanceDB 的 Node 客户端整体是否可行",
+      "target": "B00"
+    },
+    {
+      "id": "B00.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "detail_named: 用 Bun 跑 LanceDB 时报 \"Cannot find native binding\" 错误，问怎么解决",
+      "target": "B00"
+    },
+    {
+      "id": "B00.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "detail_implicit: 往向量库里灌入超过一百万行的 Arrow 数据时内存涨得特别快，问要不要分批写入，每批多大合适",
+      "target": "B00"
+    },
+    {
+      "id": "B01.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "How should I set up self-hosting LanceDB on a Hetzner VPS?",
+      "target": "B01"
+    },
+    {
+      "id": "B01.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "For the Hetzner LanceDB box, what's the recommended way to back up the data directory since there's no built-in replication?",
+      "target": "B01"
+    },
+    {
+      "id": "B01.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "My vector DB server keeps having latency spikes whenever I build a big index — could swap be the culprit?",
+      "target": "B01"
+    },
+    {
+      "id": "B02.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "给Claude Agent做记忆存储，用LanceDB这个方案靠谱吗？",
+      "target": "B02"
+    },
+    {
+      "id": "B02.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "我这边有多个agent进程会同时往LanceDB里写数据，这样会不会有问题？",
+      "target": "B02"
+    },
+    {
+      "id": "B02.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "我做的这个本地agent，多个进程同时往同一个向量库写东西的时候数据老是对不上，可能是哪里的问题？",
+      "target": "B02"
+    },
+    {
+      "id": "B03.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "What's the deal with GPUI performance on Apple Silicon Macs?",
+      "target": "B03"
+    },
+    {
+      "id": "B03.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "I'm driving a Pro Display XDR at full res with GPUI, roughly what frame times should I expect on an M2 Pro?",
+      "target": "B03"
+    },
+    {
+      "id": "B03.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "I've got a MacBook Pro's built-in screen plus an external 4K monitor hooked up, and I'm seeing weird repaint glitches in Zed sometimes — any idea what's causing that?",
+      "target": "B03"
+    },
+    {
+      "id": "B04.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "我想用 Bun 给 GPUI 项目写个 codegen 脚本，在 Windows 上跑 CI 会不会有坑？",
+      "target": "B04"
+    },
+    {
+      "id": "B04.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "我们构建脚本要频繁调用一个短命的 TS 脚本读 json 生成代码，Node 冷启动太慢了，有什么运行时能省掉单独的编译步骤吗？",
+      "target": "B04"
+    },
+    {
+      "id": "B06.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "我想在Hetzner上自己搭一个跑Claude Agent SDK的服务，应该怎么部署比较靠谱？",
+      "target": "B06"
+    },
+    {
+      "id": "B06.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "用Hetzner跑Claude Agent SDK的话，ANTHROPIC_API_KEY到底应该存在哪比较安全，直接放.env文件可以吗？",
+      "target": "B06"
+    },
+    {
+      "id": "B06.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "我的服务器最近跑着跑着进程就自己重启了，是不是系统自动更新搞的鬼，有什么办法能避免这种掉线？",
+      "target": "B06"
+    },
+    {
+      "id": "B07.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "Should I put my Astro blog on Cloudflare Pages or a Hetzner box—what's the better call?",
+      "target": "B07"
+    },
+    {
+      "id": "B07.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "If I go the Hetzner route for the Astro blog, what's the actual monthly cost and specs for a decent instance?",
+      "target": "B07"
+    },
+    {
+      "id": "B07.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "I want my static site to auto-deploy from GitHub without me babysitting server updates or TLS certs—what's the least painful way to set that up?",
+      "target": "B07"
+    },
+    {
+      "id": "B08.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "在Hetzner的Ubuntu 24.04上部署Bun应用大概是怎么个流程?",
+      "target": "B08"
+    },
+    {
+      "id": "B08.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "用Hetzner部署Bun应用的时候,ufw和云防火墙这两层都要单独放行端口吗,具体是怎么配的?",
+      "target": "B08"
+    },
+    {
+      "id": "B08.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "我在Hetzner的VPS上用systemd起了个服务跑Bun,但是日志报错说找不到bun这个命令,直接在终端里敲是能跑的,这是为什么?",
+      "target": "B08"
+    },
+    {
+      "id": "B09.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "Where can I find vegetarian mala/hot pot food during a winter Hokkaido trip, and what's the workaround for smaller towns like Furano/Biei?",
+      "target": "B09"
+    },
+    {
+      "id": "B09.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "Do you remember the name and rough price of that Sichuan-style hot pot place in Susukino that does a veggie broth option?",
+      "target": "B09"
+    },
+    {
+      "id": "B09.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "I'm staying at a rental condo in Niseko in January and want to cook something spicy myself since the local food options seem pretty limited out there, any tips on what to bring or buy?",
+      "target": "B09"
+    },
+    {
+      "id": "B10.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "北海道旅行准备和JLPT学习结合的思路",
+      "target": "B10"
+    },
+    {
+      "id": "B10.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "备考N3的时候，Shin Kanzen Master词汇表里有没有一些和暴风雪、道路封闭相关的实用词汇？",
+      "target": "B10"
+    },
+    {
+      "id": "B10.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "冬天去札幌和富良野那边玩，万一路上遇到大雪封路，听不懂当地人说的话怎么办，有没有什么常用说法要提前熟悉一下？",
+      "target": "B10"
+    },
+    {
+      "id": "B11.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "I'm heading to Hokkaido for two weeks in the winter and want to keep up my half-marathon training—what should I watch out for running outside there?",
+      "target": "B11"
+    },
+    {
+      "id": "B11.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "We're staying at a ryokan in Biei for a few nights during the Hokkaido trip—should I count on being able to run indoors there?",
+      "target": "B11"
+    },
+    {
+      "id": "B11.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "My IT band has been acting up lately and I'll be doing a lot of running on packed snow soon—any tips on adjusting my form or pace to avoid aggravating it?",
+      "target": "B11"
+    },
+    {
+      "id": "B12.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "去北海道滑雪想知道 Apple Watch 在严寒下到底能不能正常用",
+      "target": "B12"
+    },
+    {
+      "id": "B12.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "去北海道滑雪想知道 Apple Watch 在严寒下到底能不能正常用",
+      "target": "B12"
+    },
+    {
+      "id": "B12.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "去北海道滑雪想知道 Apple Watch 在严寒下到底能不能正常用",
+      "target": "B12"
+    },
+    {
+      "id": "B13.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "what's a good way to use my Apple Watch to avoid re-injuring myself while building back up to a half marathon?",
+      "target": "B13"
+    },
+    {
+      "id": "B13.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "what cadence or ground contact time on my Apple Watch should actually worry me during easy runs?",
+      "target": "B13"
+    },
+    {
+      "id": "B13.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "my easy runs have been feeling more sluggish lately and my form seems off toward the end, what watch data should I be checking to see if I'm just overdoing it?",
+      "target": "B13"
+    },
+    {
+      "id": "B14.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "跑步前喝咖啡因（比如双份浓缩咖啡）对耐力表现有帮助，但半马训练期要注意肠胃和掩盖伤痛信号的风险",
+      "target": "B14"
+    },
+    {
+      "id": "B14.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "问一下双份浓缩咖啡大概含多少咖啡因，喝了是不是要提前一小时左右",
+      "target": "B14"
+    },
+    {
+      "id": "B14.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "最近长距离训练容易中途肚子不舒服想上厕所，尤其是天热或者跑90分钟以上的时候，是什么原因",
+      "target": "B14"
+    },
+    {
+      "id": "B15.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "Should I bring my corgi along as my regular running buddy while training for my half marathon?",
+      "target": "B15"
+    },
+    {
+      "id": "B15.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "What's the actual pace or distance ceiling I should stick to if I take my corgi on an easy run?",
+      "target": "B15"
+    },
+    {
+      "id": "B15.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "My dog started dragging his back paws a little near the end of our run today, should I be worried?",
+      "target": "B15"
+    },
+    {
+      "id": "B16.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "\"在上海给柯基租/买房要注意什么，结论是啥？\"",
+      "target": "B16"
+    },
+    {
+      "id": "B16.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "\"柯基住上海公寓的话，地板装修大概要多花多少钱？\"",
+      "target": "B16"
+    },
+    {
+      "id": "B16.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "\"我家狗子腿短还老趴着不爱动，是不是不能住太高楼层或者电梯慢的小区？\"",
+      "target": "B16"
+    },
+    {
+      "id": "B17.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "Planning a road trip with my corgi in my Model 3 and wondering if the car is even suitable for a dog with a long back.",
+      "target": "B17"
+    },
+    {
+      "id": "B17.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "What's the minimum battery percentage I should keep before leaving my Model 3 in Dog Mode during a charging stop?",
+      "target": "B17"
+    },
+    {
+      "id": "B17.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "I'm worried about leaving my dog alone in the car for like 15-20 minutes while I charge on a summer road trip, is that actually safe?",
+      "target": "B17"
+    },
+    {
+      "id": "B18.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "上海首付和IBKR投资到底怎么选？",
+      "target": "B18"
+    },
+    {
+      "id": "B18.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "最近把钱换成美元转去IBKR，银行会不会因为申报用途是\"证券投资\"而额外要求材料？",
+      "target": "B18"
+    },
+    {
+      "id": "B18.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "我没有上海户口，想问问办房贷首付这块，银行一般看什么条件才能批？",
+      "target": "B18"
+    },
+    {
+      "id": "B19.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "How should I get cash for my Hokkaido trip — should I just use IBKR to convert USD and pull it out somehow, or is there a better way?",
+      "target": "B19"
+    },
+    {
+      "id": "B19.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "Are 7-Bank ATMs in Sapporo or Otaru going to charge me a big fee on top of my card's foreign transaction fee when I withdraw JPY?",
+      "target": "B19"
+    },
+    {
+      "id": "B19.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "I'm heading to Japan for two weeks this winter and want to make sure I can actually get local cash out without getting hit with surprise charges — what card should I bring for ATM withdrawals?",
+      "target": "B19"
+    },
+    {
+      "id": "B20.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "给我讲讲上海公寓装特斯拉家充桩的事，到底能不能装",
+      "target": "B20"
+    },
+    {
+      "id": "B20.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "特斯拉那个免费安装的优惠券现在还能领吗，大概能省多少钱",
+      "target": "B20"
+    },
+    {
+      "id": "B20.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "我在看老式法租界那边的一个二手房，车位好像是轮换制的，这种情况买了以后能不能自己装充电桩啊",
+      "target": "B20"
+    },
+    {
+      "id": "B21.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "Does the China-market Tesla Model 3 support Apple CarPlay?",
+      "target": "B21"
+    },
+    {
+      "id": "B21.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "I want to use Apple Maps in my Model 3 in Shanghai without CarPlay, what's the best way to set that up?",
+      "target": "B21"
+    },
+    {
+      "id": "B21.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "My Apple Watch is paired to my car as a backup key but the phone key stopped working, can the watch fully take over?",
+      "target": "B21"
+    },
+    {
+      "id": "B22.h",
+      "kind": "headline",
+      "lang": "zh",
+      "msg": "北海道适合带回意式咖啡习惯吗，那边咖啡馆推荐去哪几家？",
+      "target": "B22"
+    },
+    {
+      "id": "B22.d",
+      "kind": "detail_named",
+      "lang": "zh",
+      "msg": "札幌的Tokyu Hands和薄野那边买手冲器具和意式压粉器，价格真的比东京便宜吗，大概便宜多少？",
+      "target": "B22"
+    },
+    {
+      "id": "B22.i",
+      "kind": "detail_implicit",
+      "lang": "zh",
+      "msg": "这次冬天去北海道玩两周，行李里还得塞滑雪装备，我能带多少烘焙好的咖啡豆回国啊，海关有什么限制吗？",
+      "target": "B22"
+    },
+    {
+      "id": "B23.h",
+      "kind": "headline",
+      "lang": "en",
+      "msg": "I'm thinking about building a flashcard app for JLPT vocab using the Claude API, any thoughts on how to approach it?",
+      "target": "B23"
+    },
+    {
+      "id": "B23.d",
+      "kind": "detail_named",
+      "lang": "en",
+      "msg": "If I use the Claude API to generate cards for the whole N2 word list, roughly what would that cost me?",
+      "target": "B23"
+    },
+    {
+      "id": "B23.i",
+      "kind": "detail_implicit",
+      "lang": "en",
+      "msg": "I'm auto-generating example sentences with readings for rare kanji and I'm worried some of the furigana might just be wrong. Is there a reliable way to double check them before I trust them for exam prep?",
+      "target": "B23"
+    }
+  ]
+}
