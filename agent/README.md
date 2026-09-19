@@ -335,6 +335,15 @@ remember:
   they are never treated as facts about you, can never become an always-on
   profile memory, can only replace other reference notes, and reach the model
   in their own section marked as possibly outdated.
+- **A large store is recalled through folders.** Judging every memory on every
+  turn grows with the store, and reference notes are paragraphs. So memories are
+  filed into folders, and once a kind of memory is large enough a turn takes two
+  steps: first which folders matter, then the memories inside them. A folder is
+  shown to the judge as a plain listing of what it holds (your facts word for
+  word, reference notes by title), so a memory filed in the wrong folder is
+  still found; filing only affects what a turn costs. New memories are judged
+  directly until a few have gathered, and are then filed together by the writer
+  model. A small store is recalled exactly as before.
 - Nothing is destroyed. Replaced and forgotten memories stay in the store with
   a status, and the Memory screen can restore them or delete them for good.
 - The model keeps only `memory_recall`, for explicit deeper searches.
@@ -347,9 +356,19 @@ when `model.backend` is `agent-sdk` (so it draws on your subscription), or the
 
 > **Privacy.** Memory is otherwise fully local. With this on, the text of your
 > active memories and the last few messages of the conversation are sent to
-> `api.typesafe.ai` on every turn. TypeSafe is in early access and had no
-> published data-retention policy when this was written. Memories you have asked
-> Sam to forget are no longer sent.
+> `api.typesafe.ai` on every turn. Once reference notes are recalled through
+> folders, a turn sends their titles, and the full text only of the notes in the
+> folders that turn opened; facts about you are still sent in full, as the
+> folder listings. TypeSafe is in early access and had no published
+> data-retention policy when this was written. Memories you have asked Sam to
+> forget are no longer sent.
+>
+> Filing sends stored memories to the writer model: the facts or note titles
+> being filed, along with the first few facts, or the note titles, of every
+> folder. Until now the writer saw only the conversation and the notes recalled
+> into it. On the `agent-sdk` backend the writer is Claude Haiku; on pi it is
+> whichever provider `memory.writer` names (DeepSeek by default). `tree.enabled:
+> false` turns filing off, and recall then stays flat.
 >
 > Reference notes widen this. Judging an exchange sends Sam's answer (up to 6000
 > characters) and the list of tool calls with their arguments, not their
@@ -387,6 +406,15 @@ smallest sources kept whole first), `knowledgeNoteChars` (`4000`, the cap on
 one reference note, about 500 words; a note covers one subject, and a later
 exchange on the same subject revises it rather than adding a second note).
 
+Recall through folders is set under `memory.typesafe.tree`: `enabled` (`true`),
+`minFlatTokens` (`12000`: facts about you and reference notes each stay flat
+until judging them all would cost this much, about 215 facts or 40 notes),
+`factFolderThreshold` (`0.3`) and `noteFolderThreshold` (`0.15`; folders open
+more readily than a memory is recalled, since a folder left shut is a miss
+nobody sees), `factBatch` (`12`) and `noteBatch` (`4`, how many unfiled memories
+are filed at once), `factCap` (`16`) and `noteCap` (`8`, past which a folder is
+split). With `write: false` nothing is filed, so recall stays flat.
+
 If TypeSafe is slow, down, or the key is missing, turns run normally without
 the situational notes; nothing is saved without a judgment. The model is pinned
 because the thresholds were calibrated against it. TypeSafe retires old
@@ -395,7 +423,9 @@ warning: re-run `bun run eval:memory:all` and update `model`. The same harness
 is the check to run before changing any threshold or question wording; see
 `evals/memory/README.md`.
 
-Known limits: the reference-note threshold rests on a dozen labeled cases, so
+Known limits: the folder settings were measured on synthetic stores of a few
+hundred memories (`evals/memory/README.md`), so watch the `[memory] recall ...
+via N folders` and `[memory] filed ...` log lines on a real one; the reference-note threshold rests on a dozen labeled cases, so
 watch the `[memory] knowledge gate` log lines and adjust
 `knowledgeScoreThreshold` if it keeps too much or too little; pulse check-ins neither recall nor save; in a shared Discord
 channel every author is recorded as "User"; and when what you say is only

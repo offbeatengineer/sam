@@ -5,6 +5,7 @@ import type { SamConfig } from "../config.js";
 import { extractMessages } from "../session-search/extract.js";
 import { sessionKeyToString, stripMessageHeader, type SessionKey } from "../types.js";
 import { extractExchange } from "./exchange.js";
+import { MemoryFiler } from "./filer.js";
 import { truncate, type Turn } from "./judgments.js";
 import { formatMemoryContext, MemoryRecaller, type RecallOutcome } from "./recaller.js";
 import { MemoryStore, type ActiveMemory } from "./store.js";
@@ -33,8 +34,10 @@ export interface MemoryRecalledEvent {
   memories: { id: string; text: string; kind: string; p: number }[];
   profileIncluded: boolean;
   ms: number;
-  /** Set when situational recall could not run; the turn proceeded without it. */
+  /** Set when situational recall could not run, or not all of it; the turn proceeded with what there was. */
   degraded?: string;
+  /** The folders recall opened, when the store is large enough to be reached through them. */
+  folders?: { track: string; folder: string; p: number }[];
 }
 
 /**
@@ -68,6 +71,8 @@ export class AutoMemory {
   readonly recaller: MemoryRecaller;
   /** Undefined when `memory.typesafe.write` is off; the model then keeps its write tools. */
   readonly pipeline: MemoryWritePipeline | undefined;
+  /** Undefined without the write pipeline it runs on, or with `tree` off: everything then stays unfiled and recall stays flat. */
+  readonly filer: MemoryFiler | undefined;
 
   private constructor(
     config: SamConfig,
@@ -76,9 +81,9 @@ export class AutoMemory {
   ) {
     this.client = new TypeSafeClient(cfg);
     this.recaller = new MemoryRecaller(this.client, cfg);
-    this.pipeline = cfg.write
-      ? new MemoryWritePipeline(this.client, cfg, () => this.store(), createFactWriter(config))
-      : undefined;
+    const writer = cfg.write ? createFactWriter(config) : undefined;
+    this.filer = writer && cfg.tree.enabled ? new MemoryFiler(() => this.store(), writer, cfg.tree) : undefined;
+    this.pipeline = writer ? new MemoryWritePipeline(this.client, cfg, () => this.store(), writer, this.filer) : undefined;
   }
 
   /** Let queued memory writes finish; call before the process exits. */
@@ -240,6 +245,9 @@ class AutoMemorySession implements SamAgentSession {
       const active = await store.listActive();
       const profile = active.filter((m) => m.kind === "profile");
       const situational = active.filter((m) => m.kind !== "profile");
+      // Checked here rather than after a write, so that memories saved from the UI or by a
+      // tool, and a store that predates folders, get filed too. It runs beside the turn.
+      if (this.auto.filer?.due(active)) this.auto.pipeline?.enqueueFiling();
 
       // Pulse prompts are a static file, not the user's words: judging them
       // would send the store off-machine on a timer for nothing.
@@ -267,6 +275,7 @@ class AutoMemorySession implements SamAgentSession {
           profileIncluded: profileDue,
           ms: Math.round(outcome.ms),
           degraded: outcome.status === "degraded" ? outcome.reason : undefined,
+          folders: outcome.routing?.opened,
         });
       }
       if (outcome.picked.length > 0) {
@@ -318,12 +327,17 @@ class AutoMemorySession implements SamAgentSession {
 
   private log(outcome: RecallOutcome, judged: number, profileCount: number): void {
     const profile = profileCount > 0 ? ` + ${profileCount} profile` : "";
+    const tokens = outcome.tokens >= 1000 ? `${(outcome.tokens / 1000).toFixed(1)}K` : `${outcome.tokens}`;
+    const requests = `${outcome.shards} request${outcome.shards === 1 ? "" : "s"}`;
+    const routing = outcome.routing;
+    // Two hops: how many folder listings were judged, which opened, and how many memories that left to judge.
+    const scope = routing
+      ? `${judged} mem via ${routing.folders} folders -> ${routing.opened.length} opened (${routing.opened.slice(0, 4).map((f) => f.folder).join(", ")}${routing.opened.length > 4 ? ", ..." : ""}), ${routing.judged} judged`
+      : `${judged} mem`;
     if (outcome.status === "ok") {
-      const tokens = outcome.tokens >= 1000 ? `${(outcome.tokens / 1000).toFixed(1)}K` : `${outcome.tokens}`;
-      console.log(
-        `[memory] recall ${judged} mem, ${outcome.shards} shard${outcome.shards === 1 ? "" : "s"}, ${tokens} tok, ` +
-          `${Math.round(outcome.ms)}ms -> ${outcome.picked.length} picked${profile} (${outcome.model})`,
-      );
+      console.log(`[memory] recall ${scope}, ${requests}, ${tokens} tok, ${Math.round(outcome.ms)}ms -> ${outcome.picked.length} picked${profile} (${outcome.model})`);
+    } else if (outcome.status === "degraded" && (outcome.picked.length > 0 || routing)) {
+      console.warn(`[memory] recall partial (${outcome.reason}): ${scope}, ${requests}, ${tokens} tok, ${Math.round(outcome.ms)}ms -> ${outcome.picked.length} picked${profile}`);
     } else if (outcome.status === "degraded") {
       console.warn(`[memory] recall unavailable (${outcome.reason}) after ${Math.round(outcome.ms)}ms; turn continues${profile}`);
     }

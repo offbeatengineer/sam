@@ -29,6 +29,25 @@ export interface MemoryOrigin {
   timestamp?: number;
 }
 
+/**
+ * Recall through folders instead of judging every memory each turn. A folder's card is the
+ * listing of what it holds, so a misfiled memory is still found; filing only affects cost.
+ */
+export interface TreeConfig {
+  enabled: boolean;
+  /** A track (the user's facts, or reference notes) stays flat until judging it flat is estimated to cost this much. */
+  minFlatTokens: number;
+  /** Folders open below the recall threshold on purpose: an unopened folder is a silent miss, an extra one costs a few tokens. */
+  factFolderThreshold: number;
+  noteFolderThreshold: number;
+  /** Unfiled memories are judged directly every turn; this many of them are filed at once. Notes are read in full, so their batch is small. */
+  factBatch: number;
+  noteBatch: number;
+  /** A folder past its cap is split. */
+  factCap: number;
+  noteCap: number;
+}
+
 export interface TypeSafeConfig {
   enabled: boolean;
   apiKey?: string;
@@ -61,6 +80,7 @@ export interface TypeSafeConfig {
   knowledgeMaterialTokens: number;
   /** Hard cap on one reference note; the writer's word guidance and the merge threshold derive from it. */
   knowledgeNoteChars: number;
+  tree: TreeConfig;
 }
 
 /** Model used by the pi-ai fact writer (the agent-sdk backend uses Haiku). */

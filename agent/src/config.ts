@@ -3,7 +3,7 @@ import { resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import { DEFAULT_KNOWLEDGE_NOTE_CHARS, type MemoryConfig, type TypeSafeConfig } from "./memory/types.js";
+import { DEFAULT_KNOWLEDGE_NOTE_CHARS, type MemoryConfig, type TreeConfig, type TypeSafeConfig } from "./memory/types.js";
 import { DEFAULT_JEV_MODEL } from "./memory/judgments.js";
 import type { TranscriptionConfig } from "./transcriber.js";
 import { resolveWebSearchEnv, type WebSearchConfig } from "../../extensions/web-tools/src/web-search.js";
@@ -166,6 +166,11 @@ model:
 #     enabled: false
 #     apiKey: ""         # or set TYPESAFE_API_KEY env var
 #     # model: jev-1.13.0  # pinned; thresholds are calibrated per version
+#     # Memories are filed into folders, and a large store is recalled through them:
+#     # first which folders, then the memories inside. Small stores stay flat.
+#     # tree:
+#     #   enabled: true
+#     #   minFlatTokens: 12000
 #   # Model that writes memory text on the pi backend (agent-sdk uses Haiku).
 #   writer:
 #     provider: deepseek
@@ -219,9 +224,24 @@ function expandHome(p: string): string {
   return p.startsWith("~/") ? resolve(homedir(), p.slice(2)) : p;
 }
 
+const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+
+/** Defaults are the values the evals measured (evals/memory/README.md). */
+export function parseTreeConfig(raw: any): TreeConfig {
+  return {
+    enabled: raw?.enabled !== false,
+    minFlatTokens: Math.max(0, num(raw?.minFlatTokens, 12_000)),
+    factFolderThreshold: num(raw?.factFolderThreshold, 0.3),
+    noteFolderThreshold: num(raw?.noteFolderThreshold, 0.15),
+    factBatch: Math.max(1, num(raw?.factBatch, 12)),
+    noteBatch: Math.max(1, num(raw?.noteBatch, 4)),
+    factCap: Math.max(2, num(raw?.factCap, 16)),
+    noteCap: Math.max(2, num(raw?.noteCap, 8)),
+  };
+}
+
 /** Opt-in (`enabled: true`): it sends memory off-machine and costs money. */
 export function parseTypeSafeConfig(raw: any): TypeSafeConfig {
-  const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
   return {
     enabled: raw?.enabled === true,
     apiKey: process.env.TYPESAFE_API_KEY ?? raw?.apiKey,
@@ -247,6 +267,7 @@ export function parseTypeSafeConfig(raw: any): TypeSafeConfig {
       : "all",
     knowledgeMaterialTokens: num(raw?.knowledgeMaterialTokens, 100_000),
     knowledgeNoteChars: Math.max(200, num(raw?.knowledgeNoteChars, DEFAULT_KNOWLEDGE_NOTE_CHARS)),
+    tree: parseTreeConfig(raw?.tree),
   };
 }
 

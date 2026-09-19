@@ -23,7 +23,7 @@
 //     a full pass is about $0.50 of Jev, --folders about $0.05 (it reuses the flat baseline of a
 //     full pass); rebuilding the data is ~170 LLM calls
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { truncate, type Turn } from "../../src/memory/judgments.js";
+import { folderQuestions, noteListing, truncate, type Turn } from "../../src/memory/judgments.js";
 import { MemoryRecaller } from "../../src/memory/recaller.js";
 import type { ActiveMemory } from "../../src/memory/store.js";
 import { TypeSafeClient, type JevQuestion } from "../../src/memory/typesafe.js";
@@ -280,7 +280,7 @@ function cardText(n: Note, v: Variant): string {
 
 interface Routed { p: Record<string, number>; tokens: number; ms: number }
 const NOTE_Q = (a: string) => `Would the reference note that \`cards.${a}\` describes change or improve the assistant's next response in \`conversation\`?`;
-const FOLDER_Q = (a: string) => `Would a reference note in the folder that \`cards.${a}\` describes change or improve the assistant's next response in \`conversation\`?`;
+const FOLDER_Q = (a: string) => String(folderQuestions("notes", [a])[`open::${a}`].instructions);
 async function routeItems(msg: string, items: { id: string; text: string }[], question: (alias: string) => string): Promise<Routed> {
   if (items.length === 0) return { p: {}, tokens: 0, ms: 0 };
   const conversation: Turn[] = [{ role: "user", text: msg }];
@@ -301,7 +301,7 @@ const FOLDER_VARIANTS: FolderVariant[] = ["listing", "summary"];
 const folders = [...new Set(Object.values(clusters))];
 const inFolder = (folder: string) => notes.filter((n) => clusters[n.id] === folder);
 function folderText(folder: string, v: FolderVariant): string {
-  if (v === "listing") return `${folder}/ holds ${inFolder(folder).length} notes: ${inFolder(folder).map((n) => n.title).join("; ")}`;
+  if (v === "listing") return noteListing(folder, inFolder(folder).map((n) => n.title));
   return `${folder}/ Holds: ${clusterCards[folder].holds} Matters when: ${clusterCards[folder].matters_when}`;
 }
 const routeFolders = (msg: string, v: FolderVariant) => routeItems(msg, folders.map((folder) => ({ id: folder, text: folderText(folder, v) })), FOLDER_Q);

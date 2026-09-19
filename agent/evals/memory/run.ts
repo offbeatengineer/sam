@@ -24,7 +24,8 @@ import {
 import { MemoryRecaller } from "../../src/memory/recaller.js";
 import type { ActiveMemory } from "../../src/memory/store.js";
 import { TypeSafeClient } from "../../src/memory/typesafe.js";
-import { DUPLICATE, FORGET, INSTRUCTION, KNOWLEDGE, KNOWLEDGE_GUARD, MEMORIES, PROFILE, RECALL, SAVE, UPDATE } from "./data.js";
+import { DUPLICATE, FORGET, INSTRUCTION, KNOWLEDGE, KNOWLEDGE_GUARD, MEMORIES, PROFILE, RECALL, RECALL_CROSS_SUBJECT, SAVE, UPDATE } from "./data.js";
+import { scaleStore } from "./distractors.js";
 import { evalConfig } from "./typesafe.js";
 
 const PROFILE_IDS = new Set(["M13", "M14"]); // always-on in production, so never judged per turn
@@ -44,6 +45,8 @@ async function pool<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>)
 }
 
 const metrics: Record<string, number> = {};
+/** Sizes of suites whose size comes from a fixture; checked against floors.json with the rest. */
+const suiteSizesLate: Record<string, number> = {};
 const details: Record<string, unknown> = {};
 let servedModel = "";
 
@@ -67,6 +70,44 @@ await recallSuite("recall", new MemoryRecaller(client, cfg));
 // A budget this small forces several shards; recall must not depend on shard boundaries.
 const sharded = await recallSuite("recall_sharded", new MemoryRecaller(client, { ...cfg, shardTokenBudget: 1800, maxShards: 50, maxRecalled: 50 }));
 metrics["recall_sharded.min_shards"] = Math.min(...sharded.map((r) => r.shards));
+
+// --- recall through folders: the production recaller over trees that were grown, not hand-made ---
+// Filing quality only moves cost, so each suite floors its recall and caps its tokens per turn.
+const fixture = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
+const treeRecaller = new MemoryRecaller(client, { ...cfg, maxRecalled: 50, tree: { ...cfg.tree, enabled: true, minFlatTokens: 0 } });
+{
+  const home: Record<string, string> = fixture("facts-trees.json")["batched-1/cap16"].home;
+  const rows = Object.entries(scaleStore()).filter(([id]) => !PROFILE_IDS.has(id)).map(([id, text]): ActiveMemory => ({ id, text, tags: [], source: "user", created_at: now, updated_at: now, kind: "situational", folder: home[id] }));
+  const cases = [...RECALL, ...RECALL_CROSS_SUBJECT];
+  const results = await pool(cases, 4, async (c) => {
+    const outcome = await treeRecaller.recall([{ role: "user", text: c.msg }], rows);
+    if (outcome.status !== "ok") throw new Error(`tree recall ${c.id} ${outcome.status}: ${outcome.reason}`);
+    const picked = outcome.picked.map((m) => m.id);
+    const allowed = new Set([...c.core, ...c.ok]);
+    return { id: c.id, missed: c.core.filter((m) => !picked.includes(m)), noise: picked.filter((m) => !allowed.has(m)), tokens: outcome.tokens };
+  });
+  metrics["tree_facts.core"] = results.reduce((n, r, i) => n + cases[i].core.length - r.missed.length, 0);
+  metrics["tree_facts.noise"] = results.reduce((n, r) => n + r.noise.length, 0);
+  metrics["tree_facts.tokens"] = Math.round(results.reduce((n, r) => n + r.tokens, 0) / results.length);
+  details.tree_facts = results.filter((r) => r.missed.length).map(({ id, missed }) => ({ id, missed }));
+}
+{
+  const notes: { id: string; text: string; tags: string[] }[] = [...fixture("notes-data.json").notes, ...fixture("grow-data.json").bridges];
+  const home: Record<string, string> = fixture("grow-trees.json")["batched/title/shuffle-2/cap8"].home;
+  const rows = notes.map((n): ActiveMemory => ({ id: n.id, text: n.text, tags: n.tags, source: "auto", created_at: now, updated_at: now, kind: "knowledge", folder: home[n.id] }));
+  // The queries flat recall answers, every fourth: enough to catch a routing regression for a cent or two.
+  const fair = new Set<string>(fixture("grow-fair.json"));
+  const queries: { id: string; msg: string; target: string }[] = [...fixture("notes-data.json").queries, ...fixture("grow-data.json").queries].filter((q) => fair.has(q.id)).filter((_, i) => i % 4 === 0);
+  const results = await pool(queries, 4, async (q) => {
+    const outcome = await treeRecaller.recall([{ role: "user", text: q.msg }], rows);
+    if (outcome.status !== "ok") throw new Error(`tree recall ${q.id} ${outcome.status}: ${outcome.reason}`);
+    return { id: q.id, hit: outcome.picked.some((m) => m.id === q.target), tokens: outcome.tokens };
+  });
+  metrics["tree_notes.target"] = results.filter((r) => r.hit).length;
+  metrics["tree_notes.tokens"] = Math.round(results.reduce((n, r) => n + r.tokens, 0) / results.length);
+  details.tree_notes = results.filter((r) => !r.hit).map((r) => r.id);
+  suiteSizesLate["tree_notes.target"] = queries.length;
+}
 
 // --- save gate ---
 const gates = await pool(SAVE, 6, async (c) => ({ c, d: decideGate((await ask({ latest_user_message: c.msg, conversation: [{ role: "user", text: c.msg }] }, gateQuestions())).answers, cfg.saveScoreThreshold) }));
@@ -156,6 +197,8 @@ const suiteSizes: Record<string, number> = {
   "instruction.correct": INSTRUCTION.length,
   "profile.correct": PROFILE.length,
   "forget.correct": FORGET.length,
+  "tree_facts.core": [...RECALL, ...RECALL_CROSS_SUBJECT].reduce((n, c) => n + c.core.length, 0),
+  ...suiteSizesLate,
 };
 for (const [key, size] of Object.entries(suiteSizes)) {
   if (floors[key]?.of !== undefined && floors[key].of !== size) console.warn(`floors.json: ${key} says of ${floors[key].of}, but the suite has ${size} cases`);

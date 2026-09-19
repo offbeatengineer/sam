@@ -6,16 +6,24 @@ import {
   decideKnowledgeGate,
   decideRelations,
   estimateTokens,
+  factListing,
+  FILEABLE_FACT_CHARS,
+  folderCards,
+  folderQuestions,
   knowledgeGateState,
   MAX_MEMORY_CHARS,
   memoryTextLimit,
+  noteListing,
+  noteTitle,
+  pickOpened,
   pickRecalled,
+  planRecall,
   recallQuestions,
   shardMemories,
   shortlistFromStage1,
 } from "./judgments.js";
 import { formatMemoryContext } from "./recaller.js";
-import { isMemoryId } from "./store.js";
+import { ADDED_COLUMNS, FOLDER_PATTERN, isMemoryId } from "./store.js";
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const mems = (n: number, text = "User likes a reasonably long example sentence about something.") =>
@@ -227,5 +235,96 @@ describe("ids from the wire", () => {
   test("only uuids are accepted", () => {
     expect(isMemoryId(uuid(1))).toBe(true);
     for (const bad of ["x' OR '1'='1", "", "__seed__", 42, undefined, `${uuid(1)}' --`]) expect(isMemoryId(bad)).toBe(false);
+  });
+});
+
+describe("recall through folders", () => {
+  const tree = { enabled: true, minFlatTokens: 0, factFolderThreshold: 0.3, noteFolderThreshold: 0.15, factBatch: 12, noteBatch: 4, factCap: 16, noteCap: 8 };
+  const fact = (n: number, folder = "", text = `User fact number ${n}.`) => ({ id: uuid(n), text, kind: "situational", folder, created_at: n });
+  const note = (n: number, folder = "", text = `Subject ${n} (documentation): the body of note ${n}.`) => ({ id: uuid(1000 + n), text, kind: "knowledge", folder, created_at: n });
+
+  test("a note's title is its subject, without the basis", () => {
+    expect(noteTitle("LanceDB addColumns (documentation): table.addColumns adds a column.")).toBe("LanceDB addColumns");
+    expect(noteTitle("Making Chili Oil (La Zi You) At Home (explained from general knowledge): heat the oil.")).toBe("Making Chili Oil (La Zi You) At Home");
+    expect(noteTitle("ZephyrDB 3.x to 4.2 upgrade path: first upgrade to 4.0.")).toBe("ZephyrDB 3.x to 4.2 upgrade path");
+    expect(noteTitle("Apple Watch Series 11 starts at $399. The SE 3 starts at $249.")).toBe("Apple Watch Series 11 starts at $399.");
+    expect(noteTitle("x".repeat(500)).length).toBeLessThanOrEqual(100);
+  });
+
+  test("listings read as they were measured", () => {
+    expect(factListing("food", ["User is vegetarian.", "User is lactose intolerant."])).toBe("food/ holds 2 memories: User is vegetarian. | User is lactose intolerant.");
+    expect(factListing("car", ["User drives a Tesla."])).toBe("car/ holds 1 memory: User drives a Tesla.");
+    expect(noteListing("lancedb", ["LanceDB addColumns", "Choosing an index"])).toBe("lancedb/ holds 2 notes: LanceDB addColumns; Choosing an index");
+    expect(noteListing("bun", ["Bun test runner"])).toBe("bun/ holds 1 note: Bun test runner");
+  });
+
+  test("a card lists its folder oldest first, and notes by title", () => {
+    const [card] = folderCards("notes", [note(2, "db"), note(1, "db")]);
+    expect(card.text).toBe("db/ holds 2 notes: Subject 1; Subject 2");
+    expect(card.ids).toEqual([uuid(1001), uuid(1002)]);
+    expect(card).toMatchObject({ track: "notes", folder: "db" });
+  });
+
+  test("a folder too long for one card gets several, and every memory stays listed in full", () => {
+    const filed = Array.from({ length: 30 }, (_, i) => fact(i, "big", `User fact ${i} ${"with detail ".repeat(12)}.`));
+    const cards = folderCards("facts", filed, 1000);
+    expect(cards.length).toBeGreaterThan(1);
+    expect(cards.flatMap((c) => c.ids)).toEqual(filed.map((m) => m.id));
+    for (const m of filed) expect(cards.some((c) => c.text.includes(m.text))).toBe(true);
+    for (const c of cards) expect(c.text.length).toBeLessThan(1400);
+  });
+
+  test("each track asks its own measured question", () => {
+    expect(folderQuestions("facts", ["s0"])["open::s0"]).toEqual({
+      type: "noul",
+      instructions: "Would a memory listed in `subjects.s0` change or improve the assistant's next response in `conversation`?",
+    });
+    expect(folderQuestions("notes", ["c3"])["open::c3"].instructions).toBe(
+      "Would a reference note in the folder that `cards.c3` describes change or improve the assistant's next response in `conversation`?",
+    );
+  });
+
+  test("a folder without an answer is opened", () => {
+    const toId = new Map([["s0", "a"], ["s1", "b"], ["s2", "c"]]);
+    const opened = pickOpened({ "open::s0": { noul: 0.9 }, "open::s1": { noul: 0.1 } }, toId, 0.3);
+    expect(opened).toEqual([{ id: "a", p: 0.9 }, { id: "c", p: 1 }]);
+  });
+
+  test("aliases take a prefix, and a card is never cut", () => {
+    const long = "y".repeat(9000);
+    const { memories, toId } = aliasShard([{ id: "card", text: long }], Infinity, "c");
+    expect(memories.c0).toBe(long);
+    expect(toId.get("c0")).toBe("card");
+  });
+
+  test("with the tree off, or nothing filed, everything is judged directly", () => {
+    const mems = [fact(1, "a"), note(1, "b")];
+    expect(planRecall(mems, { ...tree, enabled: false })).toEqual({ direct: mems, routed: [] });
+    expect(planRecall(mems, undefined)).toEqual({ direct: mems, routed: [] });
+    const unfiled = [fact(1), note(1)];
+    expect(planRecall(unfiled, tree)).toEqual({ direct: unfiled, routed: [] });
+  });
+
+  test("a track stays flat until it costs minFlatTokens, each track on its own", () => {
+    const facts = [fact(1, "a"), fact(2, "a")];
+    const notes = Array.from({ length: 40 }, (_, i) => note(i, "db", `Subject ${i} (documentation): ${"a long body of findings. ".repeat(40)}`));
+    const plan = planRecall([...facts, ...notes], { ...tree, minFlatTokens: 5000 });
+    expect(plan.routed.map((r) => r.track)).toEqual(["notes"]);
+    expect(plan.direct).toEqual(facts);
+  });
+
+  test("the inbox and facts too long to list are judged directly even when the track is routed", () => {
+    const long = fact(3, "a", `User ${"said a great deal ".repeat(40)}.`);
+    expect(long.text.length).toBeGreaterThan(FILEABLE_FACT_CHARS);
+    const mems = [fact(1, "a"), fact(2), long, note(1, "db"), note(2)];
+    const plan = planRecall(mems, tree);
+    expect(plan.direct.map((m) => m.id)).toEqual([uuid(2), uuid(3), uuid(1002)]);
+    expect(plan.routed.map((r) => [r.track, r.cards.flatMap((c) => c.ids)])).toEqual([["facts", [uuid(1)]], ["notes", [uuid(1001)]]]);
+  });
+
+  test("the store migrates a folder column in, backfilled to unfiled", () => {
+    expect(ADDED_COLUMNS).toContainEqual({ name: "folder", valueSql: "''" });
+    expect(FOLDER_PATTERN.test("food-preferences")).toBe(true);
+    for (const bad of ["", "Food", "a b", "x'; DROP", "a".repeat(41)]) expect(FOLDER_PATTERN.test(bad)).toBe(false);
   });
 });

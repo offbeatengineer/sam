@@ -21,6 +21,7 @@ import {
   type RelationDecision,
   type Turn,
 } from "./judgments.js";
+import type { MemoryFiler } from "./filer.js";
 import type { ActiveMemory, MemoryStore } from "./store.js";
 import type { JevQuestion, JevResult, TypeSafeClient } from "./typesafe.js";
 import type { MemoryOrigin, TypeSafeConfig } from "./types.js";
@@ -129,6 +130,9 @@ export class MemoryWritePipeline {
    */
   private tail: Promise<void> = Promise.resolve();
   private pending = 0;
+  private filingQueued = false;
+  private filingAbort: AbortController | undefined;
+  private draining = false;
   /** How much of each memory a Jev request carries; sized so a reference note is never cut. */
   private readonly textLimit: number;
 
@@ -137,8 +141,31 @@ export class MemoryWritePipeline {
     private readonly cfg: TypeSafeConfig,
     private readonly store: () => Promise<MemoryStore>,
     private readonly writer: MemoryFactWriter,
+    /** Files what the pipeline saved; absent when recall through folders is off. */
+    private readonly filer?: MemoryFiler,
   ) {
     this.textLimit = memoryTextLimit(cfg.knowledgeNoteChars);
+  }
+
+  /**
+   * File unfiled memories, one model call at a time. On the same chain as the
+   * writes, so a memory is never filed while it is being reconciled, and queued
+   * again after each call so that a write waiting behind it gets its turn. Not a
+   * pending write: filing can always be redone, so shutdown does not wait for it.
+   */
+  enqueueFiling(): void {
+    if (!this.filer || this.filingQueued || this.draining) return;
+    this.filingQueued = true;
+    this.tail = this.tail
+      .then(async () => {
+        this.filingQueued = false;
+        if (this.draining) return;
+        this.filingAbort = new AbortController();
+        const more = await this.filer!.step(this.filingAbort.signal);
+        this.filingAbort = undefined;
+        if (more) this.enqueueFiling();
+      })
+      .catch((err) => console.warn("[memory] filing failed:", err));
   }
 
   enqueue(job: WriteJob, onDone: (report: WriteReport) => void): void {
@@ -156,6 +183,8 @@ export class MemoryWritePipeline {
 
   /** Called before the process exits: a save-worthy last message must not be lost to Ctrl-C. */
   async drain(timeoutMs: number): Promise<void> {
+    this.draining = true;
+    this.filingAbort?.abort();
     if (this.pending === 0) return;
     console.log(`[memory] finishing ${this.pending} pending memory write${this.pending === 1 ? "" : "s"}...`);
     await Promise.race([this.tail, new Promise<void>((r) => setTimeout(r, timeoutMs))]);
@@ -337,7 +366,9 @@ export class MemoryWritePipeline {
       : fact.kind === "profile" && decision.profileScope && profileCount < MAX_PROFILE_MEMORIES
         ? "profile"
         : "situational";
-    const currentId = await store.save(fact.text, fact.tags, "auto", { kind, origin: isKnowledge ? ctx?.origin : undefined });
+    // What replaces a memory is about the same thing, so it is filed where that memory was.
+    const folder = kind === "profile" ? undefined : decision.supersede.map((id) => byId.get(id)?.folder).find(Boolean);
+    const currentId = await store.save(fact.text, fact.tags, "auto", { kind, origin: isKnowledge ? ctx?.origin : undefined, folder });
     if (decision.supersede.length === 0) report.saved.push({ id: currentId, text: fact.text, kind, origin: isKnowledge ? ctx?.origin : undefined });
     await this.supersedeAll(store, decision.supersede, currentId, fact.text, [], report, change);
     for (const id of decision.flagged) report.flagged.push(change(id));
@@ -418,7 +449,8 @@ export class MemoryWritePipeline {
   ): Promise<string> {
     const origin = dropUndefined({ ...ctx.origin, url: ctx.origin.url ?? old.origin?.url, tool: ctx.origin.tool ?? old.origin?.tool }) as MemoryOrigin;
     const merged = [...new Set([...(old.tags ?? []), ...tags])].slice(0, MAX_TAGS);
-    const newId = await store.save(text, merged, "auto", { kind: "knowledge", origin });
+    // The new version takes the old one's place in its folder rather than waiting to be filed again.
+    const newId = await store.save(text, merged, "auto", { kind: "knowledge", origin, folder: old.folder });
     if (await store.supersede(old.id, newId)) report.superseded.push({ id: newId, text, replaced: { id: old.id, text: old.text } });
     console.log(`[memory] ${how} note ${old.id.slice(0, 8)} -> ${newId.slice(0, 8)} (${text.length} chars)`);
     return newId;

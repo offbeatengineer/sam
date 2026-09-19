@@ -26,6 +26,8 @@ export interface Memory {
   updated_at: number;
   /** JSON of a MemoryOrigin for knowledge memories; "" otherwise. */
   origin: string;
+  /** Where recall looks for it; "" while it is unfiled. An index only: filing never changes a memory. */
+  folder: string;
 }
 
 export interface RecallResult {
@@ -40,25 +42,30 @@ export interface RecallResult {
   superseded_by: string;
   updated_at: number;
   origin?: MemoryOrigin;
+  /** "" or absent: not filed yet, so recall judges it directly. */
+  folder?: string;
 }
 
 /** What the automatic-memory judgments work on: every active memory, without vectors. */
 export type ActiveMemory = Omit<RecallResult, "score" | "status" | "superseded_by">;
 
 /** Columns added after the first release, with the SQL that backfills existing rows. */
-const ADDED_COLUMNS = [
+export const ADDED_COLUMNS = [
   { name: "kind", valueSql: "'situational'" },
   { name: "status", valueSql: "'active'" },
   // '' rather than NULL: an all-null column breaks Arrow type inference on JS inserts.
   { name: "superseded_by", valueSql: "''" },
   { name: "updated_at", valueSql: "created_at" },
   { name: "origin", valueSql: "''" },
+  { name: "folder", valueSql: "''" },
 ];
 
 /** Everything except `vector`, which is 1.5 KB per row and only needed for search. */
-const READ_COLUMNS = ["id", "text", "tags", "source", "created_at", "kind", "status", "superseded_by", "updated_at", "origin"];
+const READ_COLUMNS = ["id", "text", "tags", "source", "created_at", "kind", "status", "superseded_by", "updated_at", "origin", "folder"];
 
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Folder names come from a model and go into SQL and into Jev requests. */
+export const FOLDER_PATTERN = /^[a-z0-9-]{1,40}$/;
 
 /** Ids reach the store from clients and from the model, so never trust their shape. */
 export function isMemoryId(id: unknown): id is string {
@@ -102,6 +109,7 @@ function toResult(r: any, score: number): RecallResult {
     superseded_by: r.superseded_by ?? "",
     updated_at: r.updated_at ?? r.created_at,
     origin: parseOrigin(r.origin),
+    folder: typeof r.folder === "string" ? r.folder : "",
   };
 }
 
@@ -171,6 +179,7 @@ export class MemoryStore {
         superseded_by: "",
         updated_at: 0,
         origin: "",
+        folder: "",
       };
 
       table = await db.createTable(TABLE_NAME, [seedRecord]);
@@ -200,7 +209,7 @@ export class MemoryStore {
     await table.addColumns(missing);
   }
 
-  async save(text: string, tags?: string[], source?: string, opts?: { kind?: MemoryKind; origin?: MemoryOrigin }): Promise<string> {
+  async save(text: string, tags?: string[], source?: string, opts?: { kind?: MemoryKind; origin?: MemoryOrigin; folder?: string }): Promise<string> {
     const id = randomUUID();
     const vector = await this.embedder.embed(text);
     const now = Date.now();
@@ -217,6 +226,8 @@ export class MemoryStore {
       superseded_by: "",
       updated_at: now,
       origin: opts?.origin ? JSON.stringify(opts.origin) : "",
+      // A revision takes its predecessor's place; anything else waits unfiled.
+      folder: opts?.folder && FOLDER_PATTERN.test(opts.folder) ? opts.folder : "",
     };
 
     await this.table.add([record]);
@@ -304,7 +315,12 @@ export class MemoryStore {
       if (patch.kind !== undefined && patch.kind !== "knowledge") {
         // Knowledge comes from outside the user's own words. It stays knowledge, so
         // no client, old or new, can promote it into the always-on profile block.
-        if ((await this.get(id))?.kind !== "knowledge") values.kind = patch.kind;
+        const current = await this.get(id);
+        if (current?.kind !== "knowledge") {
+          values.kind = patch.kind;
+          // Folders are per track and profile memories have none, so a changed kind is filed again.
+          if (current && current.kind !== patch.kind) values.folder = "";
+        }
       }
       return await this.applyUpdate(id, values);
     } catch {
@@ -321,8 +337,31 @@ export class MemoryStore {
   async setStatus(id: string, status: MemoryStatus): Promise<boolean> {
     if (!isMemoryId(id)) return false;
     const values: Record<string, unknown> = { status, updated_at: Date.now() };
-    if (status === "active") values.superseded_by = "";
+    if (status === "active") {
+      values.superseded_by = "";
+      // Its folder may have been split away while it was gone; file it again.
+      values.folder = "";
+    }
     return this.applyUpdate(id, values);
+  }
+
+  /**
+   * File memories. One update per folder, since every update is a new table
+   * version. `updated_at` stays: filing is not a change to the memory.
+   */
+  async setFolders(assignments: { id: string; folder: string }[]): Promise<number> {
+    const byFolder = new Map<string, string[]>();
+    for (const { id, folder } of assignments) {
+      if (!isMemoryId(id) || (folder !== "" && !FOLDER_PATTERN.test(folder))) continue;
+      byFolder.set(folder, [...(byFolder.get(folder) ?? []), id]);
+    }
+    let updated = 0;
+    for (const [folder, ids] of byFolder) {
+      const result = await this.table.update({ where: `id IN (${ids.map(sqlStr).join(", ")})`, values: { folder } });
+      updated += result?.rowsUpdated ?? 0;
+    }
+    if (byFolder.size > 0) this.activeCache = null;
+    return updated;
   }
 
   /** Bump recency when the user restates something already known. */

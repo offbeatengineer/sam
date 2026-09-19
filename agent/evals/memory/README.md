@@ -70,6 +70,7 @@ bun run eval:memory:cards      # F: progressive disclosure, route by subject car
 bun run eval:memory:notes      # G: the same for reference notes: note cards, then folders (--folders)
 bun run eval:memory:grow       # H: folders grown one note at a time instead of grouped in one pass (--read)
 bun run eval:memory:facts      # I: listing cards for user facts, and fact trees grown one at a time or in batches
+bun run eval:memory:filer      # live: the production filer grows both trees from the fixture streams, then recall through them
 ```
 
 A full pass costs well under $0.05. `baseline` loads `@huggingface/transformers` from
@@ -92,6 +93,7 @@ memory enabled. Raw answers are dumped to `results/` (gitignored).
 | `notes.ts` | 80 synthetic reference notes in 16 themes, 144 generated queries (headline / buried detail, subject named / buried detail, subject not named; half Chinese): note cards in four variants, folder cards as a title listing or an LLM summary, against flat full-text recall |
 | `grow.ts` | The notes.ts store plus 24 notes that sit between two themes, filed one at a time by Jev (Choice or Nouls over folder listings) in three arrival orders, with and without split-on-overflow; tree quality against the themes, and recall through the grown trees |
 | `facts.ts` | The cards.ts store again, with the subject card replaced by a listing of the facts themselves; fact trees filed one at a time by Jev or in batches by Haiku; a domain level that lists subject names |
+| `filer.ts` | The production filer and writer prompts over the fixture memories arriving one at a time, then the production recaller through the trees they grew. Not floored: the filing model's output varies |
 | `fixtures/` | What the models generated for cards.ts, notes.ts, grow.ts and facts.ts: index cards, notes, queries, grown trees. Committed because a rerun of the generators gives different data and the numbers below are about these. `--fresh` rebuilds them |
 | `llm.ts` | The Agent SDK call the scripts use when they need text written (cards, synthetic notes) |
 | `cards.ts` | Subject and domain index cards written by an LLM that never sees the cases; hop-1 routing with ablations, two- and three-hop recall against flat recall, a write-time coverage check |
@@ -301,6 +303,25 @@ subject, then the production recall on the facts in the opened subjects.
   that nothing depends on a writer's summary being complete or current.
 - Each one-at-a-time filing sent the whole tree to Jev: ~4,500 tokens at 248 facts, and linear
   in the store.
+
+### In production (`src/memory/recaller.ts`, `filer.ts`)
+
+What the experiments above settled is implemented: `planRecall`, the listings and the two
+folder questions live in `judgments.ts`, and the exploratory scripts now import them. The
+regression harness runs the production recaller through two of the grown fixture trees
+(`tree_facts.*`, `tree_notes.*` in `floors.json`), with recall floored and tokens per turn
+capped, since filing quality can only move cost. Measured 2026-09-19 with `jev-1.13.0`:
+
+| | Recall | Tokens / turn | Flat |
+| --- | --- | --- | --- |
+| `eval:memory:all`, facts through `batched-1/cap16` | 30/30 core, noise 3 | 7,460 | 13,961 |
+| `eval:memory:all`, notes through `batched/title/shuffle-2/cap8` (every 4th query) | 53/53 | 8,058 | 33,173 |
+| `eval:memory:filer`, facts filed by the production filer (Haiku): 41 folders, 7 of one, 8 unfiled | 30/30 core, noise 4 | 8,278 | 13,961 |
+| `eval:memory:filer`, notes filed by the production filer: 20 folders, 2 of one | 53/53 | 8,551 | 33,173 |
+
+Two things differ from the experiments. Each routed track sends its own folder request, in
+parallel, as measured (one combined request was never tried). And a folder with no answer
+is opened rather than skipped.
 
 Caveats: small test set, authored together with the memories, templated distractors, and
 the save threshold was chosen after seeing the scores. Request limits: ~32K tokens shared by

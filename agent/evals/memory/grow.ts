@@ -27,7 +27,7 @@
 //   bun run eval:memory:grow [--fresh] [--verbose] [--read [--trees=a,b] [--report]]
 //     growing the trees is ~$0.15 of Jev, --read ~$0.07 per tree plus $0.30 once for the flat baseline
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { truncate, type Turn } from "../../src/memory/judgments.js";
+import { folderQuestions, noteListing, truncate, type Turn } from "../../src/memory/judgments.js";
 import { MemoryRecaller } from "../../src/memory/recaller.js";
 import type { ActiveMemory } from "../../src/memory/store.js";
 import { TypeSafeClient, type JevQuestion } from "../../src/memory/typesafe.js";
@@ -170,7 +170,8 @@ function ordered(order: OrderName): Note[] {
   return [...shuffled(notes.filter((n) => n.themes), 3), ...shuffled(notes.filter((n) => !n.themes), 3)];
 }
 
-const listing = (name: string, ids: string[]) => `${name}/ holds ${ids.length} note${ids.length === 1 ? "" : "s"}: ${ids.map((id) => noteById.get(id)!.title).join("; ")}`;
+// The production listing, so what is measured here is what recall sends.
+const listing = (name: string, ids: string[]) => noteListing(name, ids.map((id) => noteById.get(id)!.title));
 const shownAs = (n: Note, shown: Shown) => (shown === "title" ? `${n.title} (${n.basis}) [${n.tags.join(", ")}]` : `${n.text} [${n.tags.join(", ")}]`);
 
 async function nameFolder(n: Note, existing: string[]): Promise<string> {
@@ -418,7 +419,7 @@ async function throughTree(msg: string, folders: Map<string, string[]>): Promise
   const questions: Record<string, JevQuestion> = {};
   names.forEach((name, i) => {
     state[`c${i}`] = listing(name, folders.get(name)!);
-    questions[`open::c${i}`] = { type: "noul", instructions: `Would a reference note in the folder that \`cards.c${i}\` describes change or improve the assistant's next response in \`conversation\`?` };
+    Object.assign(questions, folderQuestions("notes", [`c${i}`]));
   });
   const r = await retrying(() => client.ask({ conversation, cards: state }, questions, { timeoutMs: cfg.writeTimeoutMs, retries: 4 }));
   const open = names.filter((_, i) => (r.answers[`open::c${i}`]?.noul ?? 0) >= OPEN_AT);

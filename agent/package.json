@@ -28,6 +28,7 @@
     "eval:memory:notes": "bun --env-file=.env evals/memory/notes.ts",
     "eval:memory:grow": "bun --env-file=.env evals/memory/grow.ts",
     "eval:memory:facts": "bun --env-file=.env evals/memory/facts.ts",
+    "eval:memory:filer": "bun --env-file=.env evals/memory/filer.ts",
     "eval:memory:all": "bun --env-file=.env evals/memory/run.ts",
     "eval:memory:writer": "bun --env-file=.env evals/memory/writer.ts"
   },

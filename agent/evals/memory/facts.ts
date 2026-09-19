@@ -16,7 +16,7 @@
 //
 //   bun run eval:memory:facts [--fresh] [--only=batched]      about $0.25 of Jev
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import type { Turn } from "../../src/memory/judgments.js";
+import { factListing, folderQuestions, type Turn } from "../../src/memory/judgments.js";
 import { MemoryRecaller } from "../../src/memory/recaller.js";
 import type { ActiveMemory } from "../../src/memory/store.js";
 import { TypeSafeClient, type JevQuestion } from "../../src/memory/typesafe.js";
@@ -55,7 +55,8 @@ const foldersOf = (home: Home) => {
   for (const id of IDS) out.set(home[id], [...(out.get(home[id]) ?? []), id]);
   return out;
 };
-const listing = (name: string, ids: string[]) => `${name}/ holds ${ids.length} ${ids.length === 1 ? "memory" : "memories"}: ${ids.map((id) => STORE[id]).join(" | ")}`;
+// The production listing, so what is measured here is what recall sends.
+const listing = (name: string, ids: string[]) => factListing(name, ids.map((id) => STORE[id]));
 
 // ---------------------------------------------------------------------------
 // Growing a fact tree
@@ -239,7 +240,7 @@ async function routeCards(msg: string, cards: { id: string; text: string }[], qu
   const r = await retrying(() => client.ask({ conversation, subjects: state }, questions, { timeoutMs: cfg.writeTimeoutMs, retries: 4 }));
   return { p: Object.fromEntries(cards.map((c, i) => [c.id, r.answers[`open::s${i}`]?.noul ?? 0])), tokens: r.usage.input_tokens, ms: r.ms };
 }
-const SUBJECT_Q = (a: string) => `Would a memory listed in \`subjects.${a}\` change or improve the assistant's next response in \`conversation\`?`;
+const SUBJECT_Q = (a: string) => String(folderQuestions("facts", [a])[`open::${a}`].instructions);
 const DOMAIN_Q = (a: string) => `Would a memory filed under \`subjects.${a}\` change or improve the assistant's next response in \`conversation\`?`;
 
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);

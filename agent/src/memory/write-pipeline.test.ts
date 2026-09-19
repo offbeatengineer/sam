@@ -29,7 +29,7 @@ class FakeStore {
   }
   async save(text: string, tags: string[], source: string, opts: any) {
     const id = uuid(this.next++);
-    this.rows.push({ id, text, tags, source, kind: opts?.kind ?? "situational", origin: opts?.origin, status: "active", created_at: 0, updated_at: 0 });
+    this.rows.push({ id, text, tags, source, kind: opts?.kind ?? "situational", origin: opts?.origin, folder: opts?.folder ?? "", status: "active", created_at: 0, updated_at: 0 });
     return id;
   }
   async supersede(oldId: string, newId: string) {
@@ -488,6 +488,69 @@ describe("merging with a note the writer was not shown", () => {
     await run(pipeline(fakeClient({ value: 2, relations: [{ match: "Series 9", choice: "consistent", confidence: 0.9 }] }), store, writer), job(exchange()));
     expect(writer.mergeRequests).toEqual([]);
     expect(store.rows).toHaveLength(2);
+  });
+});
+
+describe("folders", () => {
+  test("a revised note takes the old note's place in its folder", async () => {
+    const store = new FakeStore();
+    store.rows.push({ ...old, folder: "apple-hardware" });
+    const writer = fakeWriter([], [{ ...note, revises: old.id }], { merged: true, text: "MERGED" });
+    await run(pipeline(fakeClient({ knowledgeValue: 2 }), store, writer), job(exchange(), known));
+    expect(store.rows.find((r) => r.text === "MERGED")).toMatchObject({ folder: "apple-hardware" });
+  });
+
+  test("a fact that replaces another is filed where that one was; a fact that replaces nothing waits unfiled", async () => {
+    const store = new FakeStore();
+    store.rows.push({ id: uuid(1), text: "User lives in Shanghai.", kind: "situational", status: "active", folder: "home" });
+    const facts: CandidateFact[] = [
+      { text: "User lives in Berlin.", kind: "situational", tags: [] },
+      { text: "User has a corgi.", kind: "situational", tags: [] },
+    ];
+    const client = fakeClient({ value: 2, relations: [{ match: "Shanghai", choice: "outdated", confidence: 0.9 }] });
+    await run(pipeline(client, store, fakeWriter(facts, [])), job(undefined));
+    expect(store.rows.find((r) => r.text === "User lives in Berlin.")).toMatchObject({ folder: "home" });
+    expect(store.rows.find((r) => r.text === "User has a corgi.")).toMatchObject({ folder: "" });
+  });
+
+  function fakeFiler(steps: boolean[], onStep: (signal?: AbortSignal) => Promise<void> | void = () => {}) {
+    const log: string[] = [];
+    return {
+      log,
+      filer: {
+        async step(signal?: AbortSignal) {
+          log.push("file");
+          await onStep(signal);
+          return steps.shift() ?? false;
+        },
+      } as any,
+    };
+  }
+
+  test("filing takes its turn on the write chain, one call at a time, and lets a write in between", async () => {
+    const { filer, log } = fakeFiler([true, true, false]);
+    const store = new FakeStore();
+    const p = new MemoryWritePipeline(fakeClient({ value: 0 }) as any, cfg, async () => store as any, fakeWriter([], []), filer);
+    p.enqueueFiling();
+    p.enqueueFiling(); // already queued: one entry, not two
+    p.enqueue(job(undefined), () => {});
+    const written = new Promise<void>((resolve) => p.enqueue({ ...job(undefined), label: "last" }, () => resolve()));
+    void written;
+    await new Promise((r) => setTimeout(r, 20));
+    expect(log).toEqual(["file", "file", "file"]);
+  });
+
+  test("shutdown does not wait for filing, and stops it", async () => {
+    let aborted = false;
+    const { filer } = fakeFiler([false], (signal) => new Promise<void>((resolve) => signal?.addEventListener("abort", () => { aborted = true; resolve(); })));
+    const p = new MemoryWritePipeline(fakeClient({}) as any, cfg, async () => new FakeStore() as any, fakeWriter([], []), filer);
+    p.enqueueFiling();
+    await new Promise((r) => setTimeout(r, 5));
+    const t0 = Date.now();
+    await p.drain(5000);
+    expect(Date.now() - t0).toBeLessThan(200);
+    expect(aborted).toBe(true);
+    p.enqueueFiling(); // nothing is queued once draining
   });
 });
 

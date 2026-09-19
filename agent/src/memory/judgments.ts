@@ -1,4 +1,5 @@
 import type { JevAnswer, JevQuestion } from "./typesafe.js";
+import type { TreeConfig } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Pure builders and deciders for the Jev judgments behind automatic memory.
@@ -53,10 +54,15 @@ export function memoryTextLimit(noteChars: number | undefined): number {
  * Split the store into evenly loaded shards that each fit one request.
  * `reservedTokens` covers the conversation and any shard-independent questions.
  */
+/** What one memory adds to a request: its text and its own question. */
+export function memoryCost(text: string, maxChars = MAX_MEMORY_CHARS): number {
+  return estimateTokens(truncate(text, maxChars)) + PER_MEMORY_OVERHEAD_TOKENS;
+}
+
 export function shardMemories<T extends MemoryText>(mems: T[], reservedTokens: number, budget: number, maxChars = MAX_MEMORY_CHARS): T[][] {
   if (mems.length === 0) return [];
   const room = Math.max(1000, budget - reservedTokens);
-  const costs = mems.map((m) => estimateTokens(truncate(m.text, maxChars)) + PER_MEMORY_OVERHEAD_TOKENS);
+  const costs = mems.map((m) => memoryCost(m.text, maxChars));
   const total = costs.reduce((a, b) => a + b, 0);
   const shardCount = Math.max(1, Math.ceil(total / room));
   const target = total / shardCount;
@@ -79,11 +85,11 @@ export function shardMemories<T extends MemoryText>(mems: T[], reservedTokens: n
  * Real ids are 36-char UUIDs and each appears twice per memory (state key and
  * question text). Short per-request aliases keep the measured shard capacity.
  */
-export function aliasShard(shard: MemoryText[], maxChars = MAX_MEMORY_CHARS): { memories: Record<string, string>; toId: Map<string, string> } {
+export function aliasShard(shard: MemoryText[], maxChars = MAX_MEMORY_CHARS, prefix = "m"): { memories: Record<string, string>; toId: Map<string, string> } {
   const memories: Record<string, string> = {};
   const toId = new Map<string, string>();
   shard.forEach((m, i) => {
-    const alias = `m${i}`;
+    const alias = `${prefix}${i}`;
     memories[alias] = truncate(m.text, maxChars);
     toId.set(alias, m.id);
   });
@@ -121,6 +127,177 @@ export function pickRecalled(answers: Record<string, JevAnswer>, toId: Map<strin
     if (p >= threshold) picked.push({ id, p });
   }
   return picked;
+}
+
+// ---------------------------------------------------------------------------
+// Recall through folders
+//
+// Judging every memory each turn grows with the store. Instead, memories are
+// filed into folders and a turn first asks which folders matter, then judges
+// only what is inside them. A folder is shown to Jev as a listing of what it
+// holds (the facts themselves, or the titles of the notes), built here and
+// never written by a model: a listing cannot leave out or misdescribe what is
+// filed under it, so a memory in the wrong folder is still found. How well the
+// store is filed decides only what a turn costs (evals/memory/README.md).
+// ---------------------------------------------------------------------------
+
+/** The user's facts and the reference notes are filed separately, like everything else about them. */
+export type Track = "facts" | "notes";
+
+export function trackOf(kind: string): Track | undefined {
+  return kind === "knowledge" ? "notes" : kind === "situational" ? "facts" : undefined;
+}
+
+/**
+ * A fact is listed verbatim on its folder's card, so one this long (the UI and the
+ * save tool set no limit) would bloat the card every turn. It is never filed and
+ * is judged directly instead.
+ */
+export const FILEABLE_FACT_CHARS = 400;
+
+/** Opened folders are what gets read, so a card names at most this much; a larger folder gets several cards. */
+const MAX_CARD_CHARS = 3000;
+
+/**
+ * A note opens with "Subject (basis): ...". The title is the subject alone: the
+ * measured listings carried titles without the basis, which is a third of the length.
+ */
+export function noteTitle(text: string): string {
+  const head = text.slice(0, 300);
+  const close = head.indexOf("): ");
+  if (close > 0) {
+    let depth = 0;
+    for (let i = close; i >= 0; i--) {
+      if (head[i] === ")") depth++;
+      else if (head[i] === "(" && --depth === 0) {
+        const title = head.slice(0, i).trim();
+        if (title) return title;
+        break;
+      }
+    }
+  }
+  const colon = text.slice(0, 120).indexOf(": ");
+  if (colon > 0) return text.slice(0, colon).trim();
+  const sentence = /^.*?[.!?](?=\s|$)/.exec(text)?.[0] ?? text;
+  return truncate(sentence.trim(), 100);
+}
+
+/** The wording of the listings and of the questions below is what the evals measured. */
+export function factListing(name: string, facts: string[]): string {
+  return `${name}/ holds ${facts.length} ${facts.length === 1 ? "memory" : "memories"}: ${facts.join(" | ")}`;
+}
+
+export function noteListing(name: string, titles: string[]): string {
+  return `${name}/ holds ${titles.length} note${titles.length === 1 ? "" : "s"}: ${titles.join("; ")}`;
+}
+
+/** What a listing shows of a memory: a fact as it is, a note by its title. */
+export function listedAs(track: Track, text: string): string {
+  return track === "facts" ? text : noteTitle(text);
+}
+
+export interface Foldered extends MemoryText {
+  kind: string;
+  folder?: string;
+  created_at?: number;
+}
+
+/** One Noul's worth of a folder. `text` is never cut: a cut listing would hide what it no longer names. */
+export interface FolderCard extends MemoryText {
+  track: Track;
+  folder: string;
+  /** The memories this card lists, which are the ones to judge if it opens. */
+  ids: string[];
+}
+
+export function folderCards(track: Track, filed: Foldered[], maxCardChars = MAX_CARD_CHARS): FolderCard[] {
+  const folders = new Map<string, Foldered[]>();
+  for (const m of filed) {
+    if (!m.folder) continue;
+    folders.set(m.folder, [...(folders.get(m.folder) ?? []), m]);
+  }
+  const listing = track === "facts" ? factListing : noteListing;
+  const cards: FolderCard[] = [];
+  for (const [folder, members] of folders) {
+    members.sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0));
+    let part: Foldered[] = [];
+    let chars = 0;
+    const flush = () => {
+      if (part.length === 0) return;
+      cards.push({ id: `${track}:${folder}#${cards.length}`, track, folder, ids: part.map((m) => m.id), text: listing(folder, part.map((m) => listedAs(track, m.text))) });
+      part = [];
+      chars = 0;
+    };
+    for (const m of members) {
+      const length = listedAs(track, m.text).length + 3;
+      if (part.length > 0 && chars + length > maxCardChars) flush();
+      part.push(m);
+      chars += length;
+    }
+    flush();
+  }
+  return cards;
+}
+
+/** Where a track's cards go in the state, and what their aliases look like. */
+export const ROUTE: Record<Track, { stateKey: "subjects" | "cards"; prefix: string }> = {
+  facts: { stateKey: "subjects", prefix: "s" },
+  notes: { stateKey: "cards", prefix: "c" },
+};
+
+const OPEN = "open::";
+
+export function folderQuestions(track: Track, aliases: string[]): Record<string, JevQuestion> {
+  const q: Record<string, JevQuestion> = {};
+  for (const alias of aliases) {
+    q[`${OPEN}${alias}`] = {
+      type: "noul",
+      instructions:
+        track === "facts"
+          ? `Would a memory listed in \`subjects.${alias}\` change or improve the assistant's next response in \`conversation\`?`
+          : `Would a reference note in the folder that \`cards.${alias}\` describes change or improve the assistant's next response in \`conversation\`?`,
+    };
+  }
+  return q;
+}
+
+/**
+ * The opposite default from pickRecalled: a folder with no answer is opened. A folder
+ * left shut is a miss nobody sees, while one opened needlessly costs some tokens.
+ */
+export function pickOpened(answers: Record<string, JevAnswer>, toId: Map<string, string>, threshold: number): Picked[] {
+  const opened: Picked[] = [];
+  for (const [alias, id] of toId) {
+    const p = answers[`${OPEN}${alias}`]?.noul ?? 1;
+    if (p >= threshold) opened.push({ id, p });
+  }
+  return opened;
+}
+
+export interface RecallPlan<T> {
+  /** Judged one by one, as always: unfiled memories, and any track not worth routing yet. */
+  direct: T[];
+  routed: { track: Track; cards: FolderCard[] }[];
+}
+
+/**
+ * A track is routed through its folders once judging it flat would cost `minFlatTokens`;
+ * below that the extra round trip buys nothing, and a small store recalls exactly as before.
+ */
+export function planRecall<T extends Foldered>(mems: T[], tree: TreeConfig | undefined, maxChars = MAX_MEMORY_CHARS): RecallPlan<T> {
+  if (!tree?.enabled) return { direct: mems, routed: [] };
+  const routed: RecallPlan<T>["routed"] = [];
+  const listed = new Set<string>();
+  for (const track of ["facts", "notes"] as const) {
+    const members = mems.filter((m) => trackOf(m.kind) === track);
+    const filed = members.filter((m) => m.folder && (track === "notes" || m.text.length <= FILEABLE_FACT_CHARS));
+    if (filed.length === 0) continue;
+    const flatCost = members.reduce((n, m) => n + memoryCost(m.text, maxChars), 0);
+    if (flatCost < tree.minFlatTokens) continue;
+    routed.push({ track, cards: folderCards(track, filed) });
+    for (const m of filed) listed.add(m.id);
+  }
+  return { direct: routed.length === 0 ? mems : mems.filter((m) => !listed.has(m.id)), routed };
 }
 
 // ---------------------------------------------------------------------------
